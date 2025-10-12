@@ -36,12 +36,15 @@ layout = dbc.Container([
     State('stored-data', 'data')
 )
 def display_student_detail(n_clicks, search_value, json_data):
+    # ---------------- No data uploaded ----------------
     if not json_data:
         return html.P("Please upload data first on the Overview page.", className="text-muted text-center")
 
+    # ---------------- No search input ----------------
     if not search_value:
         return html.P("Enter Student ID or Name to search.", className="text-muted text-center")
 
+    # Load DataFrame from stored JSON
     df = pd.read_json(json_data, orient='split')
 
     # Ensure 'Student ID' and 'Name' exist
@@ -58,6 +61,7 @@ def display_student_detail(n_clicks, search_value, json_data):
     )
     student_df = df[mask]
 
+    # ---------------- No matching student ----------------
     if student_df.empty:
         return html.P("No student found with this ID or Name.", className="text-danger text-center")
 
@@ -68,7 +72,7 @@ def display_student_detail(n_clicks, search_value, json_data):
                     'Class_Rank', 'Section_Rank', 'Overall_Result']
     subjects = [col for col in student_df.columns if col not in exclude_cols]
 
-    # Display basic info
+    # ---------------- Student Basic Info ----------------
     student_info = dbc.Card([
         dbc.CardBody([
             html.H5(f"Student ID: {student_df.at[0, 'Student ID']}"),
@@ -81,7 +85,7 @@ def display_student_detail(n_clicks, search_value, json_data):
         ])
     ], className="mb-4 shadow-sm")
 
-    # Subject-wise marks table
+    # ---------------- Subject-wise Marks Table ----------------
     if subjects:
         subject_table = dash_table.DataTable(
             data=student_df[subjects].T.reset_index().rename(

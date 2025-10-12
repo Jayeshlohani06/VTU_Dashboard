@@ -30,12 +30,14 @@ layout = dbc.Container([
      Input('subject-dropdown', 'value')]
 )
 def update_subject_analysis(json_data, selected_subject):
+    # ---------------- No data uploaded ----------------
     if json_data is None:
         return [], html.P(
             "Please upload data first on the Overview page.",
             className="text-muted text-center"
         )
 
+    # Load DataFrame from stored JSON
     df = pd.read_json(json_data, orient='split')
 
     # Ensure 'Name' column exists
@@ -43,12 +45,12 @@ def update_subject_analysis(json_data, selected_subject):
         df['Name'] = df.index.astype(str)
 
     # Detect subjects dynamically
-    exclude_cols = ['Student ID', 'Name', 'Section', 'Attendance', 
+    exclude_cols = ['Student ID', 'Name', 'Section', 'Attendance',
                     'Total_Marks', 'Class_Rank', 'Section_Rank', 'Overall_Result']
     subjects = [col for col in df.columns if col not in exclude_cols]
     dropdown_options = [{'label': s, 'value': s} for s in subjects]
 
-    # If no subject selected, show instruction
+    # ---------------- If no subject selected ----------------
     if selected_subject is None or selected_subject not in df.columns:
         return dropdown_options, html.P(
             "Select a subject to see analysis.", className="text-center text-muted"
@@ -57,9 +59,11 @@ def update_subject_analysis(json_data, selected_subject):
     # ------------------ Subject Analysis ------------------
     pass_marks = 40  # define pass marks
 
-    # Safely handle non-numeric values
+    # Safely convert subject column to numeric
+    df[selected_subject] = df[selected_subject].astype(str).str.strip().str.replace(',', '', regex=False)
     df[selected_subject] = pd.to_numeric(df[selected_subject], errors='coerce').fillna(0)
 
+    # Compute pass/fail
     df['Result'] = df[selected_subject].apply(lambda x: 'Pass' if x >= pass_marks else 'Fail')
     pass_count = len(df[df['Result'] == 'Pass'])
     fail_count = len(df[df['Result'] == 'Fail'])
@@ -67,15 +71,15 @@ def update_subject_analysis(json_data, selected_subject):
     pass_percent = round((pass_count / total_students) * 100, 2) if total_students > 0 else 0
     fail_percent = round((fail_count / total_students) * 100, 2) if total_students > 0 else 0
 
-    # KPI Cards
+    # ---------------- KPI Cards ----------------
     kpi_cards = dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([html.H5("Pass Students"), html.H2(pass_count)])), md=3),
-        dbc.Col(dbc.Card(dbc.CardBody([html.H5("Fail Students"), html.H2(fail_count)])), md=3),
-        dbc.Col(dbc.Card(dbc.CardBody([html.H5("Pass %"), html.H2(f"{pass_percent}%")])), md=3),
-        dbc.Col(dbc.Card(dbc.CardBody([html.H5("Fail %"), html.H2(f"{fail_percent}%")])), md=3)
+        dbc.Col(dbc.Card(dbc.CardBody([html.H5("Pass Students"), html.H2(pass_count)]), color="success", inverse=True), md=3),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H5("Fail Students"), html.H2(fail_count)]), color="danger", inverse=True), md=3),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H5("Pass %"), html.H2(f"{pass_percent}%")]), color="info", inverse=True), md=3),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H5("Fail %"), html.H2(f"{fail_percent}%")]), color="warning", inverse=True), md=3)
     ], className="g-3 mb-4")
 
-    # Bar Chart
+    # ---------------- Bar Chart ----------------
     fig = px.bar(
         df.sort_values(by=selected_subject, ascending=False),
         x='Name',
@@ -85,6 +89,11 @@ def update_subject_analysis(json_data, selected_subject):
         text=selected_subject
     )
     fig.update_traces(textposition="outside")
-    fig.update_layout(xaxis_title="Student", yaxis_title="Marks", uniformtext_minsize=8, uniformtext_mode='hide')
+    fig.update_layout(
+        xaxis_title="Student",
+        yaxis_title="Marks",
+        uniformtext_minsize=8,
+        uniformtext_mode='hide'
+    )
 
-    return dropdown_options, dbc.Container([kpi_cards, dcc.Graph(figure=fig)])
+    return dropdown_options, dbc.Container([kpi_cards, dcc.Graph(figure=fig)], fluid=True)

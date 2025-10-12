@@ -1,7 +1,7 @@
 # app.py
 
 import dash
-from dash import html
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 # ----------------- Initialize Dash App -----------------
@@ -33,6 +33,9 @@ app.layout = dbc.Container([
         dark=True,
         className="mb-4 rounded"
     ),
+
+    # Persistent Store for uploaded data (session storage)
+    dcc.Store(id='stored-data', storage_type='session'),
 
     # Dynamic page container
     dash.page_container

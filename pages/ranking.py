@@ -21,6 +21,7 @@ layout = dbc.Container([
     Input('stored-data', 'data')
 )
 def display_ranking(json_data):
+    # ---------------- Handle No Data ----------------
     if json_data is None:
         return html.P(
             "Please upload data first on the Overview page.",
@@ -30,7 +31,7 @@ def display_ranking(json_data):
     # Load DataFrame from stored JSON
     df = pd.read_json(json_data, orient='split')
 
-    # ---------------- Ensure Columns Exist ----------------
+    # ---------------- Ensure Required Columns ----------------
     if 'Total_Marks' not in df.columns:
         numeric_cols = df.select_dtypes(include='number').columns
         df['Total_Marks'] = df[numeric_cols].sum(axis=1)

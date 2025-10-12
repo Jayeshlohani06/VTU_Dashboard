@@ -59,8 +59,6 @@ layout = dbc.Container([
 
     html.H5("📋 Uploaded Data Preview", className="text-center"),
     html.Div(id='data-preview', className="mt-3"),
-
-    dcc.Store(id='stored-data')
 ], fluid=True)
 
 
@@ -73,14 +71,42 @@ layout = dbc.Container([
      Output('data-preview', 'children'),
      Output('stored-data', 'data')],
     Input('upload-data', 'contents'),
-    State('upload-data', 'filename')
+    State('upload-data', 'filename'),
+    State('stored-data', 'data')  # Read existing store to preserve data
 )
-def update_dashboard(contents, filename):
+def update_dashboard(contents, filename, stored_data):
+    # If no new upload, return existing stored data
+    if contents is None and stored_data is not None:
+        df_processed = pd.read_json(stored_data, orient='split')
+
+        total_students = len(df_processed)
+        passed_students = (df_processed["Overall_Result"] == "P").sum()
+        result_percent = round(passed_students / total_students * 100, 2) if total_students > 0 else 0.0
+
+        preview_table = dbc.Table.from_dataframe(
+            df_processed.head(10),
+            striped=True,
+            bordered=True,
+            hover=True,
+            className="shadow-sm"
+        )
+
+        return (
+            total_students,
+            total_students,  # assume all present
+            passed_students,
+            f"{result_percent:.2f}%",
+            preview_table,
+            stored_data
+        )
+
     if contents is None:
+        # No data uploaded and no stored data
         return ("—", "—", "—", "—",
                 html.P("Please upload an Excel file to begin analysis.", className="text-muted text-center"),
                 None)
 
+    # Decode uploaded file
     content_type, content_string = contents.split(',')
     decoded = base64.b64decode(content_string)
 
@@ -97,12 +123,6 @@ def update_dashboard(contents, filename):
                 html.P("Invalid or empty file. Please check format.", className="text-danger text-center"),
                 None)
 
-    # Ensure Result % is float to prevent formatting error
-    try:
-        result_percent = float(kpi_data.get("Result %", 0.0))
-    except ValueError:
-        result_percent = 0.0
-
     # Data preview table
     preview_table = dbc.Table.from_dataframe(
         df_processed.head(10),
@@ -114,9 +134,9 @@ def update_dashboard(contents, filename):
 
     return (
         kpi_data.get("Total Students", 0),
-        kpi_data.get("Total Students", 0),  # Present Students = Total Students
+        kpi_data.get("Present Students", kpi_data.get("Total Students", 0)),
         kpi_data.get("Passed Students", 0),
-        f"{result_percent:.2f}%",
+        kpi_data.get("Result %", "0.00%"),
         preview_table,
         df_processed.to_json(date_format='iso', orient='split')
     )
