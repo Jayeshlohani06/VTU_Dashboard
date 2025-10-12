@@ -57,7 +57,7 @@ def update_subject_analysis(json_data, selected_subject):
         )
 
     # ------------------ Subject Analysis ------------------
-    pass_marks = 40  # define pass marks
+    pass_marks = 18  # define pass marks
 
     # Safely convert subject column to numeric
     df[selected_subject] = df[selected_subject].astype(str).str.strip().str.replace(',', '', regex=False)
