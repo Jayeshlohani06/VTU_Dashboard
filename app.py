@@ -34,8 +34,9 @@ app.layout = dbc.Container([
         className="mb-4 rounded"
     ),
 
-    # Persistent Store for uploaded data (session storage)
-    dcc.Store(id='stored-data', storage_type='session'),
+    # ✅ Persistent Stores for session-wide data
+    dcc.Store(id='stored-data', storage_type='session'),                # For Excel data
+    dcc.Store(id='overview-selected-subjects', storage_type='session'), # For selected subjects
 
     # Dynamic page container
     dash.page_container

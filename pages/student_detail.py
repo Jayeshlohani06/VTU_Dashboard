@@ -104,18 +104,25 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
     student_df[subjects] = student_df[subjects].replace(r'^\s*$', np.nan, regex=True)
 
     # Compute Overall_Result based on Result columns
-    result_cols = [c for c in student_df.columns if 'Result' in c and any(c.startswith(s) for s in selected_subjects)]
+    result_cols = [c for c in student_df.columns if 'Result' in c and (not selected_subjects or 'ALL' in selected_subjects or any(c.startswith(s) for s in selected_subjects))]
     
     def overall_result(row):
         relevant_results = [v for v in row[result_cols] if pd.notna(v)]
-        if not relevant_results:  # all empty
+        if not relevant_results:
             return 'Fail'
         return 'Pass' if all(v == 'P' for v in relevant_results) else 'Fail'
 
     student_df['Overall_Result'] = student_df.apply(overall_result, axis=1)
 
-    # Total Marks
-    total_cols = [c for c in student_df.columns if 'Total' in c and any(c.startswith(s) for s in selected_subjects)]
+    # ---------- Total Marks & Percentage ----------
+    if not selected_subjects or 'ALL' in selected_subjects:
+        total_cols = [c for c in student_df.columns if 'Total' in c]
+    else:
+        total_cols = []
+        for s in selected_subjects:
+            matching = [c for c in student_df.columns if s in c and 'Total' in c]
+            total_cols.extend(matching)
+
     student_df['Total_Marks'] = student_df[total_cols].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
     total_marks = student_df.at[0, 'Total_Marks']
     max_total = len(total_cols) * 100
@@ -133,7 +140,15 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
     ], justify="center", className="mb-4 g-3")
 
     # ---------- Subject-wise Marks ----------
-    subject_marks = [pd.to_numeric(student_df.at[0, s], errors='coerce') if pd.notna(student_df.at[0,s]) else 0 for s in subjects]
+    subject_marks = [pd.to_numeric(student_df.at[0, s], errors='coerce') if pd.notna(student_df.at[0, s]) else 0 for s in subjects]
+
+    # Ensure numeric Series
+    subject_scores = pd.Series(subject_marks, index=subjects).fillna(0)
+
+    # Top and Bottom Subjects
+    top_subjects = subject_scores.nlargest(3)
+    weak_subjects = subject_scores.nsmallest(3)
+
     bar_chart = dcc.Graph(
         figure=go.Figure(
             data=[go.Bar(x=subjects, y=subject_marks, text=subject_marks, textposition='auto')],
@@ -142,14 +157,11 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
     )
 
     # ---------- Strongest & Weakest Subjects ----------
-    subject_scores = pd.Series(subject_marks, index=subjects)
-    top_subjects = subject_scores.nlargest(3)
-    weak_subjects = subject_scores.nsmallest(3)
-
     strong_card = dbc.Card([
         dbc.CardHeader("💪 Top 3 Strongest Subjects", className="fw-bold bg-success text-white"),
         dbc.CardBody([html.Ul([html.Li(f"{sub}: {mark} marks") for sub, mark in top_subjects.items()])])
     ], className="shadow-sm")
+
     weak_card = dbc.Card([
         dbc.CardHeader("⚠️ Bottom 3 Weakest Subjects", className="fw-bold bg-danger text-white"),
         dbc.CardBody([html.Ul([html.Li(f"{sub}: {mark} marks") for sub, mark in weak_subjects.items()])])
@@ -186,10 +198,11 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
         "Subject": subjects,
         "Marks": subject_marks,
         "Result": ["Pass" if m >= 18 else "Fail" for m in subject_marks],
-        "% Weight in Total": [(m/total_marks*100 if total_marks>0 else 0) for m in subject_marks],
+        "% Weight in Total": [(m / total_marks * 100 if total_marks > 0 else 0) for m in subject_marks],
         "Class Avg": class_averages.round(2).values,
-        "Difference from Avg": (np.array(subject_marks)-class_averages.values).round(2)
+        "Difference from Avg": (np.array(subject_marks) - class_averages.values).round(2)
     })
+
     result_table = dash_table.DataTable(
         data=result_table_df.to_dict('records'),
         columns=[{"name": i, "id": i} for i in result_table_df.columns],
