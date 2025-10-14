@@ -63,17 +63,34 @@ def display_student_detail(n_clicks, search_value, json_data):
                     'Class_Rank', 'Section_Rank', 'Overall_Result']
     subjects = [col for col in df.columns if col not in exclude_cols]
 
+    pass_marks = 18  # Pass marks as per KPI logic
+
     # --- Extract Info ---
     student_id = student_df.at[0, 'Student ID']
     name = student_df.at[0, 'Name']
     section = student_df.at[0, 'Section'] if 'Section' in student_df.columns else 'N/A'
-    total_marks = student_df.at[0, 'Total_Marks'] if 'Total_Marks' in student_df.columns else sum([pd.to_numeric(student_df.at[0, s], errors='coerce') or 0 for s in subjects])
+
+    # Calculate Total Marks consistent with KPI
+    if 'Total_Marks' in df.columns:
+        total_marks = student_df.at[0, 'Total_Marks']
+    else:
+        total_marks = 0
+        for s in subjects:
+            marks = pd.to_numeric(student_df.at[0, s], errors='coerce') or 0
+            total_marks += marks
+
+    # Determine pass/fail
+    if 'Overall_Result' in df.columns:
+        result = student_df.at[0, 'Overall_Result']
+    else:
+        # Student passes if all subjects >= pass_marks
+        result = 'Pass' if all((pd.to_numeric(student_df.at[0, s], errors='coerce') or 0) >= pass_marks for s in subjects) else 'Fail'
+
     class_rank = student_df.at[0, 'Class_Rank'] if 'Class_Rank' in student_df.columns else 'N/A'
     section_rank = student_df.at[0, 'Section_Rank'] if 'Section_Rank' in student_df.columns else 'N/A'
-    result = student_df.at[0, 'Overall_Result'] if 'Overall_Result' in student_df.columns else 'N/A'
 
     max_total = len(subjects) * 100
-    percentage = (total_marks / max_total) * 100
+    percentage = (total_marks / max_total) * 100 if max_total > 0 else 0
 
     # ---------- 🎯 Performance Summary ----------
     summary_cards = dbc.Row([
@@ -171,7 +188,7 @@ def display_student_detail(n_clicks, search_value, json_data):
         "Student ID": [student_id]*len(subjects),
         "Subject": subjects,
         "Marks": subject_marks,
-        "Result": ["Pass" if m >= 50 else "Fail" for m in subject_marks],
+        "Result": ["Pass" if m >= pass_marks else "Fail" for m in subject_marks],
         "% Weight in Total": [(m/total_marks*100 if total_marks>0 else 0) for m in subject_marks],
         "Class Avg": class_averages.round(2).values,
         "Difference from Avg": (np.array(subject_marks) - class_averages.values).round(2)
