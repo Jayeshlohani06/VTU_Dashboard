@@ -12,74 +12,95 @@ dash.register_page(__name__, path="/subject_analysis", name="Subject Analysis")
 layout = dbc.Container([
     html.H4("📊 Subject-wise Analysis", className="mb-4 text-center"),
 
-    # Dropdown to select subject
+    # Dropdown to select subjects dynamically
     dbc.Row([
-        dbc.Col(dcc.Dropdown(id='subject-dropdown', placeholder="Select a subject"), md=6)
+        dbc.Col(
+            dcc.Dropdown(
+                id='subject-dropdown',
+                placeholder="Select a subject",
+                multi=True  # allow multiple selection
+            ),
+            md=6
+        )
     ], justify="center", className="mb-4"),
 
     # KPI Cards + Charts
-    html.Div(id='subject-analysis-content')
+    html.Div(id='subject-analysis-content'),
+
+    # Hidden stores to access uploaded data and Overview selections
+    dcc.Store(id='stored-data', storage_type='session'),
+    dcc.Store(id='overview-selected-subjects', storage_type='session')
 ], fluid=True)
 
 
 # ---------- Callback ----------
 @callback(
     [Output('subject-dropdown', 'options'),
+     Output('subject-dropdown', 'value'),
      Output('subject-analysis-content', 'children')],
     [Input('stored-data', 'data'),
+     Input('overview-selected-subjects', 'data'),
      Input('subject-dropdown', 'value')]
 )
-def update_subject_analysis(json_data, selected_subject):
+def update_subject_analysis(json_data, selected_overview_subjects, selected_subjects):
     # ---------------- Handle No Data ----------------
-    if json_data is None:
-        return [], html.P(
-            "Please upload data first on the Overview page.",
+    if json_data is None or not selected_overview_subjects:
+        return [], [], html.P(
+            "Please upload data and select subjects on the Overview page first.",
             className="text-muted text-center"
         )
 
     # Load DataFrame
     df = pd.read_json(json_data, orient='split')
+    first_col = df.columns[0]  # assume first column is student name/id
 
-    if 'Name' not in df.columns:
-        df['Name'] = df.index.astype(str)
+    # Subjects from Overview page
+    subjects = selected_overview_subjects
 
-    # Exclude non-subject columns
-    exclude_cols = [
-        'Student ID', 'Name', 'Section', 'Attendance',
-        'Total_Marks', 'Class_Rank', 'Section_Rank', 'Overall_Result'
-    ]
-    subjects = [col for col in df.columns if col not in exclude_cols]
-    dropdown_options = [{'label': s, 'value': s} for s in subjects]
+    # Dropdown options: Select All + subjects from Overview
+    dropdown_options = [{'label': 'Select All', 'value': 'ALL'}] + \
+                       [{'label': s, 'value': s} for s in subjects]
 
-    # ---------------- If No Subject Selected ----------------
-    if selected_subject is None or selected_subject not in df.columns:
-        return dropdown_options, html.P(
-            "Select a subject to see analysis.",
-            className="text-center text-muted"
+    # Default selection
+    if not selected_subjects:
+        selected_subjects = ['ALL']
+
+    # Handle "Select All"
+    if 'ALL' in selected_subjects:
+        cols_to_use = subjects
+        selected_subjects = ['ALL'] + subjects
+    else:
+        cols_to_use = selected_subjects
+
+    # ---------------- Select all actual columns starting with subject codes ----------------
+    cols_to_use_expanded = []
+    for subj in cols_to_use:
+        cols_to_use_expanded.extend([c for c in df.columns if c.startswith(subj)])
+
+    if not cols_to_use_expanded:
+        return dropdown_options, selected_subjects, html.P(
+            "No columns found for the selected subjects in the uploaded data.",
+            className="text-muted text-center"
         )
 
-    # ---------------- Detect Subject Type ----------------
-    col = df[selected_subject].astype(str).str.strip()
+    df_subjects = df[cols_to_use_expanded].copy()
 
-    # Check if subject column contains result-like values (P/F/Pass/Fail)
-    if col.str.upper().isin(['P', 'F', 'PASS', 'FAIL']).any():
-        df['Result'] = col.str.upper().replace({'PASS': 'P', 'FAIL': 'F'})
-        df['Result'] = df['Result'].apply(lambda x: 'Pass' if x == 'P' else 'Fail')
-        df['Marks'] = None
-        is_result_based = True
-    else:
-        # Numeric marks column
-        df[selected_subject] = col.str.replace(',', '', regex=False)
-        numeric_col = pd.to_numeric(df[selected_subject], errors='coerce').fillna(0)
-        pass_marks = 18  # Define pass marks threshold
-        df['Marks'] = numeric_col
-        df['Result'] = df['Marks'].apply(lambda x: 'Pass' if x >= pass_marks else 'Fail')
-        is_result_based = False
+    # Ensure numeric conversion
+    for col in df_subjects.columns:
+        df_subjects[col] = pd.to_numeric(df_subjects[col], errors='coerce').fillna(0)
 
-    # ---------------- KPI Calculations ----------------
-    total_students = len(df)
-    pass_count = (df['Result'] == 'Pass').sum()
-    fail_count = (df['Result'] == 'Fail').sum()
+    # Compute total marks per student for selected subjects
+    df_subjects['Total_Selected_Marks'] = df_subjects.sum(axis=1)
+
+    # Pass/Fail evaluation: Pass if >=18 marks in all selected subjects
+    pass_marks = 18
+    df_subjects['Result'] = df_subjects.apply(
+        lambda row: 'Pass' if (row[cols_to_use_expanded] >= pass_marks).all() else 'Fail', axis=1
+    )
+
+    total_students = len(df_subjects)
+    pass_count = (df_subjects['Result'] == 'Pass').sum()
+    fail_count = (df_subjects['Result'] == 'Fail').sum()
     pass_percent = round((pass_count / total_students) * 100, 2) if total_students > 0 else 0
     fail_percent = round((fail_count / total_students) * 100, 2) if total_students > 0 else 0
 
@@ -89,67 +110,57 @@ def update_subject_analysis(json_data, selected_subject):
             html.H6("Pass Students", className="text-white-50"),
             html.H3(pass_count)
         ]), color="success", inverse=True), md=3),
-
         dbc.Col(dbc.Card(dbc.CardBody([
             html.H6("Fail Students", className="text-white-50"),
             html.H3(fail_count)
         ]), color="danger", inverse=True), md=3),
-
         dbc.Col(dbc.Card(dbc.CardBody([
             html.H6("Pass %", className="text-white-50"),
             html.H3(f"{pass_percent}%")
         ]), color="info", inverse=True), md=3),
-
         dbc.Col(dbc.Card(dbc.CardBody([
             html.H6("Fail %", className="text-white-50"),
             html.H3(f"{fail_percent}%")
         ]), color="warning", inverse=True), md=3),
     ], className="g-3 mb-4")
 
-    # ---------------- Charts Section ----------------
+    # ---------------- Charts ----------------
     charts_row = []
-
-    # Bar Chart (only for marks-based subjects)
-    if not is_result_based and df['Marks'].notna().any():
+    for subj in cols_to_use:
+        # Select columns starting with this subject code
+        subj_cols = [c for c in df.columns if c.startswith(subj)]
+        if not subj_cols:
+            continue
+        # Take the first numeric column for plotting
+        col_for_plot = subj_cols[0]
         fig_bar = px.bar(
-            df.sort_values(by='Marks', ascending=False),
-            x='Name',
-            y='Marks',
-            color='Result',
-            title=f"{selected_subject} Marks Distribution",
-            text='Marks',
-            color_discrete_map={'Pass': 'green', 'Fail': 'red'}
+            df.sort_values(by=col_for_plot, ascending=False),
+            x=first_col,
+            y=col_for_plot,
+            title=f"{subj} Marks Distribution",
+            text=col_for_plot
         )
         fig_bar.update_traces(textposition="outside")
         fig_bar.update_layout(
             xaxis_title="Student",
             yaxis_title="Marks",
             title_x=0.5,
-            height=500
+            height=400
         )
-        charts_row.append(
-            dbc.Col(dcc.Graph(figure=fig_bar), md=8)
-        )
+        charts_row.append(dbc.Col(dcc.Graph(figure=fig_bar), md=6))
 
-    # Pie Chart (Pass vs Fail)
+    # Pie chart for overall pass/fail
     pie_fig = px.pie(
         names=['Pass', 'Fail'],
         values=[pass_count, fail_count],
-        title=f"{selected_subject} Result Breakdown",
-        color=['Pass', 'Fail'],
+        title=f"Overall Result for Selected Subjects",
         color_discrete_map={'Pass': 'green', 'Fail': 'red'}
     )
-    pie_fig.update_layout(title_x=0.5, height=500)
-    charts_row.append(
-        dbc.Col(dcc.Graph(figure=pie_fig), md=4)
-    )
+    pie_fig.update_layout(title_x=0.5, height=400)
+    charts_row.append(dbc.Col(dcc.Graph(figure=pie_fig), md=6))
 
     charts_layout = dbc.Row(charts_row, className="g-3")
 
-    # ---------------- Combine Layout ----------------
-    content = dbc.Container([
-        kpi_cards,
-        charts_layout
-    ], fluid=True)
+    content = dbc.Container([kpi_cards, charts_layout], fluid=True)
 
-    return dropdown_options, content
+    return dropdown_options, selected_subjects, content

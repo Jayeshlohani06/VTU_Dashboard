@@ -8,6 +8,7 @@ import plotly.express as px
 
 dash.register_page(__name__, path="/ranking", name="Ranking")
 
+
 # ---------- Layout ----------
 layout = dbc.Container([
     html.H4("🏆 Class & Section Ranking", className="mb-4 text-center"),
@@ -32,12 +33,28 @@ def display_ranking(json_data):
     df = pd.read_json(json_data, orient='split')
 
     # ---------------- Ensure Required Columns ----------------
-    if 'Total_Marks' not in df.columns:
-        numeric_cols = df.select_dtypes(include='number').columns
-        df['Total_Marks'] = df[numeric_cols].sum(axis=1)
+    # Detect first column as metadata (Student ID / University Seat Number)
+    meta_col = df.columns[0]
 
+    # Total Marks
+    if 'Total_Marks' not in df.columns:
+        total_cols = [c for c in df.columns if 'Total' in c]
+        if total_cols:
+            df['Total_Marks'] = df[total_cols].sum(axis=1)
+        else:
+            numeric_cols = df.select_dtypes(include='number').columns
+            df['Total_Marks'] = df[numeric_cols].sum(axis=1)
+
+    # Overall Result
     if 'Overall_Result' not in df.columns:
-        df['Overall_Result'] = df['Total_Marks'].apply(lambda x: 'P' if x >= 40 else 'F')
+        result_cols = [c for c in df.columns if 'Result' in c]
+        if result_cols:
+            df['Overall_Result'] = df[result_cols].apply(
+                lambda row: 'P' if all(v == 'P' for v in row) else 'F',
+                axis=1
+            )
+        else:
+            df['Overall_Result'] = df['Total_Marks'].apply(lambda x: 'P' if x >= 40 else 'F')
 
     # ---------------- Calculate Rankings ----------------
     # Class Rank
@@ -55,11 +72,10 @@ def display_ranking(json_data):
 
     # ---------------- Top 10 Students Chart ----------------
     top10 = df.sort_values(by='Total_Marks', ascending=False).head(10)
-    first_col = df.columns[0]  # assume first column is Student Name or ID
 
     fig = px.bar(
         top10,
-        x=first_col,
+        x=meta_col,
         y='Total_Marks',
         color='Total_Marks',
         text='Class_Rank',
@@ -74,7 +90,7 @@ def display_ranking(json_data):
     )
 
     # ---------------- Ranking Table ----------------
-    display_cols = ['Class_Rank', 'Section_Rank', first_col, 'Total_Marks', 'Overall_Result']
+    display_cols = ['Class_Rank', 'Section_Rank', meta_col, 'Total_Marks', 'Overall_Result']
     display_cols = [col for col in display_cols if col in df.columns]
 
     table = dbc.Table.from_dataframe(
