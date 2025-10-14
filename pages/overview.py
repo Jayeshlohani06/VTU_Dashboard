@@ -1,7 +1,7 @@
 # pages/overview.py
 
 import dash
-from dash import html, dcc, Input, Output, State, callback
+from dash import html, dcc, Input, Output, State, callback, no_update
 import dash_bootstrap_components as dbc
 import pandas as pd
 import base64
@@ -19,11 +19,15 @@ def process_uploaded_excel(contents):
     df = pd.read_excel(io.BytesIO(decoded), header=[0, 1])  # MultiIndex header
     # Flatten multi-level header
     df.columns = [' '.join([str(i) for i in col if str(i) != 'nan']).strip() for col in df.columns.values]
+    # Drop empty columns
+    df = df.loc[:, df.columns.str.strip() != '']
     return df
 
 def get_subject_codes(df):
-    # Extract all columns excluding first metadata column
+    # Exclude first metadata column
     cols = df.columns[1:]
+    # Ignore empty column names
+    cols = [c for c in cols if c.strip() != '']
     subject_codes = sorted(list(set([c.split()[0] for c in cols])))
     return subject_codes
 
@@ -68,7 +72,7 @@ layout = dbc.Container([
 
     # Stores to share data across pages
     dcc.Store(id='stored-data', storage_type='session'),
-    dcc.Store(id='overview-selected-subjects', storage_type='session')  # <-- New
+    dcc.Store(id='overview-selected-subjects', storage_type='session')
 ], fluid=True)
 
 
@@ -106,33 +110,41 @@ def show_subject_dropdown(contents):
      Output('result-percent', 'children'),
      Output('data-preview', 'children'),
      Output('stored-data', 'data'),
-     Output('overview-selected-subjects', 'data')],  # <-- output selected subjects
+     Output('overview-selected-subjects', 'data')],
     [Input('subject-selector', 'value')],
     [State('upload-data', 'contents')]
 )
 def update_dashboard(selected_subjects, contents):
     if contents is None or not selected_subjects:
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
     df = process_uploaded_excel(contents)
     meta_col = df.columns[0]
 
-    # Build list of all columns to use for selected subjects
+    # Build list of all columns to use for selected subjects, ignoring empty columns
     cols_to_use = []
     for subj in selected_subjects:
-        cols_to_use.extend([c for c in df.columns if c.startswith(subj)])
+        cols_to_use.extend([c for c in df.columns if c.startswith(subj) and c.strip() != ''])
 
     df_filtered = df[[meta_col] + cols_to_use].copy()
 
-    # Calculate Total Marks for selected subjects
-    total_cols = [c for c in cols_to_use if 'Total' in c]
-    df_filtered['Total_Marks'] = df_filtered[total_cols].sum(axis=1)
+    # Convert numeric columns & handle NaN
+    numeric_cols = [c for c in cols_to_use if 'Internal' in c or 'External' in c or 'Total' in c]
+    for col in numeric_cols:
+        df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce').fillna(0)
 
-    # Overall Result: Pass if all Result columns = 'P'
+    # Total Marks
+    total_cols = [c for c in cols_to_use if 'Total' in c]
+    df_filtered['Total_Marks'] = df_filtered[total_cols].sum(axis=1) if total_cols else 0
+
+    # Overall Result
     result_cols = [c for c in cols_to_use if 'Result' in c]
-    df_filtered['Overall_Result'] = df_filtered[result_cols].apply(
-        lambda row: 'P' if all(v == 'P' for v in row) else 'F', axis=1
-    )
+    if result_cols:
+        df_filtered['Overall_Result'] = df_filtered[result_cols].apply(
+            lambda row: 'P' if all(v == 'P' for v in row if pd.notna(v)) else 'F', axis=1
+        )
+    else:
+        df_filtered['Overall_Result'] = 'P'
 
     total_students = len(df_filtered)
     passed_students = (df_filtered['Overall_Result'] == 'P').sum()
@@ -151,5 +163,5 @@ def update_dashboard(selected_subjects, contents):
         f"{result_percent:.2f}%",
         preview_table,
         df_filtered.to_json(date_format='iso', orient='split'),
-        selected_subjects  # <-- store selected subjects for other pages
+        selected_subjects
     )
