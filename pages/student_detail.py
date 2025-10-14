@@ -3,6 +3,7 @@ from dash import html, dcc, Input, Output, State, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objs as go
+import numpy as np
 
 dash.register_page(__name__, path="/student_detail", name="Student Detail")
 
@@ -57,7 +58,7 @@ def display_student_detail(n_clicks, search_value, json_data):
 
     student_df = student_df.reset_index(drop=True)
 
-    # Identify subjects dynamically
+    # Identify subjects dynamically (exclude metadata columns)
     exclude_cols = ['Student ID', 'Name', 'Section', 'Attendance', 'Total_Marks',
                     'Class_Rank', 'Section_Rank', 'Overall_Result']
     subjects = [col for col in df.columns if col not in exclude_cols]
@@ -66,13 +67,12 @@ def display_student_detail(n_clicks, search_value, json_data):
     student_id = student_df.at[0, 'Student ID']
     name = student_df.at[0, 'Name']
     section = student_df.at[0, 'Section'] if 'Section' in student_df.columns else 'N/A'
-    total_marks = student_df.at[0, 'Total_Marks'] if 'Total_Marks' in student_df.columns else 0
+    total_marks = student_df.at[0, 'Total_Marks'] if 'Total_Marks' in student_df.columns else sum([pd.to_numeric(student_df.at[0, s], errors='coerce') or 0 for s in subjects])
     class_rank = student_df.at[0, 'Class_Rank'] if 'Class_Rank' in student_df.columns else 'N/A'
     section_rank = student_df.at[0, 'Section_Rank'] if 'Section_Rank' in student_df.columns else 'N/A'
     result = student_df.at[0, 'Overall_Result'] if 'Overall_Result' in student_df.columns else 'N/A'
 
-    # Compute percentage dynamically
-    max_total = len(subjects) * 100 if subjects else 1
+    max_total = len(subjects) * 100
     percentage = (total_marks / max_total) * 100
 
     # ---------- 🎯 Performance Summary ----------
@@ -95,8 +95,9 @@ def display_student_detail(n_clicks, search_value, json_data):
     ], justify="center", className="mb-4 g-3")
 
     # ---------- 📘 Subject-wise Marks ----------
-    # Convert subject marks to numeric to avoid nlargest error
     subject_marks = [pd.to_numeric(student_df.at[0, s], errors='coerce') or 0 for s in subjects]
+    subject_scores = pd.Series(subject_marks, index=subjects)
+
     bar_chart = dcc.Graph(
         figure={
             "data": [go.Bar(
@@ -116,20 +117,22 @@ def display_student_detail(n_clicks, search_value, json_data):
     )
 
     # ---------- 🧠 Strongest & Weakest Subjects ----------
-    subject_scores = pd.Series(subject_marks, index=subjects)
     top_subjects = subject_scores.nlargest(3)
     weak_subjects = subject_scores.nsmallest(3)
 
-    strong_card = dbc.Card([dbc.CardHeader("💪 Top 3 Strongest Subjects", className="fw-bold bg-success text-white"),
-                            dbc.CardBody([html.Ul([html.Li(f"{sub}: {mark} marks") for sub, mark in top_subjects.items()])])],
-                           className="shadow-sm")
+    strong_card = dbc.Card([
+        dbc.CardHeader("💪 Top 3 Strongest Subjects", className="fw-bold bg-success text-white"),
+        dbc.CardBody([html.Ul([html.Li(f"{sub}: {mark} marks") for sub, mark in top_subjects.items()])])
+    ], className="shadow-sm")
 
-    weak_card = dbc.Card([dbc.CardHeader("⚠️ Bottom 3 Weakest Subjects", className="fw-bold bg-danger text-white"),
-                          dbc.CardBody([html.Ul([html.Li(f"{sub}: {mark} marks") for sub, mark in weak_subjects.items()])])],
-                         className="shadow-sm")
+    weak_card = dbc.Card([
+        dbc.CardHeader("⚠️ Bottom 3 Weakest Subjects", className="fw-bold bg-danger text-white"),
+        dbc.CardBody([html.Ul([html.Li(f"{sub}: {mark} marks") for sub, mark in weak_subjects.items()])])
+    ], className="shadow-sm")
 
     # ---------- 📈 Compare with Class Average ----------
     class_averages = df[subjects].apply(pd.to_numeric, errors='coerce').fillna(0).mean()
+
     comparison_chart = dcc.Graph(
         figure={
             "data": [
@@ -146,10 +149,66 @@ def display_student_detail(n_clicks, search_value, json_data):
         }
     )
 
-    # ---------- 🧾 Basic Info ----------
+    # ---------- 🥧 Performance Distribution Pie Chart ----------
+    strong = (subject_scores > 75).sum()
+    average = ((subject_scores >= 50) & (subject_scores <= 75)).sum()
+    weak = (subject_scores < 50).sum()
+
+    pie_chart = dcc.Graph(
+        figure=go.Figure(
+            data=[go.Pie(
+                labels=["Strong (75+)", "Average (50-75)", "Weak (<50)"],
+                values=[strong, average, weak],
+                marker=dict(colors=["#2ecc71", "#f1c40f", "#e74c3c"]),
+                hole=0.4
+            )],
+            layout=go.Layout(title="🎯 Performance Distribution", height=400)
+        )
+    )
+
+    # ---------- 🧾 Detailed Table with Student ID, Result, % Weight, Class Avg, Difference ----------
+    result_table_df = pd.DataFrame({
+        "Student ID": [student_id]*len(subjects),
+        "Subject": subjects,
+        "Marks": subject_marks,
+        "Result": ["Pass" if m >= 50 else "Fail" for m in subject_marks],
+        "% Weight in Total": [(m/total_marks*100 if total_marks>0 else 0) for m in subject_marks],
+        "Class Avg": class_averages.round(2).values,
+        "Difference from Avg": (np.array(subject_marks) - class_averages.values).round(2)
+    })
+
+    style_data_conditional = [
+        {"if": {"filter_query": "{Difference from Avg} > 0", "column_id": "Difference from Avg"},
+         "backgroundColor": "#d4edda", "color": "black"},
+        {"if": {"filter_query": "{Difference from Avg} < 0", "column_id": "Difference from Avg"},
+         "backgroundColor": "#f8d7da", "color": "black"}
+    ]
+
+    result_table = dash_table.DataTable(
+        data=result_table_df.to_dict('records'),
+        columns=[{"name": i, "id": i} for i in result_table_df.columns],
+        style_table={'overflowX': 'auto'},
+        style_cell={'textAlign': 'center'},
+        style_header={'backgroundColor': '#007bff', 'color': 'white', 'fontWeight': 'bold'},
+        style_data_conditional=style_data_conditional
+    )
+
+    # ---------- 🧠 Performance Insights ----------
+    avg_marks = np.mean(subject_marks)
+    if avg_marks >= 85:
+        insights = f"{name} has shown outstanding academic performance! Keep up the excellent work."
+    elif avg_marks >= 60:
+        insights = f"{name} has performed well but can further improve by focusing on weaker subjects."
+    else:
+        insights = f"{name} needs improvement. Focused practice on weak subjects is recommended."
+
+    insights_card = dbc.Card([dbc.CardHeader("📊 Performance Insights", className="fw-bold bg-secondary text-white"),
+                              dbc.CardBody(html.P(insights))], className="shadow-sm mb-4")
+
+    # ---------- Basic Info ----------
     student_info = dbc.Card([dbc.CardBody([html.H5(f"Student ID: {student_id}"),
-                                           html.H5(f"Name: {name}"),
-                                           html.H5(f"Section: {section}")])],
+                                          html.H5(f"Name: {name}"),
+                                          html.H5(f"Section: {section}")])],
                             className="mb-4 shadow-sm")
 
     # ---------- Combine Everything ----------
@@ -161,5 +220,12 @@ def display_student_detail(n_clicks, search_value, json_data):
         html.Br(),
         dbc.Row([dbc.Col(strong_card, md=6), dbc.Col(weak_card, md=6)], className="g-3"),
         html.Br(),
-        comparison_chart
+        comparison_chart,
+        html.Br(),
+        dbc.Row([dbc.Col(pie_chart, md=6)], className="g-3"),
+        html.Br(),
+        html.H5("📘 Detailed Subject Performance", className="text-center mb-2"),
+        result_table,
+        html.Br(),
+        insights_card
     ])
