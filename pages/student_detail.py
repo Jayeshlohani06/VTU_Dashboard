@@ -89,19 +89,20 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
         return html.P("No student found with this ID or Name.", className="text-danger text-center")
     student_df = student_df.reset_index(drop=True)
 
-    # Determine subjects to show
+    # Determine subjects to show (exclude Result columns)
     exclude_cols = ['Student ID', 'Name', 'Section', 'Attendance', 'Total_Marks',
-                    'Class_Rank', 'Section_Rank', 'Overall_Result']
+                    'Class_Rank', 'Section_Rank', 'Overall_Result'] + [c for c in df.columns if 'Result' in c]
 
     all_subjects = [col for col in df.columns if col not in exclude_cols]
 
     if not selected_subjects or 'ALL' in selected_subjects:
         subjects = all_subjects
     else:
-        subjects = [col for col in df.columns if any(col.startswith(s) for s in selected_subjects)]
+        subjects = [col for col in df.columns if any(col.startswith(s) for s in selected_subjects) and 'Result' not in col]
 
-    # Treat empty cells as NaN
+    # Treat empty cells or 0 as NaN
     student_df[subjects] = student_df[subjects].replace(r'^\s*$', np.nan, regex=True)
+    student_df[subjects] = student_df[subjects].replace(0, np.nan)
 
     # Compute Overall_Result based on Result columns
     result_cols = [c for c in student_df.columns if 'Result' in c and (not selected_subjects or 'ALL' in selected_subjects or any(c.startswith(s) for s in selected_subjects))]
@@ -140,18 +141,18 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
     ], justify="center", className="mb-4 g-3")
 
     # ---------- Subject-wise Marks ----------
-    subject_marks = [pd.to_numeric(student_df.at[0, s], errors='coerce') if pd.notna(student_df.at[0, s]) else 0 for s in subjects]
-
-    # Ensure numeric Series
-    subject_scores = pd.Series(subject_marks, index=subjects).fillna(0)
+    subject_scores = pd.Series({s: pd.to_numeric(student_df.at[0, s], errors='coerce') for s in subjects})
+    subject_scores.replace(0, np.nan, inplace=True)
+    subject_scores_nonan = subject_scores.dropna()
 
     # Top and Bottom Subjects
-    top_subjects = subject_scores.nlargest(3)
-    weak_subjects = subject_scores.nsmallest(3)
+    top_subjects = subject_scores_nonan.nlargest(3)
+    weak_subjects = subject_scores_nonan.nsmallest(3)
 
     bar_chart = dcc.Graph(
         figure=go.Figure(
-            data=[go.Bar(x=subjects, y=subject_marks, text=subject_marks, textposition='auto')],
+            data=[go.Bar(x=list(subject_scores_nonan.index), y=list(subject_scores_nonan.values),
+                         text=list(subject_scores_nonan.values), textposition='auto')],
             layout=go.Layout(title="📊 Subject-wise Performance", xaxis=dict(title="Subjects"), yaxis=dict(title="Marks"), height=400)
         )
     )
@@ -168,11 +169,12 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
     ], className="shadow-sm")
 
     # ---------- Class Average ----------
-    class_averages = df[subjects].apply(pd.to_numeric, errors='coerce').fillna(0).mean()
+    class_averages = df[subjects].apply(pd.to_numeric, errors='coerce').replace(0, np.nan).mean()
     comparison_chart = dcc.Graph(
         figure=go.Figure(
             data=[
-                go.Bar(x=subjects, y=subject_marks, name=f"{student_df.at[0,'Name']} (You)", marker_color="#1f77b4"),
+                go.Bar(x=list(subject_scores_nonan.index), y=list(subject_scores_nonan.values),
+                       name=f"{student_df.at[0,'Name']} (You)", marker_color="#1f77b4"),
                 go.Bar(x=subjects, y=class_averages, name="Class Average", marker_color="#ff7f0e")
             ],
             layout=go.Layout(title="📈 Student vs Class Average", barmode="group", xaxis=dict(title="Subjects"), yaxis=dict(title="Marks"), height=400)
@@ -180,9 +182,9 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
     )
 
     # ---------- Performance Distribution Pie Chart ----------
-    strong = (subject_scores > 75).sum()
-    average = ((subject_scores >= 50) & (subject_scores <= 75)).sum()
-    weak = (subject_scores < 50).sum()
+    strong = (subject_scores_nonan > 75).sum()
+    average = ((subject_scores_nonan >= 50) & (subject_scores_nonan <= 75)).sum()
+    weak = (subject_scores_nonan < 50).sum()
     pie_chart = dcc.Graph(
         figure=go.Figure(
             data=[go.Pie(labels=["Strong (75+)", "Average (50-75)", "Weak (<50)"],
@@ -195,12 +197,12 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
 
     # ---------- Detailed Table ----------
     result_table_df = pd.DataFrame({
-        "Subject": subjects,
-        "Marks": subject_marks,
-        "Result": ["Pass" if m >= 18 else "Fail" for m in subject_marks],
-        "% Weight in Total": [(m / total_marks * 100 if total_marks > 0 else 0) for m in subject_marks],
-        "Class Avg": class_averages.round(2).values,
-        "Difference from Avg": (np.array(subject_marks) - class_averages.values).round(2)
+        "Subject": list(subject_scores_nonan.index),
+        "Marks": list(subject_scores_nonan.values),
+        "Result": ["Pass" if m >= 18 else "Fail" for m in subject_scores_nonan.values],
+        "% Weight in Total": [(m / total_marks * 100 if total_marks > 0 else 0) for m in subject_scores_nonan.values],
+        "Class Avg": [class_averages[s] for s in subject_scores_nonan.index],
+        "Difference from Avg": [(m - class_averages[s]) for s, m in zip(subject_scores_nonan.index, subject_scores_nonan.values)]
     })
 
     result_table = dash_table.DataTable(
