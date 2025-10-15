@@ -5,8 +5,25 @@ from dash import html, dcc, Input, Output, State, callback, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
+import re
 
 dash.register_page(__name__, path="/subject_analysis", name="Subject Analysis")
+
+# ---------- Helper functions ----------
+def extract_numeric(roll):
+    """Extract numeric part from a string like 'S101' -> 101"""
+    digits = re.findall(r'\d+', str(roll))
+    return int(digits[-1]) if digits else 0
+
+def assign_section(roll_no, section_ranges):
+    """Assign section based on roll number and section_ranges dictionary"""
+    roll_num = extract_numeric(roll_no)
+    for sec_name, (start, end) in section_ranges.items():
+        start_num = extract_numeric(start)
+        end_num = extract_numeric(end)
+        if start_num <= roll_num <= end_num:
+            return sec_name
+    return "Unassigned"
 
 # ---------- Layout ----------
 layout = dbc.Container([
@@ -57,7 +74,8 @@ layout = dbc.Container([
 
     # Data Stores
     dcc.Store(id='stored-data', storage_type='session'),
-    dcc.Store(id='overview-selected-subjects', storage_type='session')
+    dcc.Store(id='overview-selected-subjects', storage_type='session'),
+    dcc.Store(id='section-data', storage_type='session')  # dynamic section info
 ], fluid=True)
 
 # ---------- COLLAPSE TOGGLE ----------
@@ -103,18 +121,27 @@ def update_checklist(overview_subjects, select_all, deselect_all, current_option
     [Output('selected-count', 'children'),
      Output('subject-analysis-content', 'children')],
     Input('subject-checklist', 'value'),
-    State('stored-data', 'data')
+    State('stored-data', 'data'),
+    State('section-data', 'data')  # dynamic section info
 )
-def update_subject_analysis(selected_subjects, json_data):
+def update_subject_analysis(selected_subjects, json_data, section_ranges):
     """Update KPIs, table, and chart based on subject selection."""
+
+    # ------------------- Handle No Subjects Selected -------------------
     if json_data is None or not selected_subjects:
         return "", html.P(
-            "Please upload data and select subjects on Overview page first.", 
+            "Please upload data and select subjects on Overview page first.",
             className="text-muted text-center"
         )
 
     df = pd.read_json(json_data, orient='split')
     first_col = df.columns[0]
+
+    # ---------- Assign Section dynamically ----------
+    if section_ranges and isinstance(section_ranges, dict) and len(section_ranges) > 0:
+        df['Section'] = df[first_col].apply(lambda x: assign_section(str(x), section_ranges))
+    else:
+        df['Section'] = "Not Assigned"
 
     # Filter subject columns
     subject_columns = {}
@@ -129,10 +156,17 @@ def update_subject_analysis(selected_subjects, json_data):
         )
 
     # Prepare table
-    table_cols = [first_col]
+    table_cols = [first_col, 'Section']
     for cols in subject_columns.values():
         table_cols.extend(cols)
     df_table = df[table_cols].copy()
+
+    # Sort by Section and then Roll number numerically
+    df_table[first_col] = df_table[first_col].astype(str)
+    df_table = df_table.sort_values(
+        by=['Section', first_col],
+        key=lambda x: x.map(extract_numeric)
+    ).reset_index(drop=True)
 
     # Numeric columns
     numeric_cols = [c for c in df_table.columns if any(k in c for k in ['Internal', 'External', 'Total'])]
@@ -174,7 +208,7 @@ def update_subject_analysis(selected_subjects, json_data):
     ], className="g-3 mb-4")
 
     # DataTable with conditional styling
-    columns = [{"name": first_col, "id": first_col}]
+    columns = [{"name": first_col, "id": first_col}, {"name": "Section", "id": "Section"}]
     for subj, cols in subject_columns.items():
         for col in cols:
             columns.append({"name": [subj, col.replace(subj + " ", "")], "id": col})

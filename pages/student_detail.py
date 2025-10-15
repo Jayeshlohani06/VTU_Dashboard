@@ -6,8 +6,26 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objs as go
 import numpy as np
+import re
 
 dash.register_page(__name__, path="/student_detail", name="Student Detail")
+
+# ---------- Helper functions ----------
+def extract_numeric(roll):
+    """Extract numeric part from a string like 'S101' -> 101"""
+    digits = re.findall(r'\d+', str(roll))
+    return int(digits[-1]) if digits else 0
+
+def assign_section(roll_no, section_ranges):
+    """Assign section based on roll number and section_ranges dictionary"""
+    roll_num = extract_numeric(roll_no)
+    for sec_name, (start, end) in section_ranges.items():
+        start_num = extract_numeric(start)
+        end_num = extract_numeric(end)
+        if start_num <= roll_num <= end_num:
+            return sec_name
+    return "Unassigned"
+
 
 # ---------- Layout ----------
 layout = dbc.Container([
@@ -36,13 +54,14 @@ layout = dbc.Container([
 
     html.Div(id='student-detail-content'),
 
-    # Stores to access uploaded data and overview-selected subjects
+    # Stores to access uploaded data, overview-selected subjects, and section info
     dcc.Store(id='stored-data', storage_type='session'),
-    dcc.Store(id='overview-selected-subjects', storage_type='session')
+    dcc.Store(id='overview-selected-subjects', storage_type='session'),
+    dcc.Store(id='section-data', storage_type='session')  # NEW: dynamic section data
 ], fluid=True)
 
 
-# ---------- Callback to populate Subject Dropdown ----------
+# ---------- Populate Subject Dropdown ----------
 @dash.callback(
     Output('student-subject-dropdown', 'options'),
     Output('student-subject-dropdown', 'value'),
@@ -58,15 +77,16 @@ def populate_subject_dropdown(json_data, selected_subjects):
     return options, value
 
 
-# ---------- Callback to display student detail ----------
+# ---------- Display Student Detail ----------
 @dash.callback(
     Output('student-detail-content', 'children'),
     Input('search-btn', 'n_clicks'),
     State('student-search', 'value'),
     State('stored-data', 'data'),
-    State('student-subject-dropdown', 'value')
+    State('student-subject-dropdown', 'value'),
+    State('section-data', 'data')  # NEW
 )
-def display_student_detail(n_clicks, search_value, json_data, selected_subjects):
+def display_student_detail(n_clicks, search_value, json_data, selected_subjects, section_ranges):
     if not json_data:
         return html.P("Please upload data first on the Overview page.", className="text-muted text-center")
     if not search_value:
@@ -80,6 +100,12 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
         df.rename(columns={first_col: 'Student ID'}, inplace=True)
     if 'Name' not in df.columns:
         df['Name'] = ""
+
+    # ---------- Assign Section dynamically ----------
+    if section_ranges and isinstance(section_ranges, dict) and len(section_ranges) > 0:
+        df['Section'] = df['Student ID'].apply(lambda x: assign_section(str(x), section_ranges))
+    else:
+        df['Section'] = "Not Assigned"
 
     # Filter student row
     mask = df.apply(lambda row: search_value.lower() in str(row.get('Student ID', '')).lower()
@@ -129,6 +155,7 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
     max_total = len(total_cols) * 100
     percentage = (total_marks / max_total) * 100 if max_total > 0 else 0
     result = student_df.at[0, 'Overall_Result']
+    section = student_df.at[0, 'Section']  # NEW: dynamic section
 
     # ---------- KPI Cards ----------
     summary_cards = dbc.Row([
@@ -137,7 +164,9 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
         dbc.Col(dbc.Card(dbc.CardBody([html.H6("Percentage", className="text-muted"), html.H3(f"{percentage:.2f}%")]),
                          className="shadow-sm text-center bg-info text-white"), md=2),
         dbc.Col(dbc.Card(dbc.CardBody([html.H6("Result", className="text-muted"), html.H3(f"{result}")]),
-                         className=f"shadow-sm text-center {'bg-success text-white' if result=='Pass' else 'bg-danger text-white'}"), md=2)
+                         className=f"shadow-sm text-center {'bg-success text-white' if result=='Pass' else 'bg-danger text-white'}"), md=2),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H6("Section", className="text-muted"), html.H3(f"{section}")]),
+                         className="shadow-sm text-center bg-warning"), md=2)
     ], justify="center", className="mb-4 g-3")
 
     # ---------- Subject-wise Marks ----------
@@ -202,7 +231,7 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
         "Result": ["Pass" if m >= 18 else "Fail" for m in subject_scores_nonan.values],
         "% Weight in Total": [(m / total_marks * 100 if total_marks > 0 else 0) for m in subject_scores_nonan.values],
         "Class Avg": [class_averages[s] for s in subject_scores_nonan.index],
-        "Difference from Avg": [(m - class_averages[s]) for s, m in zip(subject_scores_nonan.index, subject_scores_nonan.values)]
+        "Difference from Avg": [(m - class_averages[s]) for s, m in zip(subject_scores_nonan.index, student_df.loc[0, subjects].values)]
     })
 
     result_table = dash_table.DataTable(
@@ -226,7 +255,8 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects)
     # ---------- Student Info ----------
     student_info = dbc.Card(dbc.CardBody([
         html.H5(f"Student ID: {student_df.at[0,'Student ID']}"),
-        html.H5(f"Name: {student_df.at[0,'Name']}")
+        html.H5(f"Name: {student_df.at[0,'Name']}"),
+        html.H5(f"Section: {section}")  # NEW: display section dynamically
     ]), className="mb-4 shadow-sm")
 
     return html.Div([
