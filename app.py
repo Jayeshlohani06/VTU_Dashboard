@@ -7,40 +7,73 @@ import dash_bootstrap_components as dbc
 # ----------------- Initialize Dash App -----------------
 app = dash.Dash(
     __name__,
-    use_pages=True,  # Enable multipage support
-    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    use_pages=True,
+    external_stylesheets=[dbc.themes.FLATLY],
     suppress_callback_exceptions=True
 )
 app.title = "Student Performance Dashboard"
 
-# ----------------- Navbar Links -----------------
-nav_links = [
-    dbc.NavItem(dbc.NavLink("🏠 Overview", href="/")),
-    dbc.NavItem(dbc.NavLink("🏆 Ranking", href="/ranking")),
-    dbc.NavItem(dbc.NavLink("📚 Subject Analysis", href="/subject_analysis")),
-    dbc.NavItem(dbc.NavLink("🎓 Student Detail", href="/student_detail")),
-]
+# ----------------- Styled Navbar -----------------
+navbar = dbc.Navbar(
+    dbc.Container([
+        dbc.Row([
+            dbc.Col(
+                html.H3(
+                    "📊 Student Performance Dashboard",
+                    className="text-white mb-0 fw-bold",
+                    style={"textShadow": "1px 1px 2px #000"}
+                ),
+                width="auto"
+            )
+        ], align="center"),
 
-# ----------------- Layout -----------------
+        dbc.Nav(
+            [
+                dbc.NavLink("🏠 Overview", href="/", active="exact", className="mx-2"),
+                dbc.NavLink("🏆 Ranking", href="/ranking", active="exact", className="mx-2"),
+                dbc.NavLink("📚 Subject Analysis", href="/subject_analysis", active="exact", className="mx-2"),
+                dbc.NavLink("🎓 Student Detail", href="/student_detail", active="exact", className="mx-2"),
+            ],
+            pills=True,
+            className="ms-auto",
+            style={"fontWeight": "bold", "fontSize": "1rem"}
+        )
+    ]),
+    color="#1f2937",
+    dark=True,
+    sticky="top",
+    className="shadow-lg rounded mb-4"
+)
+
+# ----------------- Page Container Styling -----------------
 app.layout = dbc.Container([
-    html.H2("📊 Student Performance Dashboard", className="text-center mt-4 mb-3"),
+    navbar,
 
-    # Navbar for switching between pages
-    dbc.NavbarSimple(
-        children=nav_links,
-        brand="Navigation",
-        color="primary",
-        dark=True,
-        className="mb-4 rounded"
-    ),
+    # Persistent Stores
+    dcc.Store(id='stored-data', storage_type='session'),
+    dcc.Store(id='overview-selected-subjects', storage_type='session'),
 
-    # ✅ Persistent Stores for session-wide data
-    dcc.Store(id='stored-data', storage_type='session'),                # For Excel data
-    dcc.Store(id='overview-selected-subjects', storage_type='session'), # For selected subjects
-
-    # Dynamic page container
-    dash.page_container
-], fluid=True)
+    # Page container
+    dbc.Card(
+        dash.page_container,
+        body=True,
+        className="p-4 shadow-lg rounded text-center",
+        style={
+            "backgroundColor": "#fef9f0",
+            "borderLeft": "8px solid #3b82f6",
+            "borderRadius": "12px",
+            "boxShadow": "0 6px 25px rgba(0,0,0,0.15)",
+            "textAlign": "center",
+            "color": "#111827"
+        }
+    )
+],
+fluid=True,
+style={
+    "backgroundColor": "#f0f4f8",
+    "padding": "25px",
+    "minHeight": "100vh"
+})
 
 # ----------------- Server for Deployment -----------------
 server = app.server

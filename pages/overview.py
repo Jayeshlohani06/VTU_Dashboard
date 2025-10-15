@@ -38,56 +38,127 @@ def assign_section(roll_no, section_ranges):
 
 # ---------- PAGE LAYOUT ----------
 layout = dbc.Container([
-    html.H4("📊 Class Overview with Section Input", className="text-center mb-4"),
+    html.H4("📊 Class Overview with Section Input", className="text-center mb-4 fw-bold"),
 
     # Upload Excel
     dcc.Upload(
         id='upload-data',
         children=html.Div(['📁 Drag and Drop or ', html.A('Select Excel File')]),
-        style={'width': '100%', 'height': '60px', 'lineHeight': '60px',
-               'borderWidth': '2px', 'borderStyle': 'dashed',
-               'borderRadius': '10px', 'textAlign': 'center',
-               'margin-bottom': '20px'},
+        style={
+            'width': '100%', 'height': '70px', 'lineHeight': '70px',
+            'borderWidth': '2px', 'borderStyle': 'dashed',
+            'borderRadius': '12px', 'textAlign': 'center',
+            'marginBottom': '25px', 'backgroundColor': '#f9fafb',
+            'cursor': 'pointer'
+        },
         multiple=False
     ),
 
     # Subject selector
-    dbc.Card(dbc.CardBody([
-        html.H6("Select Subject(s):"),
-        dcc.Dropdown(
-            id='subject-selector',
-            options=[], value=[],
-            multi=True,
-            placeholder="Upload file to select subjects",
-            style={'maxHeight': '150px', 'overflowY': 'auto'}
-        )
-    ]), className="shadow-sm p-3 mb-4"),
+    dbc.Card(
+        dbc.CardBody([
+            html.H6("Select Subject(s):", className="fw-bold"),
+            dcc.Dropdown(
+                id='subject-selector',
+                options=[], value=[],
+                multi=True,
+                placeholder="Upload file to select subjects",
+                style={'maxHeight': '150px', 'overflowY': 'auto'}
+            )
+        ]),
+        className="shadow-sm p-3 mb-4"
+    ),
 
     # Section input
-    dbc.Card(dbc.CardBody([
-        html.H6("Define Sections:", className="mb-2"),
-        dbc.Row([
-            dbc.Col([dbc.Label("Number of Sections:"), dbc.Input(id='num-sections', type='number', min=1, max=10, step=1, value=1)], width=3),
-            dbc.Col([dbc.Button("Generate Section Inputs", id='generate-sections-btn', color='primary', className='mt-4')], width=3),
-        ], className="mb-3"),
-        html.Div(id='section-input-container', className='mt-2'),
-        dbc.Button("Submit Sections", id='submit-sections-btn', color='success', className='mt-3')
-    ]), className="shadow-sm p-3 mb-4"),
+    dbc.Card(
+        dbc.CardBody([
+            html.H6("Define Sections:", className="fw-bold mb-3"),
+            dbc.Row([
+                dbc.Col([
+                    dbc.Label("Number of Sections:"),
+                    dbc.Input(id='num-sections', type='number', min=1, max=10, step=1, value=1)
+                ], md=3, sm=12),
+                dbc.Col([
+                    dbc.Button("Generate Section Inputs", id='generate-sections-btn', color='primary', className='mt-2 mt-md-4')
+                ], md=3, sm=12),
+            ], className="mb-3 g-3"),
+            html.Div(id='section-input-container', className='mt-2'),
+            dbc.Button("Submit Sections", id='submit-sections-btn', color='success', className='mt-3')
+        ]),
+        className="shadow-sm p-3 mb-4"
+    ),
 
     # KPI cards
     dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([html.H6("Total Students", className="text-muted"),
-                                       html.H3(id="total-students", className="fw-bold")]), color="primary", inverse=True), md=3),
-        dbc.Col(dbc.Card(dbc.CardBody([html.H6("Present Students", className="text-muted"),
-                                       html.H3(id="present-students", className="fw-bold")]), color="secondary", inverse=True), md=3),
-        dbc.Col(dbc.Card(dbc.CardBody([html.H6("Passed Students", className="text-muted"),
-                                       html.H3(id="passed-students", className="fw-bold")]), color="success", inverse=True), md=3),
-        dbc.Col(dbc.Card(dbc.CardBody([html.H6("Result %", className="text-muted"),
-                                       html.H3(id="result-percent", className="fw-bold")]), color="info", inverse=True), md=3),
-    ], className="mb-4 text-center"),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.H6("Total Students", className="text-muted"),
+                    html.H2(id="total-students", className="fw-bold text-primary")
+                ]),
+                style={
+                    "backgroundColor": "#dbeafe",
+                    "borderLeft": "6px solid #3b82f6",
+                    "borderRadius": "12px",
+                    "boxShadow": "0 4px 15px rgba(0,0,0,0.1)",
+                    "textAlign": "center",
+                    "padding": "20px"
+                }
+            ), md=3, sm=6
+        ),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.H6("Present Students", className="text-muted"),
+                    html.H2(id="present-students", className="fw-bold text-secondary")
+                ]),
+                style={
+                    "backgroundColor": "#e5e7eb",
+                    "borderLeft": "6px solid #6b7280",
+                    "borderRadius": "12px",
+                    "boxShadow": "0 4px 15px rgba(0,0,0,0.1)",
+                    "textAlign": "center",
+                    "padding": "20px"
+                }
+            ), md=3, sm=6
+        ),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.H6("Passed Students", className="text-muted"),
+                    html.H2(id="passed-students", className="fw-bold text-success")
+                ]),
+                style={
+                    "backgroundColor": "#d1fae5",
+                    "borderLeft": "6px solid #10b981",
+                    "borderRadius": "12px",
+                    "boxShadow": "0 4px 15px rgba(0,0,0,0.1)",
+                    "textAlign": "center",
+                    "padding": "20px"
+                }
+            ), md=3, sm=6
+        ),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.H6("Result %", className="text-muted"),
+                    html.H2(id="result-percent", className="fw-bold text-warning")
+                ]),
+                style={
+                    "backgroundColor": "#fef3c7",
+                    "borderLeft": "6px solid #f59e0b",
+                    "borderRadius": "12px",
+                    "boxShadow": "0 4px 15px rgba(0,0,0,0.1)",
+                    "textAlign": "center",
+                    "padding": "20px"
+                }
+            ), md=3, sm=6
+        ),
+    ], className="mb-4 g-3 text-center"),
 
     html.Hr(),
-    html.H5("📋 Uploaded Data Preview", className="text-center mb-3"),
+
+    html.H5("📋 Uploaded Data Preview", className="text-center mb-3 fw-bold"),
     html.Div(id='data-preview', className="mt-3"),
 
     # Stores
@@ -97,7 +168,6 @@ layout = dbc.Container([
 ], fluid=True)
 
 # ---------- CALLBACKS ----------
-
 # 1️⃣ Populate dropdown & store uploaded data
 @callback(
     Output('subject-selector', 'options'),
