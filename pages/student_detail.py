@@ -44,8 +44,8 @@ layout = dbc.Container([
         dbc.CardBody([
             html.H5("Step 1: Find Student & Select Analysis", className="fw-bold mb-3"),
             dbc.Row([
-                dbc.Col(dcc.Input(id='student-search',type='text',placeholder='Enter Student ID or Name...',debounce=True,className="form-control"), md=4),
-                dbc.Col(dcc.Dropdown(id='student-subject-dropdown',placeholder="Select Subject Code(s)",multi=True), md=5),
+                dbc.Col(dcc.Input(id='student-search', type='text', placeholder='Enter Student ID or Name...', debounce=True, className="form-control"), md=4),
+                dbc.Col(dcc.Dropdown(id='student-subject-dropdown', placeholder="Select Subject Code(s)", multi=True), md=5),
                 dbc.Col(dbc.Button("Search", id='search-btn', color="primary", className="w-100"), md=3)
             ], className="g-2 align-items-center"),
             html.Hr(className="my-3"),
@@ -68,10 +68,10 @@ layout = dbc.Container([
         className="shadow-sm p-3 mb-4"
     ),
 
-    # Step 2: This div will hold the credit inputs
+    # Step 2: Credit Inputs
     html.Div(id='credit-input-container'),
     
-    # Step 3: This div will hold the final report
+    # Step 3: Full Report
     html.Div(id='student-detail-content'),
 
     # Stores
@@ -79,7 +79,6 @@ layout = dbc.Container([
     dcc.Store(id='overview-selected-subjects', storage_type='session'),
     dcc.Store(id='section-data', storage_type='session')
 ], fluid=True, className="py-4")
-
 
 # ---------- CALLBACKS ----------
 
@@ -92,6 +91,8 @@ layout = dbc.Container([
 def populate_subject_dropdown(json_data):
     if not json_data: return [], []
     df = pd.read_json(json_data, orient='split')
+    if 'Name' not in df.columns:
+        df['Name'] = ""
     exclude_cols = ['Student ID', 'Name', 'Section', df.columns[0]]
     subject_components = [c for c in df.columns if c not in exclude_cols and 'Rank' not in c and 'Result' not in c and 'Total_Marks' not in c]
     filtered_components = [c for c in subject_components if 'Result' not in c]
@@ -99,7 +100,7 @@ def populate_subject_dropdown(json_data):
     options = [{'label': 'Select All', 'value': 'ALL'}] + [{'label': s, 'value': s} for s in subject_codes]
     return options, ['ALL']
 
-# 2. After Search -> Generate Credit Inputs (Step 2)
+# 2. Generate Credit Inputs
 @callback(
     Output('credit-input-container', 'children'),
     Input('search-btn', 'n_clicks'),
@@ -113,9 +114,11 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
     df = pd.read_json(json_data, orient='split')
     if 'Name' not in df.columns: df['Name'] = ""
     
-    mask = df[df.columns[0]].astype(str).str.contains(search_value, case=False, na=False) | df['Name'].astype(str).str.contains(search_value, case=False, na=False)
+    mask = df[df.columns[0]].astype(str).str.contains(search_value, case=False, na=False) | \
+           df['Name'].astype(str).str.contains(search_value, case=False, na=False)
     student_df = df[mask]
-    if student_df.empty: return dbc.Alert("No student found with this ID or Name.", color="warning", className="text-center mt-3")
+    if student_df.empty:
+        return dbc.Alert("No student found with this ID or Name.", color="warning", className="text-center mt-3")
 
     student_series = student_df.iloc[0]
     all_subject_components = [col for col in df.columns if ' ' in col and 'Result' not in col]
@@ -125,7 +128,8 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
         codes_selected = [s for s in selected_subject_codes if s != 'ALL']
 
     subject_codes_for_credits = sorted([code for code in codes_selected if pd.to_numeric(student_series.get(f"{code} Total"), errors='coerce') > 0])
-    if not subject_codes_for_credits: return dbc.Alert("This student has no scores recorded for the selected subjects.", color="info", className="text-center mt-3")
+    if not subject_codes_for_credits:
+        return dbc.Alert("This student has no scores recorded for the selected subjects.", color="info", className="text-center mt-3")
 
     credit_inputs = [dbc.Row([
         dbc.Col(dbc.Label(code, className="fw-bold"), width=6, className="text-md-end"),
@@ -139,7 +143,7 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
         dbc.Button("Calculate & View Full Report", id='calculate-sgpa-btn', color="success", className="w-100 mt-3")
     ]), className="shadow-sm p-3 mt-4")
 
-# 3. Main Callback -> Generate Full Report (Step 3)
+# 3. Display Full Report
 @callback(
     Output('student-detail-content', 'children'),
     Input('calculate-sgpa-btn', 'n_clicks'),
@@ -155,11 +159,11 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
 )
 def display_full_report(n_clicks, search_value, json_data, section_ranges, analysis_type, credit_ids, credit_vals):
     if not all([json_data, search_value]): return ""
-        
+    
     df = pd.read_json(json_data, orient='split')
-    first_col = df.columns[0]
-    if 'Student ID' not in df.columns: df.rename(columns={first_col: 'Student ID'}, inplace=True)
     if 'Name' not in df.columns: df['Name'] = ""
+    if 'Student ID' not in df.columns: df.rename(columns={df.columns[0]: 'Student ID'}, inplace=True)
+    
     df['Section'] = df['Student ID'].apply(lambda x: assign_section(x, section_ranges))
 
     credit_dict = {cid['index']: cval for cid, cval in zip(credit_ids, credit_vals) if cval is not None and cval > 0}
@@ -185,7 +189,6 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
     mask = df['Student ID'].astype(str).str.contains(search_value, case=False, na=False) | df['Name'].astype(str).str.contains(search_value, case=False, na=False)
     student_df = df[mask].reset_index(drop=True)
     if student_df.empty: return html.P("Student not found.", className="text-danger")
-
     student_series = student_df.iloc[0]
 
     total_credit_points, total_credits = 0, 0
@@ -202,57 +205,68 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
 
     subject_scores = pd.Series({s: pd.to_numeric(student_series[s], errors='coerce') for s in visual_cols_to_process}).dropna()
     scores_above_zero = subject_scores[subject_scores > 0]
-    
+
+    # KPI Row
     kpi_row = dbc.Card(dbc.Row([
-        dbc.Col(html.Div([html.H6("Total Marks", className="text-muted"), html.H3(f"{total_marks:.0f}", className="fw-bold")])),
-        dbc.Col(html.Div([html.H6("Percentage", className="text-muted"), html.H3(f"{percentage:.2f}%", className="fw-bold")]), style={'borderLeft': '2px solid #dee2e6'}),
-        dbc.Col(html.Div([html.H6("Result", className="text-muted"), html.H3(result, className=f"fw-bold {'text-success' if result == 'Pass' else 'text-danger'}")])),
-        dbc.Col(html.Div([html.H6("Class Rank", className="text-muted"), html.H3(student_series['Class_Rank_Selected'])])),
-        dbc.Col(html.Div([html.H6("Section Rank", className="text-muted"), html.H3(student_series['Section_Rank_Selected'])])),
-        dbc.Col(html.Div([html.H6("Section", className="text-muted"), html.H3(student_series['Section'])])),
-    ], className="text-center g-0"), body=True, className="mb-4 shadow-sm")
+        dbc.Col(html.Div([html.H6("Total Marks", className="text-muted"), html.H3(f"{total_marks:.0f}", className="fw-bold")]), className="text-center"),
+        dbc.Col(html.Div([html.H6("Percentage", className="text-muted"), html.H3(f"{percentage:.2f}%", className="fw-bold text-info")]), className="text-center"),
+        dbc.Col(html.Div([html.H6("Result", className="text-muted"), html.H3(result, className=f"fw-bold {'text-success' if result == 'Pass' else 'text-danger'}")]), className="text-center"),
+        dbc.Col(html.Div([html.H6("Class Rank", className="text-muted"), html.H3(student_series['Class_Rank_Selected'], className="fw-bold")]), className="text-center"),
+        dbc.Col(html.Div([html.H6("Section Rank", className="text-muted"), html.H3(student_series['Section_Rank_Selected'], className="fw-bold")]), className="text-center"),
+        dbc.Col(html.Div([html.H6("Section", className="text-muted"), html.H3(student_series['Section'], className="fw-bold")]), className="text-center")
+    ], className="g-0"), body=True, className="mb-4 shadow-sm p-2")
 
-    sgpa_card = dbc.Card(dbc.CardBody([
-        html.H6("SGPA"),
-        html.H2(f"{sgpa:.2f}", className="text-info fw-bold")
-    ]), className="text-center shadow-sm")
-
+    sgpa_card = dbc.Card(dbc.CardBody([html.H6("SGPA"), html.H2(f"{sgpa:.2f}", className="text-info fw-bold")]), className="text-center shadow-sm p-3")
     student_info = dbc.Card(dbc.CardBody([
         html.H5(f"Student ID: {student_series['Student ID']}"),
         html.H5(f"Name: {student_series['Name']}"),
         html.H5(f"Section: {student_series['Section']}")
-    ]), className="mb-4 shadow-sm")
+    ]), className="mb-4 shadow-sm p-3")
 
-    if scores_above_zero.empty: return html.Div([student_info, kpi_row, dbc.Row(dbc.Col(sgpa_card, md=4), justify="center"), dbc.Alert("No scores > 0.", color="info")])
+    if scores_above_zero.empty:
+        return html.Div([student_info, kpi_row, dbc.Row(dbc.Col(sgpa_card, md=4), justify="center"), dbc.Alert("No scores > 0.", color="info")])
 
+    # Graphs
     top_subjects = scores_above_zero.nlargest(3)
     weak_subjects = scores_above_zero.nsmallest(3)
     bar_fig = go.Figure(data=[go.Bar(x=subject_scores.index, y=subject_scores.values, text=subject_scores.values, textposition='auto')])
-    bar_fig.update_layout(title_text=f"📊 Subject-wise Performance ({analysis_type} Breakdown)", title_x=0.5)
-    
+    bar_fig.update_layout(title_text=f"📊 Subject-wise Performance ({analysis_type} Breakdown)", title_x=0.5, plot_bgcolor='rgba(0,0,0,0)')
+
     strong_card = dbc.Card([dbc.CardHeader("💪 Top 3 Strongest", className="bg-success text-white"), dbc.CardBody([html.Ul([html.Li(f"{s}: {m}") for s, m in top_subjects.items()])])])
     weak_card = dbc.Card([dbc.CardHeader("⚠️ Bottom 3 Weakest", className="bg-danger text-white"), dbc.CardBody([html.Ul([html.Li(f"{s}: {m}") for s, m in weak_subjects.items()])])])
-    
-    class_averages = df[visual_cols_to_process].replace(0, np.nan).mean()
-    
-    comp_fig = go.Figure(data=[go.Bar(x=subject_scores.index, y=subject_scores.values, name="You"), go.Bar(x=subject_scores.index, y=class_averages.reindex(subject_scores.index), name="Class Average")])
-    comp_fig.update_layout(title_text="📈 Student vs Class Average", title_x=0.5, barmode="group")
 
-    pie_fig = go.Figure(data=[go.Pie(labels=["Strong", "Avg", "Weak"], values=[(scores_above_zero > 75).sum(), ((scores_above_zero >= 50) & (scores_above_zero <= 75)).sum(), (scores_above_zero < 50).sum()])])
+    class_averages = df[visual_cols_to_process].replace(0, np.nan).mean()
+    comp_fig = go.Figure(data=[
+        go.Bar(x=subject_scores.index, y=subject_scores.values, name="You"),
+        go.Bar(x=subject_scores.index, y=class_averages.reindex(subject_scores.index), name="Class Average")
+    ])
+    comp_fig.update_layout(title_text="📈 Student vs Class Average", title_x=0.5, barmode="group", plot_bgcolor='rgba(0,0,0,0)')
+
+    pie_fig = go.Figure(data=[go.Pie(labels=["Strong", "Avg", "Weak"],
+                                     values=[(scores_above_zero > 75).sum(),
+                                             ((scores_above_zero >= 50) & (scores_above_zero <= 75)).sum(),
+                                             (scores_above_zero < 50).sum()])])
     pie_fig.update_layout(title_text="🎯 Performance Distribution", title_x=0.5)
-    
+
     def get_result_text(subject_name, mark):
         if mark == 0: return "N/A"
         pass_mark = 35 if 'Total' in subject_name else 18
         return "Pass" if mark >= pass_mark else "Fail"
 
     result_table_df = pd.DataFrame({
-        "Subject": subject_scores.index, "Marks": subject_scores.values,
+        "Subject": subject_scores.index, 
+        "Marks": subject_scores.values,
         "Result": [get_result_text(s, m) for s, m in zip(subject_scores.index, subject_scores.values)],
         "Class Avg": [class_averages.get(s, 0) for s in subject_scores.index],
     })
 
-    result_table = dash_table.DataTable(data=result_table_df.to_dict('records'), columns=[{"name": i, "id": i} for i in result_table_df.columns])
+    result_table = dash_table.DataTable(
+        data=result_table_df.to_dict('records'),
+        columns=[{"name": i, "id": i} for i in result_table_df.columns],
+        style_cell={'textAlign': 'center', 'padding': '5px'},
+        style_header={'backgroundColor': '#007bff', 'color': 'white', 'fontWeight': 'bold'},
+        style_data={'backgroundColor': '#f9f9f9'}
+    )
 
     return dbc.Card(dbc.CardBody([
         html.H4("Full Performance Report", className="text-center mb-4"),
@@ -269,5 +283,4 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
         html.Hr(),
         html.H5("📘 Detailed Performance", className="text-center mb-3"),
         result_table
-    ]), className="mt-4 shadow")
-
+    ]), className="mt-4 shadow p-3")
