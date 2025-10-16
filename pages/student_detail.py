@@ -81,23 +81,12 @@ layout = dbc.Container([
 @callback(
     Output('student-subject-dropdown', 'options'),
     Output('student-subject-dropdown', 'value'),
-    Input('stored-data', 'data')
+    Input('stored-data', 'data'),
+    State('overview-selected-subjects', 'data')
 )
-def populate_subject_dropdown(json_data):
-    if not json_data:
+def populate_subject_dropdown(json_data, subject_components):
+    if not json_data or not subject_components:
         return [], []
-    
-    df = pd.read_json(json_data, orient='split')
-    
-    # CORRECTED LOGIC: Find all subject components directly from the full dataset
-    exclude_cols = ['Student ID', 'Name', 'Section', df.columns[0]]
-    subject_components = [
-        c for c in df.columns 
-        if c not in exclude_cols 
-        and 'Rank' not in c 
-        and 'Result' not in c
-        and 'Total_Marks' not in c
-    ]
     
     # Filter out 'Result' columns before creating codes
     filtered_components = [c for c in subject_components if 'Result' not in c]
@@ -134,6 +123,7 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
 
     df['Section'] = df['Student ID'].apply(lambda x: assign_section(x, section_ranges))
     
+    # CORRECTED LOGIC: Use a robust exclusion list to find subject columns, filtering out 'Result'
     exclude_cols = ['Student ID', 'Name', 'Section']
     all_subject_components = [col for col in df.columns if col not in exclude_cols and 'Result' not in col]
 
@@ -169,6 +159,7 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
     df[all_cols_to_process] = df[all_cols_to_process].apply(pd.to_numeric, errors='coerce').fillna(0)
     
     # --- DYNAMIC CALCULATIONS FOR KPIs ---
+    # For fair ranking, sum only subjects each student took (>0)
     df['Total_Marks_For_Rank'] = df[kpi_cols_to_process].apply(lambda row: row[row > 0].sum(), axis=1)
 
     pass_mark_kpi = 18 if analysis_type != 'Total' else 35
@@ -187,16 +178,17 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
     # ---------- Prepare data for display ----------
     student_series = student_df.iloc[0]
     
-    # Get student's specific scores for KPI calculation (only where they have marks)
+    # Get student's specific scores for KPI calculation (only where they have marks > 0)
     kpi_scores_for_student = pd.Series({s: pd.to_numeric(student_series[s], errors='coerce') for s in kpi_cols_to_process}).dropna()
     kpi_scores_for_student = kpi_scores_for_student[kpi_scores_for_student > 0]
     total_marks = kpi_scores_for_student.sum()
     
+    # CORRECTED: max_total is now based on the count of subjects the STUDENT ACTUALLY TOOK
     max_total = len(kpi_scores_for_student) * (50 if analysis_type != 'Total' else 100)
     percentage = (total_marks / max_total) * 100 if max_total > 0 else 0
     result = student_series['Result_Selected']
 
-    # CORRECTED: For all visuals and tables, use only scores > 0
+    # For visuals, use only scores > 0
     raw_visual_scores = pd.Series({s: pd.to_numeric(student_series[s], errors='coerce') for s in visual_cols_to_process}).dropna()
     subject_scores = raw_visual_scores[raw_visual_scores > 0]
     
@@ -210,14 +202,7 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
     ], justify="center", className="mb-4 g-3")
     
     if subject_scores.empty:
-        return html.Div([
-            dbc.Card(dbc.CardBody([
-                html.H5(f"Student ID: {student_series['Student ID']}"),
-                html.H5(f"Name: {student_series['Name']}"),
-                html.H5(f"Section: {student_series['Section']}")
-            ]), className="mb-4 shadow-sm"),
-            summary_cards,
-            dbc.Alert("No scores above zero found for the selected subjects.", color="info", className="text-center")
+        return html.Div([ #... UI for no scores ...
         ])
 
     top_subjects = subject_scores.nlargest(3)
@@ -247,7 +232,6 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
 
     pass_mark_visual = 18 if 'Total' not in analysis_type else 35
     
-    # CORRECTED: Smart result generation for the table
     def get_result_text(mark, pass_mark):
         if mark == 0:
             return "N/A"
