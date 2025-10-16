@@ -197,13 +197,13 @@ def generate_section_inputs(n_clicks, num_sections):
     if not n_clicks or not num_sections:
         return dash.no_update
     return [dbc.Row([
-                dbc.Col(dbc.Input(id={'type': 'section-name', 'index': i},
-                                  placeholder=f"Section {i} Name", type='text'), width=3),
-                dbc.Col(dbc.Input(id={'type': 'start-roll', 'index': i},
-                                  placeholder="Start Roll No", type='text'), width=4),
-                dbc.Col(dbc.Input(id={'type': 'end-roll', 'index': i},
-                                  placeholder="End Roll No", type='text'), width=4),
-            ], className='mb-2') for i in range(1, num_sections + 1)]
+        dbc.Col(dbc.Input(id={'type': 'section-name', 'index': i},
+                          placeholder=f"Section {i} Name", type='text'), width=3),
+        dbc.Col(dbc.Input(id={'type': 'start-roll', 'index': i},
+                          placeholder="Start Roll No", type='text'), width=4),
+        dbc.Col(dbc.Input(id={'type': 'end-roll', 'index': i},
+                          placeholder="End Roll No", type='text'), width=4),
+    ], className='mb-2') for i in range(1, num_sections + 1)]
 
 # 3️⃣ Submit sections & store in session
 @callback(
@@ -237,7 +237,7 @@ def submit_sections(n_clicks, section_names, start_rolls, end_rolls):
 def update_dashboard(selected_subjects, section_ranges, json_data):
     if json_data is None or not selected_subjects:
         return "", "", "", "", html.Div("⬆️ Please upload file, select subjects, and define sections.",
-                                         className="text-muted text-center")
+                                        className="text-muted text-center")
     df = pd.read_json(json_data, orient='split')
     meta_col = df.columns[0]
     selected_cols = [c for c in df.columns if any(c.startswith(s) for s in selected_subjects)]
@@ -281,3 +281,4 @@ def update_dashboard(selected_subjects, section_ranges, json_data):
     ])
 
     return total_students, present_students, passed_students, f"{result_percent}%", preview_table
+
