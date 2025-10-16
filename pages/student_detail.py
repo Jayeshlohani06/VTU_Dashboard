@@ -81,12 +81,23 @@ layout = dbc.Container([
 @callback(
     Output('student-subject-dropdown', 'options'),
     Output('student-subject-dropdown', 'value'),
-    Input('stored-data', 'data'),
-    State('overview-selected-subjects', 'data')
+    Input('stored-data', 'data')
 )
-def populate_subject_dropdown(json_data, subject_components):
-    if not json_data or not subject_components:
+def populate_subject_dropdown(json_data):
+    if not json_data:
         return [], []
+    
+    df = pd.read_json(json_data, orient='split')
+    
+    # CORRECTED LOGIC: Find all subject components directly from the full dataset
+    exclude_cols = ['Student ID', 'Name', 'Section', df.columns[0]]
+    subject_components = [
+        c for c in df.columns 
+        if c not in exclude_cols 
+        and 'Rank' not in c 
+        and 'Result' not in c
+        and 'Total_Marks' not in c
+    ]
     
     # Filter out 'Result' columns before creating codes
     filtered_components = [c for c in subject_components if 'Result' not in c]
@@ -159,7 +170,6 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
     df[all_cols_to_process] = df[all_cols_to_process].apply(pd.to_numeric, errors='coerce').fillna(0)
     
     # --- DYNAMIC CALCULATIONS FOR KPIs ---
-    # For fair ranking, sum only subjects each student took (>0)
     df['Total_Marks_For_Rank'] = df[kpi_cols_to_process].apply(lambda row: row[row > 0].sum(), axis=1)
 
     pass_mark_kpi = 18 if analysis_type != 'Total' else 35
@@ -178,13 +188,11 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
     # ---------- Prepare data for display ----------
     student_series = student_df.iloc[0]
     
-    # Get student's specific scores for KPI calculation (only where they have marks > 0)
-    kpi_scores_for_student = pd.Series({s: pd.to_numeric(student_series[s], errors='coerce') for s in kpi_cols_to_process}).dropna()
-    kpi_scores_for_student = kpi_scores_for_student[kpi_scores_for_student > 0]
-    total_marks = kpi_scores_for_student.sum()
+    # Get student's specific scores for KPI calculation
+    total_marks = student_series['Total_Marks_For_Rank'] # Use the fair-ranking total
     
-    # CORRECTED: max_total is now based on the count of subjects the STUDENT ACTUALLY TOOK
-    max_total = len(kpi_scores_for_student) * (50 if analysis_type != 'Total' else 100)
+    # CORRECTED: max_total is now based on the count of all selected KPI columns
+    max_total = len(kpi_cols_to_process) * (50 if analysis_type != 'Total' else 100)
     percentage = (total_marks / max_total) * 100 if max_total > 0 else 0
     result = student_series['Result_Selected']
 
@@ -230,16 +238,17 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
     )])
     pie_fig.update_layout(title_text="🎯 Performance Distribution", title_x=0.5, template='plotly_white', height=400)
 
-    pass_mark_visual = 18 if 'Total' not in analysis_type else 35
-    
-    def get_result_text(mark, pass_mark):
+    # CORRECTED: Smart result generation for the table based on component type
+    def get_result_text(subject_name, mark):
         if mark == 0:
             return "N/A"
+        
+        pass_mark = 35 if 'Total' in subject_name else 18
         return "Pass" if mark >= pass_mark else "Fail"
 
     result_table_df = pd.DataFrame({
         "Subject": subject_scores.index, "Marks": subject_scores.values,
-        "Result": [get_result_text(m, pass_mark_visual) for m in subject_scores.values],
+        "Result": [get_result_text(s, m) for s, m in zip(subject_scores.index, subject_scores.values)],
         "% Weight": [(m / total_marks * 100 if total_marks > 0 else 0) for m in subject_scores.values],
         "Class Avg": [class_averages.get(s, 0) for s in subject_scores.index],
         "Difference": [m - class_averages.get(s, 0) for s, m in zip(subject_scores.index, subject_scores.values)]
