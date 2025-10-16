@@ -134,7 +134,6 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
 
     df['Section'] = df['Student ID'].apply(lambda x: assign_section(x, section_ranges))
     
-    # CORRECTED LOGIC: Use a robust exclusion list to find subject columns, filtering out 'Result'
     exclude_cols = ['Student ID', 'Name', 'Section']
     all_subject_components = [col for col in df.columns if col not in exclude_cols and 'Result' not in col]
 
@@ -146,22 +145,15 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
 
     # --- Define columns for KPIs vs. Visuals ---
     
-    # CORRECTED LOGIC: For KPIs, use the selected analysis type
-    if analysis_type == 'Total':
-        kpi_cols_to_process = [
-            col for col in all_subject_components 
-            if col.split(' ')[0] in codes_selected and 'Total' in col
-        ]
-    else: # Internal or External
-        kpi_cols_to_process = [
-            col for col in all_subject_components 
-            if col.split(' ')[0] in codes_selected and analysis_type in col
-        ]
+    analysis_component = 'Total' if analysis_type == 'Total' else analysis_type
+    kpi_cols_to_process = [
+        col for col in all_subject_components 
+        if col.split(' ')[0] in codes_selected and analysis_component in col
+    ]
 
     if not kpi_cols_to_process:
-        return dbc.Alert(f"No '{analysis_type}' columns found for selected subjects to calculate KPIs.", color="danger")
+        return dbc.Alert(f"No '{analysis_component}' columns found for selected subjects to calculate KPIs.", color="danger")
     
-    # For Visuals, show the breakdown if 'Total' is selected, otherwise show the specific component
     if analysis_type == 'Total':
         visual_cols_to_process = [
             col for col in all_subject_components 
@@ -173,18 +165,17 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
     if not visual_cols_to_process:
         return dbc.Alert(f"No '{analysis_type}' columns found for the selected subjects.", color="warning")
 
-    # Convert all relevant columns to numeric
     all_cols_to_process = list(set(kpi_cols_to_process + visual_cols_to_process))
     df[all_cols_to_process] = df[all_cols_to_process].apply(pd.to_numeric, errors='coerce').fillna(0)
     
     # --- DYNAMIC CALCULATIONS FOR KPIs ---
-    df['Total_Marks_Selected'] = df[kpi_cols_to_process].sum(axis=1)
-    
+    df['Total_Marks_For_Rank'] = df[kpi_cols_to_process].apply(lambda row: row[row > 0].sum(), axis=1)
+
     pass_mark_kpi = 18 if analysis_type != 'Total' else 35
     df['Result_Selected'] = df.apply(lambda row: 'Fail' if any(0 < row[c] < pass_mark_kpi for c in kpi_cols_to_process) else 'Pass', axis=1)
     
-    df['Class_Rank_Selected'] = df[df['Result_Selected'] == 'Pass']['Total_Marks_Selected'].rank(method='min', ascending=False).astype('Int64')
-    df['Section_Rank_Selected'] = df.groupby('Section')['Total_Marks_Selected'].rank(method='min', ascending=False).astype('Int64')
+    df['Class_Rank_Selected'] = df[df['Result_Selected'] == 'Pass']['Total_Marks_For_Rank'].rank(method='min', ascending=False).astype('Int64')
+    df['Section_Rank_Selected'] = df.groupby('Section')['Total_Marks_For_Rank'].rank(method='min', ascending=False).astype('Int64')
 
     # --- Filter for the student ---
     mask = df.apply(lambda row: search_value.lower() in str(row.get('Student ID', '')).lower()
@@ -195,14 +186,19 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
 
     # ---------- Prepare data for display ----------
     student_series = student_df.iloc[0]
-    total_marks = student_series['Total_Marks_Selected']
-    max_total = len(kpi_cols_to_process) * (50 if analysis_type != 'Total' else 100)
+    
+    # Get student's specific scores for KPI calculation (only where they have marks)
+    kpi_scores_for_student = pd.Series({s: pd.to_numeric(student_series[s], errors='coerce') for s in kpi_cols_to_process}).dropna()
+    kpi_scores_for_student = kpi_scores_for_student[kpi_scores_for_student > 0]
+    total_marks = kpi_scores_for_student.sum()
+    
+    max_total = len(kpi_scores_for_student) * (50 if analysis_type != 'Total' else 100)
     percentage = (total_marks / max_total) * 100 if max_total > 0 else 0
     result = student_series['Result_Selected']
-    
-    # Use the visual columns for the charts and tables
-    subject_scores = pd.Series({s: pd.to_numeric(student_series[s], errors='coerce') for s in visual_cols_to_process}).dropna()
-    scores_above_zero = subject_scores[subject_scores > 0]
+
+    # CORRECTED: For all visuals and tables, use only scores > 0
+    raw_visual_scores = pd.Series({s: pd.to_numeric(student_series[s], errors='coerce') for s in visual_cols_to_process}).dropna()
+    subject_scores = raw_visual_scores[raw_visual_scores > 0]
     
     summary_cards = dbc.Row([
         dbc.Col(dbc.Card(dbc.CardBody([html.H6(f"Total {analysis_type} Marks"), html.H3(f"{total_marks}")])), md=2, className="text-center"),
@@ -213,12 +209,19 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
         dbc.Col(dbc.Card(dbc.CardBody([html.H6("Section"), html.H3(f"{student_series['Section']}")])), md=2, className="text-center bg-secondary text-white"),
     ], justify="center", className="mb-4 g-3")
     
-    if scores_above_zero.empty:
-        return html.Div([ #... UI for no scores ...
+    if subject_scores.empty:
+        return html.Div([
+            dbc.Card(dbc.CardBody([
+                html.H5(f"Student ID: {student_series['Student ID']}"),
+                html.H5(f"Name: {student_series['Name']}"),
+                html.H5(f"Section: {student_series['Section']}")
+            ]), className="mb-4 shadow-sm"),
+            summary_cards,
+            dbc.Alert("No scores above zero found for the selected subjects.", color="info", className="text-center")
         ])
 
-    top_subjects = scores_above_zero.nlargest(3)
-    weak_subjects = scores_above_zero.nsmallest(3)
+    top_subjects = subject_scores.nlargest(3)
+    weak_subjects = subject_scores.nsmallest(3)
 
     bar_fig = go.Figure(data=[go.Bar(x=subject_scores.index, y=subject_scores.values, text=subject_scores.values, textposition='auto', marker_color='rgb(26, 118, 255)')])
     bar_fig.update_layout(title_text=f"📊 Subject-wise Performance ({analysis_type} Breakdown)", title_x=0.5, template='plotly_white', height=400)
@@ -236,16 +239,23 @@ def display_student_detail(n_clicks, analysis_type, search_value, json_data, sel
 
     pie_fig = go.Figure(data=[go.Pie(
         labels=["Strong (>75)", "Average (50-75)", "Weak (<50)"], 
-        values=[(scores_above_zero > 75).sum(), ((scores_above_zero >= 50) & (scores_above_zero <= 75)).sum(), (scores_above_zero < 50).sum()],
+        values=[(subject_scores > 75).sum(), ((subject_scores >= 50) & (subject_scores <= 75)).sum(), (subject_scores < 50).sum()],
         marker=dict(colors=["#28a745", "#ffc107", "#dc3545"]),
         hole=0.4
     )])
     pie_fig.update_layout(title_text="🎯 Performance Distribution", title_x=0.5, template='plotly_white', height=400)
 
     pass_mark_visual = 18 if 'Total' not in analysis_type else 35
+    
+    # CORRECTED: Smart result generation for the table
+    def get_result_text(mark, pass_mark):
+        if mark == 0:
+            return "N/A"
+        return "Pass" if mark >= pass_mark else "Fail"
+
     result_table_df = pd.DataFrame({
         "Subject": subject_scores.index, "Marks": subject_scores.values,
-        "Result": ["Pass" if m >= pass_mark_visual else "Fail" for m in subject_scores.values],
+        "Result": [get_result_text(m, pass_mark_visual) for m in subject_scores.values],
         "% Weight": [(m / total_marks * 100 if total_marks > 0 else 0) for m in subject_scores.values],
         "Class Avg": [class_averages.get(s, 0) for s in subject_scores.index],
         "Difference": [m - class_averages.get(s, 0) for s, m in zip(subject_scores.index, subject_scores.values)]
