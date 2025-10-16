@@ -31,26 +31,28 @@ def assign_section(roll_no, section_ranges=None):
 layout = dbc.Container([
     html.H4("🎓 Student Detail Lookup", className="mb-4 text-center"),
 
-    # 🔍 Student Search
-    dbc.Row([
-        dbc.Col(dcc.Input(
-            id='student-search',
-            type='text',
-            placeholder='Enter Student ID or Name...',
-            debounce=True,
-            className="form-control"
-        ), md=4),
-        dbc.Col(dbc.Button("Search", id='search-btn', color="primary", className="ms-2"), md=2)
-    ], justify="center", className="mb-4"),
-
-    # 🔽 Subject Dropdown with Select All
-    dbc.Row([
-        dbc.Col(dcc.Dropdown(
-            id='student-subject-dropdown',
-            placeholder="Select Subject(s)",
-            multi=True
-        ), md=6)
-    ], justify="center", className="mb-4"),
+    # 🔍 Student Search & Subject Selection (Aligned in one card)
+    dbc.Card(
+        dbc.CardBody([
+            html.H6("Step 1: Find Student & Select Subjects", className="fw-bold mb-3"),
+            dbc.Row([
+                dbc.Col(dcc.Input(
+                    id='student-search',
+                    type='text',
+                    placeholder='Enter Student ID or Name...',
+                    debounce=True,
+                    className="form-control"
+                ), md=4),
+                dbc.Col(dcc.Dropdown(
+                    id='student-subject-dropdown',
+                    placeholder="Select Subject(s)",
+                    multi=True
+                ), md=6),
+                dbc.Col(dbc.Button("Search", id='search-btn', color="primary", className="w-100"), md=2)
+            ], className="g-2 align-items-center"),
+        ]),
+        className="shadow-sm p-3 mb-4"
+    ),
 
     html.Div(id='student-detail-content'),
 
@@ -64,26 +66,21 @@ layout = dbc.Container([
 @callback(
     Output('student-subject-dropdown', 'options'),
     Output('student-subject-dropdown', 'value'),
-    Input('stored-data', 'data')
+    Input('stored-data', 'data'),
 )
 def populate_subject_dropdown(json_data):
-    # This will now correctly show all components including Internal, External, and Total
     if not json_data:
         return [], []
     
     df = pd.read_json(json_data, orient='split')
     first_col = df.columns[0]
-    
-    # Define columns to exclude from subject list
-    exclude_cols = [first_col, 'Name', 'Section', 'Attendance', 'Total_Marks']
-    
-    # Get all possible subject component columns directly from the full dataframe
-    all_subject_components = sorted([
-        col for col in df.columns 
-        if col not in exclude_cols 
-        and 'Rank' not in col 
-        and 'Result' not in col
-    ])
+
+    exclude_cols = [first_col, 'Name', 'Section', 'Attendance', 'Total_Marks', 
+                    'Class_Rank', 'Section_Rank', 'Overall_Result', 
+                    'Total_Marks_Selected', 'Result_Selected', 
+                    'Class_Rank_Selected', 'Section_Rank_Selected']
+
+    all_subject_components = sorted([col for col in df.columns if col not in exclude_cols])
     
     options = [{'label': 'Select All', 'value': 'ALL'}] + [{'label': s, 'value': s} for s in all_subject_components]
     return options, ['ALL']  # default select all
@@ -98,11 +95,19 @@ def populate_subject_dropdown(json_data):
     State('student-subject-dropdown', 'value'),
     State('section-data', 'data')
 )
-def display_student_detail(n_clicks, search_value, json_data, selected_subjects, section_ranges):
+def display_student_detail(n_clicks, search_value, json_data, selected_subject_codes, section_ranges):
     if not json_data:
         return html.P("Please upload data first on the Overview page.", className="text-muted text-center")
     if not search_value:
         return html.P("Enter Student ID or Name to search.", className="text-muted text-center")
+    
+    # Added check to ensure section data exists
+    if not section_ranges:
+        return dbc.Alert(
+            "Section data not found. Please go to the Overview page to define section ranges first.",
+            color="warning",
+            className="text-center mt-3"
+        )
 
     df = pd.read_json(json_data, orient='split')
     first_col = df.columns[0]
@@ -118,43 +123,31 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects,
     
     # ---------- Subject Selection Logic ----------
     exclude_cols = ['Student ID', 'Name', 'Section', 'Attendance']
-    
-    all_subject_components = [
-        col for col in df.columns 
-        if col not in exclude_cols 
-        and 'Rank' not in col 
-        and 'Result' not in col 
-        and col != 'Total_Marks'
-    ]
+    all_subject_components = [col for col in df.columns if col not in exclude_cols and 'Rank' not in col and 'Result' not in col and 'Total' not in col]
 
-    if not selected_subjects or 'ALL' in selected_subjects:
+    if not selected_subject_codes or 'ALL' in selected_subject_codes:
         subjects_to_process = all_subject_components
     else:
-        subjects_to_process = [s for s in selected_subjects if s != 'ALL']
+        # Corrected Logic: Find all component columns that match the selected subject codes
+        codes_selected = [s for s in selected_subject_codes if s != 'ALL']
+        subjects_to_process = [col for col in all_subject_components if any(col.startswith(code) for code in codes_selected)]
     
+    # Ensure subjects_to_process is not empty
     if not subjects_to_process:
-        return dbc.Alert("No subjects selected or found.", color="warning")
+        return dbc.Alert("No data columns found for the selected subjects. Please check your selection.", color="warning")
+
 
     # Convert only selected subject columns to numeric
     df[subjects_to_process] = df[subjects_to_process].apply(pd.to_numeric, errors='coerce').fillna(0)
     
     # ---------- DYNAMICALLY CALCULATE TOTALS AND RANKS BASED ON SELECTION ----------
+    # Calculate total marks based ONLY on the selected subjects
+    df['Total_Marks_Selected'] = df[subjects_to_process].sum(axis=1)
     
-    # CORRECTED LOGIC: For grand total, sum ONLY the 'Total' columns from the selection
-    total_cols_for_sum = [c for c in subjects_to_process if 'Total' in c]
-    if not total_cols_for_sum:
-        # If user only selected Internal/External, sum those instead
-        total_cols_for_sum = subjects_to_process
+    # Determine result based ONLY on selected subjects (a score of 0 is not a fail)
+    df['Result_Selected'] = df.apply(lambda row: 'Fail' if any(0 < row[c] < 18 for c in subjects_to_process) else 'Pass', axis=1)
 
-    df['Total_Marks_Selected'] = df[total_cols_for_sum].sum(axis=1)
-
-    # Result is a fail if any non-total component is between 0 and 18
-    internal_external_cols = [c for c in subjects_to_process if 'Total' not in c]
-    if not internal_external_cols: # If only totals were selected, check those
-        internal_external_cols = total_cols_for_sum
-
-    df['Result_Selected'] = df.apply(lambda row: 'Fail' if any(0 < row[c] < 18 for c in internal_external_cols) else 'Pass', axis=1)
-
+    # Re-calculate ranks based on the new selected totals
     df['Class_Rank_Selected'] = df[df['Result_Selected'] == 'Pass']['Total_Marks_Selected'].rank(method='min', ascending=False).astype('Int64')
     df['Section_Rank_Selected'] = df.groupby('Section')['Total_Marks_Selected'].rank(method='min', ascending=False).astype('Int64')
 
@@ -170,16 +163,17 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects,
     student_series = student_df.iloc[0]
     total_marks = student_series['Total_Marks_Selected']
     
-    # Corrected percentage based on number of 'Total' columns
-    max_total = len(total_cols_for_sum) * 100 if total_cols_for_sum else 0
+    # Corrected Percentage Calculation
+    unique_codes_in_selection = set([col.split(' ')[0] for col in subjects_to_process])
+    max_total = len(unique_codes_in_selection) * 100 if unique_codes_in_selection else 0
     percentage = (total_marks / max_total) * 100 if max_total > 0 else 0
     result = student_series['Result_Selected']
     
-    # Get scores for all selected components for this student's graphs/tables
-    subject_scores = pd.Series({s: pd.to_numeric(student_series[s], errors='coerce') for s in subjects_to_process}).dropna()
-    scores_above_zero = subject_scores[subject_scores > 0]
+    # CORRECTED LOGIC: Create a series of scores > 0 for all visualizations and analysis
+    raw_subject_scores = pd.Series({s: pd.to_numeric(student_series[s], errors='coerce') for s in subjects_to_process}).dropna()
+    subject_scores = raw_subject_scores[raw_subject_scores > 0]
     
-    # ---------- KPI CARDS ----------
+    # ---------- KPI CARDS (Now using dynamically calculated ranks and totals) ----------
     summary_cards = dbc.Row([
         dbc.Col(dbc.Card(dbc.CardBody([html.H6("Total Marks (Selected)"), html.H3(f"{total_marks}")])), className="shadow-sm text-center bg-light", md=2),
         dbc.Col(dbc.Card(dbc.CardBody([html.H6("Percentage"), html.H3(f"{percentage:.2f}%")])), className="shadow-sm text-center bg-info text-white", md=2),
@@ -189,9 +183,10 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects,
         dbc.Col(dbc.Card(dbc.CardBody([html.H6("Section"), html.H3(f"{student_series['Section']}")])), className="shadow-sm text-center bg-secondary text-white", md=2)
     ], justify="center", className="mb-4 g-3")
 
-    if scores_above_zero.empty:
+    # Handle case where there are no scores to display
+    if subject_scores.empty:
         return html.Div([
-             dbc.Card(dbc.CardBody([
+            dbc.Card(dbc.CardBody([
                 html.H5(f"Student ID: {student_series['Student ID']}"),
                 html.H5(f"Name: {student_series['Name']}"),
                 html.H5(f"Section: {student_series['Section']}")
@@ -200,9 +195,9 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects,
             dbc.Alert("No scores above zero found for the selected subjects.", color="info", className="text-center")
         ])
 
-    # ---------- Performance Visualizations (Using component scores) ----------
-    top_subjects = scores_above_zero.nlargest(3)
-    weak_subjects = scores_above_zero.nsmallest(3)
+    # ---------- Performance Visualizations ----------
+    top_subjects = subject_scores.nlargest(3)
+    weak_subjects = subject_scores.nsmallest(3)
 
     bar_chart = dcc.Graph(figure=go.Figure(data=[go.Bar(x=subject_scores.index, y=subject_scores.values, text=subject_scores.values, textposition='auto')], layout=go.Layout(title="📊 Subject-wise Performance", xaxis=dict(title="Subjects"), yaxis=dict(title="Marks"), height=400)))
     strong_card = dbc.Card([dbc.CardHeader("💪 Top 3 Strongest Subjects", className="fw-bold bg-success text-white"), dbc.CardBody([html.Ul([html.Li(f"{sub}: {mark}") for sub, mark in top_subjects.items()])])], className="shadow-sm")
@@ -218,12 +213,12 @@ def display_student_detail(n_clicks, search_value, json_data, selected_subjects,
         layout=go.Layout(title="📈 Student vs Class Average", barmode="group", height=400)
     ))
 
-    strong = (scores_above_zero > 75).sum()
-    average = ((scores_above_zero >= 50) & (scores_above_zero <= 75)).sum()
-    weak = (scores_above_zero < 50).sum()
+    strong = (subject_scores > 75).sum()
+    average = ((subject_scores >= 50) & (subject_scores <= 75)).sum()
+    weak = (subject_scores < 50).sum()
     pie_chart = dcc.Graph(figure=go.Figure(data=[go.Pie(labels=["Strong (75+)", "Average (50-75)", "Weak (<50)"], values=[strong, average, weak], marker=dict(colors=["#2ecc71", "#f1c40f", "#e74c3c"]), hole=0.4)], layout=go.Layout(title="🎯 Performance Distribution", height=400)))
 
-    # ---------- Detailed Table (Using component scores) ----------
+    # ---------- Detailed Table ----------
     result_table_df = pd.DataFrame({
         "Subject": subject_scores.index,
         "Marks": subject_scores.values,
