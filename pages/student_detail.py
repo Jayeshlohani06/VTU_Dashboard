@@ -10,7 +10,6 @@ dash.register_page(__name__, path="/student_detail", name="Student Detail")
 
 # ---------- Helper Functions ----------
 def get_grade_point(percentage_score):
-    """Converts a percentage score (0-100) to a grade point."""
     score = pd.to_numeric(percentage_score, errors='coerce')
     if pd.isna(score): return 0
     if 90 <= score <= 100: return 10
@@ -37,9 +36,9 @@ def assign_section(roll_no, section_ranges=None):
 
 # ---------- Layout ----------
 layout = dbc.Container([
-    html.H2("🎓 Student Detail & SGPA Calculator", className="text-center mb-4 fw-bold"),
+    html.H2("🎓 Student Detail & SGPA Dashboard", className="text-center mb-4 fw-bold"),
 
-    # Step 1: Search and Select
+    # Step 1: Search & Select
     dbc.Card(
         dbc.CardBody([
             html.H5("Step 1: Find Student & Select Analysis", className="fw-bold mb-3"),
@@ -70,7 +69,7 @@ layout = dbc.Container([
 
     # Step 2: Credit Inputs
     html.Div(id='credit-input-container'),
-    
+
     # Step 3: Full Report
     html.Div(id='student-detail-content'),
 
@@ -165,7 +164,6 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
     if 'Student ID' not in df.columns: df.rename(columns={df.columns[0]: 'Student ID'}, inplace=True)
     
     df['Section'] = df['Student ID'].apply(lambda x: assign_section(x, section_ranges))
-
     credit_dict = {cid['index']: cval for cid, cval in zip(credit_ids, credit_vals) if cval is not None and cval > 0}
     codes_with_credits = list(credit_dict.keys())
     if not codes_with_credits: return dbc.Alert("Please enter credits > 0 for at least one subject.", color="warning")
@@ -191,6 +189,7 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
     if student_df.empty: return html.P("Student not found.", className="text-danger")
     student_series = student_df.iloc[0]
 
+    # SGPA Calculation
     total_credit_points, total_credits = 0, 0
     for code, credit in credit_dict.items():
         grade_point = get_grade_point(student_series[f"{code} Total"])
@@ -229,7 +228,7 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
     # Graphs
     top_subjects = scores_above_zero.nlargest(3)
     weak_subjects = scores_above_zero.nsmallest(3)
-    bar_fig = go.Figure(data=[go.Bar(x=subject_scores.index, y=subject_scores.values, text=subject_scores.values, textposition='auto')])
+    bar_fig = go.Figure(data=[go.Bar(x=subject_scores.index, y=subject_scores.values, text=subject_scores.values, textposition='auto', marker_color='cornflowerblue')])
     bar_fig.update_layout(title_text=f"📊 Subject-wise Performance ({analysis_type} Breakdown)", title_x=0.5, plot_bgcolor='rgba(0,0,0,0)')
 
     strong_card = dbc.Card([dbc.CardHeader("💪 Top 3 Strongest", className="bg-success text-white"), dbc.CardBody([html.Ul([html.Li(f"{s}: {m}") for s, m in top_subjects.items()])])])
@@ -237,15 +236,16 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
 
     class_averages = df[visual_cols_to_process].replace(0, np.nan).mean()
     comp_fig = go.Figure(data=[
-        go.Bar(x=subject_scores.index, y=subject_scores.values, name="You"),
-        go.Bar(x=subject_scores.index, y=class_averages.reindex(subject_scores.index), name="Class Average")
+        go.Bar(x=subject_scores.index, y=subject_scores.values, name="You", marker_color='dodgerblue'),
+        go.Bar(x=subject_scores.index, y=class_averages.reindex(subject_scores.index), name="Class Average", marker_color='orange')
     ])
     comp_fig.update_layout(title_text="📈 Student vs Class Average", title_x=0.5, barmode="group", plot_bgcolor='rgba(0,0,0,0)')
 
     pie_fig = go.Figure(data=[go.Pie(labels=["Strong", "Avg", "Weak"],
                                      values=[(scores_above_zero > 75).sum(),
                                              ((scores_above_zero >= 50) & (scores_above_zero <= 75)).sum(),
-                                             (scores_above_zero < 50).sum()])])
+                                             (scores_above_zero < 50).sum()],
+                                     marker_colors=['green','gold','red'])])
     pie_fig.update_layout(title_text="🎯 Performance Distribution", title_x=0.5)
 
     def get_result_text(subject_name, mark):
@@ -260,12 +260,22 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
         "Class Avg": [class_averages.get(s, 0) for s in subject_scores.index],
     })
 
+    # ----------------- Enhanced DataTable -----------------
     result_table = dash_table.DataTable(
         data=result_table_df.to_dict('records'),
         columns=[{"name": i, "id": i} for i in result_table_df.columns],
-        style_cell={'textAlign': 'center', 'padding': '5px'},
-        style_header={'backgroundColor': '#007bff', 'color': 'white', 'fontWeight': 'bold'},
-        style_data={'backgroundColor': '#f9f9f9'}
+        style_cell={'textAlign': 'center', 'padding': '8px', 'font-family': 'Arial, sans-serif', 'fontSize': 14, 'whiteSpace': 'normal', 'height': 'auto'},
+        style_header={'backgroundColor': '#007bff','color': 'white','fontWeight': 'bold','textAlign': 'center','border': '1px solid #dee2e6'},
+        style_data={'backgroundColor': '#f9f9f9','color': 'black','border': '1px solid #dee2e6'},
+        style_data_conditional=[
+            {'if': {'row_index': 'even'}, 'backgroundColor': '#e9ecef'},
+            {'if': {'filter_query': '{Result} = "Pass"', 'column_id': 'Result'}, 'color': 'green', 'fontWeight': 'bold'},
+            {'if': {'filter_query': '{Result} = "Fail"', 'column_id': 'Result'}, 'color': 'red', 'fontWeight': 'bold'},
+            {'if': {'state': 'active'}, 'backgroundColor': '#d1ecf1', 'color': 'black'}
+        ],
+        page_size=10,
+        fixed_rows={'headers': True},
+        style_table={'overflowX': 'auto', 'maxHeight': '400px'},
     )
 
     return dbc.Card(dbc.CardBody([
