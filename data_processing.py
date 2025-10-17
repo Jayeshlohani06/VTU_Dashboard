@@ -3,17 +3,25 @@ import numpy as np
 
 def preprocess_excel(file_buffer):
     """
-    Cleans multi-row Excel data:
+    Cleans multi-row Excel data and computes key metrics:
     - Handles multi-row headers and flattens them
     - Detects subject blocks (Total, Result)
     - Calculates per-student total marks and overall pass/fail
     - Computes key performance indicators (KPIs)
+    - Adds class rank
     - Returns cleaned DataFrame, column list, and KPI dictionary
     """
 
     # --- Step 1: Read Excel file (supports multi-row headers) ---
     df_raw = pd.read_excel(file_buffer, header=[0, 1])
-    df_raw.columns = [f"{c[0]}_{c[1]}".strip() for c in df_raw.columns]
+
+    # Flatten multi-level headers safely
+    df_raw.columns = [
+        "_".join([str(i) for i in col if str(i) != 'nan']).strip()
+        for col in df_raw.columns
+    ]
+
+    # Drop fully empty rows
     df = df_raw.dropna(how='all').reset_index(drop=True)
 
     # --- Step 2: Detect student identifier columns ---
@@ -36,17 +44,26 @@ def preprocess_excel(file_buffer):
             total_col = f"{sub}_Total"
             result_col = f"{sub}_Result"
 
+            if total_col not in df.columns and result_col not in df.columns:
+                continue  # skip missing subjects
+
             total_val = row.get(total_col, np.nan)
             result_val = str(row.get(result_col, "")).strip().upper()
 
             # Normalize result values
-            if result_val in ["PASS", "PASSED", "P"]:
+            if result_val.startswith("P"):
                 result_val = "P"
-            elif result_val in ["FAIL", "FAILED", "F"]:
+            elif result_val.startswith("F"):
                 result_val = "F"
+            else:
+                result_val = "P"  # default to pass if empty
 
-            if not pd.isna(total_val):
-                total_marks += total_val
+            # Convert total to numeric safely
+            if pd.notna(total_val):
+                try:
+                    total_marks += float(total_val)
+                except ValueError:
+                    pass
 
             subject_results.append(result_val)
 
