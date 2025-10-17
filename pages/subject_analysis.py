@@ -1,56 +1,36 @@
-# pages/subject_analysis.py
-
 import dash
 from dash import html, dcc, Input, Output, State, callback, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objs as go
 
 dash.register_page(__name__, path="/subject_analysis", name="Subject Analysis")
 
 # ---------- Layout ----------
 layout = dbc.Container([
-    html.H4("📊 Subject-wise Analysis", className="mb-4 text-center"),
+    html.H2("📊 Subject-wise Performance Analysis", className="text-center mb-4 fw-bold"),
 
-    # Collapsible Checklist Dropdown
-    dbc.Row([
-        dbc.Col([
-            dbc.Button(
-                "Select Subjects ▼",
-                id="dropdown-toggle-btn",
-                color="primary",
-                n_clicks=0,
-                className="mb-2"
+    # --- Control Panel ---
+    dbc.Card(
+        dbc.CardBody([
+            html.H5("Select Subjects for Analysis", className="card-title"),
+            dcc.Dropdown(
+                id='subject-checklist',
+                options=[],
+                value=[],
+                multi=True,
+                placeholder="Select subjects to analyze...",
+                className="mb-3"
             ),
-            dbc.Collapse(
-                html.Div([
-                    dcc.Checklist(
-                        id='subject-checklist',
-                        options=[],
-                        value=[],
-                        inputStyle={"margin-right": "10px", "margin-left": "5px"},
-                        labelStyle={"display": "block"}
-                    )
-                ], id='subject-checklist-container'),
-                id="dropdown-collapse",
-                is_open=False
-            )
-        ], md=6)
-    ], justify="center"),
-
-    # Select All / Deselect All Buttons
-    dbc.Row([
-        dbc.Col(
             dbc.ButtonGroup([
-                dbc.Button("Select All", id="select-all-btn", color="success"),
-                dbc.Button("Deselect All", id="deselect-all-btn", color="danger")
+                dbc.Button("Select All", id="select-all-btn", color="success", outline=True, className="me-2"),
+                dbc.Button("Deselect All", id="deselect-all-btn", color="danger", outline=True)
             ]),
-            md=6
-        )
-    ], justify="center", className="mb-2"),
-
-    # Selected subjects count
-    html.Div(id='selected-count', className="mb-4 text-center fw-bold text-primary"),
+            html.Div(id='selected-count', className="mt-3 text-muted small")
+        ]),
+        className="shadow-sm mb-4"
+    ),
 
     # Analysis output area
     html.Div(id='subject-analysis-content'),
@@ -58,173 +38,143 @@ layout = dbc.Container([
     # Data Stores
     dcc.Store(id='stored-data', storage_type='session'),
     dcc.Store(id='overview-selected-subjects', storage_type='session')
-], fluid=True)
+], fluid=True, className="py-4")
 
-# ---------- COLLAPSE TOGGLE ----------
-@callback(
-    Output("dropdown-collapse", "is_open"),
-    Input("dropdown-toggle-btn", "n_clicks"),
-    State("dropdown-collapse", "is_open")
-)
-def toggle_collapse(n, is_open):
-    if n:
-        return not is_open
-    return is_open
 
-# ---------- POPULATE CHECKLIST & SELECT ALL/DESELECT ALL ----------
+# ---------- POPULATE DROPDOWN & SELECT ALL/DESELECT ALL ----------
 @callback(
     Output('subject-checklist', 'options'),
     Output('subject-checklist', 'value'),
     Input('overview-selected-subjects', 'data'),
     Input('select-all-btn', 'n_clicks'),
     Input('deselect-all-btn', 'n_clicks'),
-    State('subject-checklist', 'options')
+    prevent_initial_call=True
 )
-def update_checklist(overview_subjects, select_all, deselect_all, current_options):
-    ctx = dash.callback_context
-    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
+def update_checklist(overview_subjects, select_all_clicks, deselect_all_clicks):
+    if not overview_subjects:
+        return [], []
 
-    options = [{'label': s, 'value': s} for s in overview_subjects] if overview_subjects else []
+    options = [{'label': s, 'value': s} for s in overview_subjects]
     all_subjects = [opt['value'] for opt in options]
 
-    # Default selection
-    selected = all_subjects if overview_subjects else []
+    ctx = dash.callback_context
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else 'overview-selected-subjects'
 
-    # Handle select/deselect buttons
     if trigger_id == 'select-all-btn':
-        selected = all_subjects
+        return options, all_subjects
     elif trigger_id == 'deselect-all-btn':
-        selected = []
-
-    return options, selected
+        return options, []
+    
+    # Default to selecting all when data first loads
+    return options, all_subjects
 
 # ---------- MAIN CALLBACK ----------
 @callback(
-    [Output('selected-count', 'children'),
-     Output('subject-analysis-content', 'children')],
+    Output('selected-count', 'children'),
+    Output('subject-analysis-content', 'children'),
     Input('subject-checklist', 'value'),
     State('stored-data', 'data')
 )
 def update_subject_analysis(selected_subjects, json_data):
     """Update KPIs, table, and chart based on subject selection."""
-    if json_data is None or not selected_subjects:
-        return "", html.P(
-            "Please upload data and select subjects on Overview page first.", 
-            className="text-muted text-center"
-        )
+    if not json_data:
+        return "", html.P("Please upload data on the Overview page first.", className="text-muted text-center mt-4")
+    if not selected_subjects:
+        return "0 subjects selected", html.P("Please select at least one subject to view the analysis.", className="text-muted text-center mt-4")
 
     df = pd.read_json(json_data, orient='split')
     first_col = df.columns[0]
+    if 'Name' not in df.columns: df['Name'] = ""
 
-    # Filter subject columns
-    subject_columns = {}
-    for subj in selected_subjects:
-        subj_cols = [c for c in df.columns if c.startswith(subj) and c.strip() != '']
-        if subj_cols:
-            subject_columns[subj] = subj_cols
-
-    if not subject_columns:
-        return f"{len(selected_subjects)} subject(s) selected", html.P(
-            "No columns found for selected subjects.", className="text-muted text-center"
-        )
-
-    # Prepare table
-    table_cols = [first_col]
-    for cols in subject_columns.values():
-        table_cols.extend(cols)
-    df_table = df[table_cols].copy()
-
-    # Numeric columns
-    numeric_cols = [c for c in df_table.columns if any(k in c for k in ['Internal', 'External', 'Total'])]
+    # Filter subject columns based on selection
+    all_selected_cols = []
+    for subj_code in selected_subjects:
+        # Ensure we only get columns starting with the exact subject code + a space
+        all_selected_cols.extend([col for col in df.columns if col.startswith(f"{subj_code} ")])
+    
+    # Remove duplicates if any
+    all_selected_cols = sorted(list(set(all_selected_cols)))
+    
+    df_filtered = df[[first_col, 'Name'] + all_selected_cols].copy()
+    
+    numeric_cols = [c for c in df_filtered.columns if any(k in c for k in ['Internal', 'External', 'Total'])]
     for col in numeric_cols:
-        df_table[col] = pd.to_numeric(df_table[col], errors='coerce')
+        df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce')
 
-    # Compute Overall Result
-    result_cols = [c for c in df_table.columns if 'Result' in c]
-    def overall_result(row):
-        results = [v for v in row[result_cols] if pd.notna(v)]
-        return 'Pass' if results and all(v == 'P' for v in results) else 'Fail'
-    df_table['Overall_Result'] = df_table.apply(overall_result, axis=1)
+    # Compute Overall Result for the selection
+    result_cols = [c for c in df_filtered.columns if 'Result' in c]
+    if result_cols:
+      df_filtered['Overall_Result'] = df_filtered.apply(lambda row: 'Pass' if all(row[c] == 'P' for c in result_cols if pd.notna(row[c])) else 'Fail', axis=1)
+    else: # Fallback if no result columns are present
+        total_cols = [c for c in df_filtered.columns if 'Total' in c]
+        df_filtered['Overall_Result'] = df_filtered.apply(lambda row: 'Fail' if any(0 < row[c] < 35 for c in total_cols) else 'Pass', axis=1)
 
-    # KPI Metrics
-    total_students = len(df_table)
-    pass_count = (df_table['Overall_Result'] == 'Pass').sum()
-    fail_count = (df_table['Overall_Result'] == 'Fail').sum()
-    pass_percent = round((pass_count / total_students) * 100, 2) if total_students else 0
-    fail_percent = round((fail_count / total_students) * 100, 2) if total_students else 0
+    # --- KPI Metrics ---
+    total_students = len(df_filtered)
+    pass_count = (df_filtered['Overall_Result'] == 'Pass').sum()
+    fail_count = total_students - pass_count
+    pass_percent = (pass_count / total_students * 100) if total_students > 0 else 0
+    fail_percent = (fail_count / total_students * 100) if total_students > 0 else 0
 
-    # KPI Cards
+    # --- KPI Cards ---
     kpi_cards = dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Pass Students", className="text-white-50"),
-            html.H3(pass_count)
-        ]), color="success", inverse=True), md=3),
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Fail Students", className="text-white-50"),
-            html.H3(fail_count)
-        ]), color="danger", inverse=True), md=3),
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Pass %", className="text-white-50"),
-            html.H3(f"{pass_percent}%")
-        ]), color="info", inverse=True), md=3),
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Fail %", className="text-white-50"),
-            html.H3(f"{fail_percent}%")
-        ]), color="warning", inverse=True), md=3),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H6("Passed Students", className="text-muted"), html.H2(f"✅ {pass_count}", className="fw-bold text-success")])), md=3),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H6("Failed Students", className="text-muted"), html.H2(f"❌ {fail_count}", className="fw-bold text-danger")])), md=3),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H6("Pass Percentage", className="text-muted"), html.H2(f"{pass_percent:.2f}%", className="fw-bold text-primary")])), md=3),
+        dbc.Col(dbc.Card(dbc.CardBody([html.H6("Fail Percentage", className="text-muted"), html.H2(f"{fail_percent:.2f}%", className="fw-bold text-warning")])), md=3),
     ], className="g-3 mb-4")
 
-    # DataTable with conditional styling
-    columns = [{"name": first_col, "id": first_col}]
-    for subj, cols in subject_columns.items():
-        for col in cols:
-            columns.append({"name": [subj, col.replace(subj + " ", "")], "id": col})
+    # --- DataTable with improved styling ---
+    columns = [{"name": [c.split(' ')[0], ' '.join(c.split(' ')[1:])], "id": c} for c in all_selected_cols]
+    columns.insert(0, {"name": ["Student", "Name"], "id": "Name"})
+    columns.insert(0, {"name": ["Student", "ID"], "id": first_col})
     columns.append({"name": ["Overall", "Result"], "id": "Overall_Result"})
-
-    style_data_conditional = []
-
-    # Highlight low scores (<18) and failed results
-    for col in numeric_cols:
-        style_data_conditional.append({
-            'if': {'column_id': col, 'filter_query': f'{{{col}}} < 18'},
-            'color': 'red',
-            'fontWeight': 'bold'
-        })
-    style_data_conditional.append({
-        'if': {'column_id': 'Overall_Result', 'filter_query': '{Overall_Result} = "Fail"'},
-        'color': 'red',
-        'fontWeight': 'bold'
-    })
 
     table = dash_table.DataTable(
         id='subject-table',
         columns=columns,
-        data=df_table.to_dict('records'),
-        style_data_conditional=style_data_conditional,
-        style_table={'overflowX': 'auto'},
-        style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold'},
+        data=df_filtered.to_dict('records'),
+        style_table={'borderRadius': '8px', 'overflowX': 'auto'}, # CORRECTED HERE
+        style_header={'backgroundColor': '#343a40', 'color': 'white', 'fontWeight': 'bold', 'textAlign': 'center'},
+        style_cell={'textAlign': 'center', 'padding': '10px', 'fontFamily': 'sans-serif'},
+        style_data_conditional=[
+            {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'},
+            {'if': {'filter_query': '{Overall_Result} = "Fail"', 'column_id': 'Overall_Result'}, 'backgroundColor': '#f8d7da', 'color': '#721c24'},
+            {'if': {'filter_query': '{Overall_Result} = "Pass"', 'column_id': 'Overall_Result'}, 'backgroundColor': '#d4edda', 'color': '#155724'},
+        ],
         merge_duplicate_headers=True,
         page_size=10,
         sort_action="native",
         filter_action="native",
-        style_cell={'textAlign': 'center', 'font-family': 'Arial'}
     )
 
-    # Pie Chart
-    pie_fig = px.pie(
-        names=['Pass', 'Fail'],
+    # --- Pie Chart ---
+    pie_fig = go.Figure(data=[go.Pie(
+        labels=['Pass', 'Fail'],
         values=[pass_count, fail_count],
-        title="Overall Result for Selected Subjects",
-        color_discrete_map={'Pass': 'green', 'Fail': 'red'}
+        marker=dict(colors=['#28a745', '#dc3545']),
+        hole=0.4,
+        textinfo='percent+label'
+    )])
+    pie_fig.update_layout(
+        title_text="Overall Result Distribution",
+        title_x=0.5,
+        template='plotly_white',
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    pie_fig.update_layout(title_x=0.5, height=400)
 
-    # Combine layout
-    content = dbc.Container([
-        kpi_cards,
-        html.H5("📋 Subject-wise Detailed Table", className="mb-3 text-center"),
-        table,
-        html.Br(),
-        dbc.Row([dbc.Col(dcc.Graph(figure=pie_fig), md=6, className="mx-auto")])
-    ], fluid=True)
+    # --- Assemble final layout ---
+    content = dbc.Card(
+        dbc.CardBody([
+            kpi_cards,
+            html.Hr(),
+            html.H5("📋 Detailed Subject Breakdown", className="mb-3 text-center"),
+            table,
+            html.Hr(className="my-4"),
+            dbc.Row(dbc.Col(dcc.Graph(figure=pie_fig), md=8), justify="center")
+        ]),
+        className="shadow-sm mt-4"
+    )
 
-    return f"{len(selected_subjects)} subject(s) selected", content
+    return f"{len(selected_subjects)} subjects selected", content
+
