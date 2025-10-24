@@ -3,6 +3,7 @@ from dash import html, dcc, Input, Output, State, callback
 import dash_bootstrap_components as dbc
 import pandas as pd
 import re
+import numpy as np # Import numpy for pd.notna
 
 dash.register_page(__name__, path="/ranking", name="Ranking")
 
@@ -93,7 +94,7 @@ def update_section_options(json_data, section_ranges):
 def display_ranking(filter_value, section_value, json_data, section_ranges):
     if not json_data:
         return html.P("Please upload data and define sections on the Overview page.",
-                      className="text-muted text-center mt-3")
+                          className="text-muted text-center mt-3")
     try:
         df = pd.read_json(json_data, orient='split')
     except:
@@ -151,11 +152,12 @@ def display_ranking(filter_value, section_value, json_data, section_ranges):
     failed_students = (df_filtered['Overall_Result'] == 'F').sum()
     pass_percentage = round((passed_students / total_students) * 100, 2) if total_students else 0
     kpi_items = [
-        {"label": "Total Students", "icon": "bi-people-fill", "value": total_students, "color": "#3b82f6", "bg": "#dbeafe"},
-        {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed_students, "color": "#10b981", "bg": "#d1fae5"},
-        {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed_students, "color": "#ef4444", "bg": "#fee2e2"},
-        {"label": "Pass %", "icon": "bi-bar-chart-fill", "value": f"{pass_percentage}%", "color": "#f59e0b", "bg": "#fef3c7"}
+        {"label": "Total Students", "icon": "bi-people-fill", "value": total_students, "color": "#60a5fa", "bg": "#eff6ff"},
+        {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed_students, "color": "#34d399", "bg": "#ecfdf5"},
+        {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed_students, "color": "#a15353ff", "bg": "#fef2f2"},
+        {"label": "Pass %", "icon": "bi-bar-chart-fill", "value": f"{pass_percentage}%", "color": "#fbbe24c9", "bg": "#fffceb2d"}
     ]
+
     kpi_cards = dbc.Row([dbc.Col(
         dbc.Card(
             dbc.CardBody([
@@ -180,14 +182,23 @@ def display_ranking(filter_value, section_value, json_data, section_ranges):
     display_cols = ['Class_Rank', 'Section_Rank', meta_col, 'Section', 'Total_Marks', 'Overall_Result']
     display_cols = [col for col in display_cols if col in df_filtered.columns]
 
+    # --- CORRECTED LOGIC FOR ROW STYLING ---
     table_rows = []
     for _, row in df_filtered.iterrows():
-        style = {}
+        row_class = ""  # Default row class
+        style = {}      # Default style
+        
         if row['Overall_Result'] == 'F':
-            style = {'backgroundColor': '#f8d7da', 'color': 'black', 'fontWeight': 'bold'}
+            row_class = "table-danger"  # Use Bootstrap's built-in class prop for rows
+            style = {'fontWeight': 'bold'}
         elif pd.notna(row['Class_Rank']) and row['Class_Rank'] <= 3:
-            style = {'backgroundColor': '#fff3cd', 'color': 'black', 'fontWeight': 'bold'}
-        table_rows.append(html.Tr([html.Td(row[col]) for col in display_cols], style=style))
+            row_class = "table-warning" # Use Bootstrap's built-in class prop for rows
+            style = {'fontWeight': 'bold'}
+            
+        table_rows.append(html.Tr([html.Td(row[col]) for col in display_cols], 
+                                 className=row_class, 
+                                 style=style))
+    # -------------------------------------------
 
     table = dbc.Table(
         [html.Thead(html.Tr([html.Th(col.replace("_", " ")) for col in display_cols]))] +

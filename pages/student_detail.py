@@ -48,7 +48,7 @@ layout = dbc.Container([
             dbc.Row([
                 dbc.Col(html.Div([
                     html.Label("Student ID / Name", className="form-label small text-muted"),
-                    dcc.Input(id='student-search', type='text', placeholder='e.g. 2023-001 or John Doe', debounce=True, className="form-control")
+                    dcc.Input(id='student-search', type='text', placeholder='USN: 1**YY**XXX', debounce=True, className="form-control")
                 ]), md=4),
                 dbc.Col(html.Div([
                     html.Label("Subject Codes (choose or leave All)", className="form-label small text-muted"),
