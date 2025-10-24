@@ -178,52 +178,29 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
     if 'Student ID' not in df.columns:
         df.rename(columns={df.columns[0]: 'Student ID'}, inplace=True)
 
-    # ---------- Assign Section ----------
     df['Section'] = df['Student ID'].apply(lambda x: assign_section(x, section_ranges))
 
-    # ---------- [NEW LOGIC FROM V2] Precompute Full Total Marks, Class Rank & Section Rank ----------
-    # Find all mark columns for the selected analysis_type, excluding known non-mark columns
-    all_mark_cols = [
-        c for c in df.columns 
-        if analysis_type in c 
-        and 'Result' not in c 
-        and 'Rank' not in c 
-        and 'Total_Marks' not in c 
-        and 'Student ID' not in c
-        and 'Name' not in c
-        and 'Section' not in c
-        and df.columns[0] not in c
-    ]
-    # Ensure they are numeric for sum
-    df_copy = df.copy() # Avoid SettingWithCopyWarning
+    all_mark_cols = [c for c in df.columns if analysis_type in c and 'Result' not in c and 'Rank' not in c and 'Total_Marks' not in c and 'Student ID' not in c and 'Name' not in c and 'Section' not in c and df.columns[0] not in c]
+    df_copy = df.copy()
     df_copy[all_mark_cols] = df_copy[all_mark_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-    # Calculate global total and ranks
     df['Total_Marks_Global'] = df_copy[all_mark_cols].sum(axis=1)
     df['Class_Rank_Global'] = df['Total_Marks_Global'].rank(method='min', ascending=False).astype('Int64')
     df['Section_Rank_Global'] = df.groupby('Section')['Total_Marks_Global'].rank(method='min', ascending=False).astype('Int64')
-    # ---------- [END NEW LOGIC] ----------
 
-    # ---------- Prepare Credits ----------
     credit_dict = {cid['index']: cval for cid, cval in zip(credit_ids, credit_vals) if cval is not None and cval > 0}
     codes_with_credits = list(credit_dict.keys())
     if not codes_with_credits:
         return dbc.Alert("Please enter credits > 0 for at least one subject.", color="warning")
 
-    # ---------- Use only relevant columns (for selected SGPA/Charts) ----------
     kpi_cols_to_process = [f"{code} {analysis_type}" for code in codes_with_credits]
     df[kpi_cols_to_process] = df[kpi_cols_to_process].apply(pd.to_numeric, errors='coerce').fillna(0)
     df['Total_Marks_Selected'] = df[kpi_cols_to_process].sum(axis=1)
-
-    # ---------- Result (based on selected subjects) ----------
     pass_mark_kpi = 18 if analysis_type != 'Total' else 35
     df['Result_Selected'] = df.apply(lambda row: 'Fail' if any(0 < row[c] < pass_mark_kpi for c in kpi_cols_to_process) else 'Pass', axis=1)
-
-    # [V1 Rank Logic Removed]
 
     student_mask = df['Student ID'].astype(str).str.contains(search_value, case=False, na=False) | df['Name'].astype(str).str.contains(search_value, case=False, na=False)
     student_series = df[student_mask].iloc[0]
 
-    # ---------- Compute SGPA ----------
     total_credit_points, total_credits = 0, 0
     for code, credit in credit_dict.items():
         grade_point = get_grade_point(student_series.get(f"{code} {analysis_type}", 0))
@@ -231,36 +208,57 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
         total_credits += credit
     sgpa = (total_credit_points / total_credits) if total_credits > 0 else 0.0
 
-    # ---------- KPI Cards ----------
-    total_marks = student_series['Total_Marks_Selected'] # This is total of *selected* subjects
+    # ---------- KPI Cards (Soft UI with Icons) ----------
+    total_marks = student_series['Total_Marks_Selected']
     percentage = sgpa * 10
-    result = student_series['Result_Selected'] # This is result of *selected* subjects
-    kpi_cards_row = dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([html.Small("Total Marks (Selected)", className="text-muted"), html.H4(f"{total_marks:.0f}", className="fw-bold")]), className="shadow-sm p-2"), md=2),
-        dbc.Col(dbc.Card(dbc.CardBody([html.Small("Percentage", className="text-muted"), html.H4(f"{percentage:.2f}%", className="fw-bold text-info"), dbc.Progress(value=percentage, striped=True, animated=True, style={"height": "10px"}, className="mt-2")]), className="shadow-sm p-2"), md=2),
-        dbc.Col(dbc.Card(dbc.CardBody([html.Small("Result (Selected)", className="text-muted"), html.H4(result, className=f"fw-bold {'text-success' if result=='Pass' else 'text-danger'}")]), className="shadow-sm p-2"), md=2),
-        
-        # [UPDATED RANKS] Using the global rank logic from V2
-        dbc.Col(dbc.Card(dbc.CardBody([html.Small("Class Rank (Global)", className="text-muted"), html.H4(student_series.get('Class_Rank_Global','—'), className="fw-bold")]), className="shadow-sm p-2"), md=2),
-        dbc.Col(dbc.Card(dbc.CardBody([html.Small("Section Rank (Global)", className="text-muted"), html.H4(student_series.get('Section_Rank_Global','—'), className="fw-bold")]), className="shadow-sm p-2"), md=2),
-        
-        dbc.Col(dbc.Card(dbc.CardBody([html.Small("Section", className="text-muted"), html.H4(student_series.get('Section','Not Assigned'), className="fw-bold")]), className="shadow-sm p-2"), md=2)
-    ], className="g-3 mb-4 justify-content-center align-items-center")
+    result = student_series['Result_Selected']
+
+    kpi_items = [
+        {"label": "Total Marks (Selected)", "icon": "bi-clipboard-data", "value": f"{total_marks:.0f}", "color": "#3b82f6", "bg": "#eff6ff"},
+        {"label": "Percentage", "icon": "bi-bar-chart-fill", "value": f"{percentage:.2f}%", "color": "#06b6d4", "bg": "#ecfeff"},
+        {"label": "Result", "icon": "bi-patch-check-fill" if result == "Pass" else "bi-x-octagon-fill", "value": result, "color": "#22c55e" if result == "Pass" else "#ef4444", "bg": "#ecfdf5" if result == "Pass" else "#fef2f2"},
+        {"label": "Class Rank (Global)", "icon": "bi-trophy-fill", "value": student_series.get('Class_Rank_Global', '—'), "color": "#f59e0b", "bg": "#fffbeb"},
+        {"label": "Section Rank (Global)", "icon": "bi-award-fill", "value": student_series.get('Section_Rank_Global', '—'), "color": "#8b5cf6", "bg": "#f5f3ff"},
+        {"label": "Section", "icon": "bi-people-fill", "value": student_series.get('Section', 'Not Assigned'), "color": "#2563eb", "bg": "#eff6ff"},
+    ]
+
+    kpi_cards = []
+    for item in kpi_items:
+        card = dbc.Card(
+            dbc.CardBody([
+                html.Div([
+                    html.I(className=f"{item['icon']} me-2", style={"color": item['color'], "fontSize": "1.2rem"}),
+                    html.Small(item["label"], className="text-muted fw-semibold"),
+                ]),
+                html.H4(item["value"], className="fw-bold mt-2", style={"color": item["color"]}),
+            ]),
+            style={"backgroundColor": item["bg"], "border": "none", "borderRadius": "12px"},
+            className="text-center shadow-sm p-2"
+        )
+        kpi_cards.append(dbc.Col(card, md=2, sm=4, xs=6, className="mb-3"))
+
+    kpi_cards_row = dbc.Row(kpi_cards, className="g-3 mb-4 justify-content-center")
 
     # ---------- Header Row ----------
     header_row = dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([html.H5(student_series.get('Name',''), className="mb-0 text-center"), html.H6(f"Student ID: {student_series.get('Student ID','')}", className="text-muted text-center"), html.H6(f"Section: {student_series.get('Section','Not Assigned')}", className="text-muted text-center")]), className="mb-3 p-3 shadow-sm"), md=6),
-        dbc.Col(dbc.Card(dbc.CardBody([html.H6("SGPA", className="text-muted text-center"), html.H2(f"{sgpa:.2f}", className="fw-bold text-info text-center")]), className="mb-3 p-3 shadow-sm"), md=6)
+        dbc.Col(dbc.Card(dbc.CardBody([
+            html.H5(student_series.get('Name', ''), className="mb-0 text-center"),
+            html.H6(f"Student ID: {student_series.get('Student ID', '')}", className="text-muted text-center"),
+            html.H6(f"Section: {student_series.get('Section', 'Not Assigned')}", className="text-muted text-center")
+        ]), className="mb-3 p-3 shadow-sm"), md=6),
+        dbc.Col(dbc.Card(dbc.CardBody([
+            html.H6("SGPA", className="text-muted text-center"),
+            html.H2(f"{sgpa:.2f}", className="fw-bold text-info text-center")
+        ]), className="mb-3 p-3 shadow-sm"), md=6)
     ], className="mb-4 justify-content-center align-items-center")
 
-    # ---------- Subject-wise Scores ----------
+    # ---------- Charts & Table ----------
     subject_scores = pd.Series({s: pd.to_numeric(student_series.get(s, 0), errors='coerce') for s in kpi_cols_to_process}).dropna()
     scores_above_zero = subject_scores[subject_scores > 0]
 
     if scores_above_zero.empty:
         return dbc.Card(dbc.CardBody([html.H4("Full Performance Report", className="text-center mb-3"), header_row, kpi_cards_row, dbc.Alert("No scores > 0 for the selected analysis/subjects.", color="info")]), className="mt-3 shadow")
 
-    # ---------- Charts ----------
     bar_fig = go.Figure(data=[go.Bar(x=scores_above_zero.index, y=scores_above_zero.values, text=[f"{v:.0f}" for v in scores_above_zero.values], textposition='auto', marker=dict(color='rgb(31,119,180)'))])
     bar_fig.update_layout(title_text=f"Subject-wise Performance ({analysis_type})", title_x=0.5, plot_bgcolor='rgba(0,0,0,0)', margin=dict(t=40, b=20, l=20, r=20))
 
@@ -275,6 +273,8 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
     weak_subjects = scores_above_zero.nsmallest(3)
     strong_card = dbc.Card([dbc.CardHeader("💪 Top Subjects", className="bg-success text-white"), dbc.CardBody([html.Ul([html.Li(f"{s}: {m:.0f}") for s, m in top_subjects.items()])])], className="shadow-sm")
     weak_card = dbc.Card([dbc.CardHeader("⚠️ Weak Subjects", className="bg-danger text-white"), dbc.CardBody([html.Ul([html.Li(f"{s}: {m:.0f}") for s, m in weak_subjects.items()])])], className="shadow-sm")
+
+    
 
     # ---------- Result Table ----------
     def get_result_text(subject_name, mark):
