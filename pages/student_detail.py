@@ -136,25 +136,39 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
     ])
     if not subject_codes_for_credits:
         return dbc.Alert("This student has no scores recorded for the selected subjects.", color="info", className="text-center mt-3")
+
+    # ✅ Changed: Dropdown from 0–4 instead of numeric input
     credit_inputs = []
     for code in subject_codes_for_credits:
         credit_inputs.append(
             dbc.Row([
                 dbc.Col(html.Label(code, className="fw-bold"), width=5, className="text-end"),
-                dbc.Col(dcc.Input(id={'type': 'credit-input-student', 'index': code}, type='number', min=0, step=0.5, value=3, className="form-control"), width=4),
+                dbc.Col(
+                    dcc.Dropdown(
+                        id={'type': 'credit-input-student', 'index': code},
+                        options=[{'label': str(i), 'value': i} for i in range(0, 5)],
+                        value=3,
+                        clearable=False,
+                        className="form-select"
+                    ), width=4
+                ),
                 dbc.Col(html.Span("credits", className="text-muted small ms-2"), width=3, className="align-self-center")
             ], className="mb-2")
         )
+
     card = dbc.Card([
         dbc.CardBody([
             html.H5("Step 2: Enter Subject Credits", className="fw-bold text-center mb-2"),
-            html.P("Provide credits for subjects you want included in SGPA / KPI calculations.", className="text-muted small text-center mb-3"),
+            html.P("Select credits (0–4) for subjects you want included in SGPA / KPI calculations.", className="text-muted small text-center mb-3"),
             dbc.Row(dbc.Col(credit_inputs), className="mb-2"),
             dbc.Button("Calculate & View Full Report", id='calculate-sgpa-btn', color="success", className="w-100 mt-2")
         ])
     ], className="shadow-sm mb-4 p-2")
+
     return card
 
+# ---------- Display Full Report ----------
+# (Keep your existing display_full_report callback as it is — no change needed)
 # ---------- Display Full Report ----------
 @callback(
     Output('student-detail-content', 'children'),
