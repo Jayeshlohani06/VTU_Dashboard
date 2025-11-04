@@ -3,10 +3,11 @@ from dash import html, dcc, Input, Output, State, callback
 import dash_bootstrap_components as dbc
 import pandas as pd
 import re
-import numpy as np # Import numpy for pd.notna
+import numpy as np  # for pd.notna, if needed
 
 dash.register_page(__name__, path="/ranking", name="Ranking")
 
+# ----------------------------- Helpers -----------------------------
 def extract_numeric(roll):
     digits = re.findall(r'\d+', str(roll))
     return int(digits[-1]) if digits else 0
@@ -20,13 +21,14 @@ def assign_section(roll_no, section_ranges):
             return sec_name
     return "Unassigned"
 
+# ----------------------------- Layout ------------------------------
 layout = dbc.Container([
     html.H3([
         html.I(className="bi bi-trophy me-2 text-warning", style={"fontSize": "2rem"}),
         "Class & Section Ranking"
     ], className="mb-4 text-center fw-bold"),
 
-    # Filters
+    # Filters + Search
     dbc.Row([
         dbc.Col(
             dcc.Dropdown(
@@ -41,7 +43,7 @@ layout = dbc.Container([
                 style={"width": "100%"},
                 className="shadow-sm"
             ),
-            md=6, xs=12
+            md=4, xs=12
         ),
         dbc.Col(
             dcc.Dropdown(
@@ -52,9 +54,19 @@ layout = dbc.Container([
                 style={"width": "100%"},
                 className="shadow-sm"
             ),
-            md=6, xs=12
-        )
-    ], className="mb-4 justify-content-center align-items-end mx-auto", style={"maxWidth": "700px"}),
+            md=4, xs=12
+        ),
+        dbc.Col(
+            dcc.Input(
+                id="search-input",
+                type="text",
+                placeholder="🔎 Search by Student USN",
+                debounce=True,   # fire after user stops typing
+                className="form-control shadow-sm"
+            ),
+            md=4, xs=12
+        ),
+    ], className="mb-4 justify-content-center align-items-end mx-auto", style={"maxWidth": "1000px"}),
 
     # KPI cards + table
     dbc.Spinner(html.Div(id='ranking-content'), color="primary"),
@@ -64,6 +76,7 @@ layout = dbc.Container([
     dcc.Store(id='section-data', storage_type='session'),
 ], fluid=True, className="pb-4")
 
+# ------------------------ Callbacks: Sections -----------------------
 @callback(
     Output('section-dropdown', 'options'),
     Input('stored-data', 'data'),
@@ -74,79 +87,127 @@ def update_section_options(json_data, section_ranges):
         return [{"label": "All Sections", "value": "ALL"}]
     try:
         df = pd.read_json(json_data, orient='split')
-    except:
+    except Exception:
         return [{"label": "All Sections", "value": "ALL"}]
+
     if section_ranges:
+        # Assign from first column (ID/USN)
         df['Section'] = df.iloc[:, 0].apply(lambda x: assign_section(str(x), section_ranges))
     else:
+        # Fall back to any preexisting Section column
         df['Section'] = df.get('Section', "Not Assigned")
+
     sections = sorted(df['Section'].dropna().unique())
     options = [{"label": "All Sections", "value": "ALL"}] + [{"label": sec, "value": sec} for sec in sections]
     return options
 
+# ----------------------- Callbacks: Ranking -------------------------
 @callback(
     Output('ranking-content', 'children'),
     Input('filter-dropdown', 'value'),
     Input('section-dropdown', 'value'),
+    Input('search-input', 'value'),           # ✅ NEW: live search input
     State('stored-data', 'data'),
     State('section-data', 'data')
 )
-def display_ranking(filter_value, section_value, json_data, section_ranges):
+def display_ranking(filter_value, section_value, search_value, json_data, section_ranges):
+    # ------------------------ Load & Prepare ------------------------
     if not json_data:
         return html.P("Please upload data and define sections on the Overview page.",
-                          className="text-muted text-center mt-3")
+                      className="text-muted text-center mt-3")
     try:
         df = pd.read_json(json_data, orient='split')
-    except:
+    except Exception:
         return html.P("⚠️ Error reading data. Please re-upload.", className="text-center text-danger")
     if df.empty:
         return html.P("No data available.", className="text-center text-muted")
 
+    # Normalize key columns
     df.rename(columns={df.columns[0]: 'Student_ID'}, inplace=True)
     meta_col = 'Student_ID'
 
+    # Section assignment
     if section_ranges:
         df['Section'] = df[meta_col].apply(lambda x: assign_section(str(x), section_ranges))
     else:
         df['Section'] = df.get('Section', "Not Assigned")
 
-    total_cols = [c for c in df.columns if 'Total' in c or 'Marks' in c or 'Score' in c]
+    # Total marks (looks across any *Total*/Marks/Score* columns)
+    total_cols = [c for c in df.columns if ('Total' in c or 'Marks' in c or 'Score' in c)]
     df[total_cols] = df[total_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
     df['Total_Marks'] = df[total_cols].sum(axis=1) if total_cols else 0
 
+    # Overall result:
+    # If there are explicit "Result" columns -> P only when ALL results are 'P'
+    # Else derive from marks (every subject >= 18 -> P, otherwise F)
     result_cols = [c for c in df.columns if 'Result' in c]
     if result_cols:
         df['Overall_Result'] = df[result_cols].apply(
-            lambda row: 'P' if all(str(v).strip().upper() == 'P' for v in row if pd.notna(v)) else 'F', axis=1)
+            lambda row: 'P' if all(str(v).strip().upper() == 'P' for v in row if pd.notna(v)) else 'F',
+            axis=1
+        )
     else:
         pass_mark = 18
         df['Overall_Result'] = df.apply(
-            lambda row: 'F' if any(row[c] < pass_mark for c in total_cols) else 'P', axis=1
+            lambda row: 'F' if any(row[c] < pass_mark for c in total_cols) else 'P',
+            axis=1
         )
 
-    # Apply filters
+    # ------------------------ Filter & Search -----------------------
     df_filtered = df.copy()
+
+    # Filter by pass/fail
     if filter_value == "PASS":
         df_filtered = df_filtered[df_filtered["Overall_Result"] == "P"]
     elif filter_value == "FAIL":
         df_filtered = df_filtered[df_filtered["Overall_Result"] == "F"]
+
+    # Filter by section
     if section_value != "ALL":
         df_filtered = df_filtered[df_filtered["Section"] == section_value]
 
-    # Rankings
-    df_filtered['Class_Rank'] = df_filtered[df_filtered['Overall_Result'] == 'P']['Total_Marks'].rank(method='min', ascending=False).astype('Int64')
+    # ✅ Robust search by ID or Name (no .astype() on raw strings)
+    if search_value and str(search_value).strip():
+        search_value = str(search_value).strip()
+
+        # Always safe series for ID & Name (avoid AttributeError when column missing)
+        ser_id = df_filtered[meta_col].astype(str)
+        if 'Name' in df_filtered.columns:
+            ser_name = df_filtered['Name'].astype(str)
+        else:
+            ser_name = pd.Series([''] * len(df_filtered), index=df_filtered.index, dtype='string')
+
+        mask = ser_id.str.contains(search_value, case=False, na=False) | \
+               ser_name.str.contains(search_value, case=False, na=False)
+        df_filtered = df_filtered[mask]
+
+    # --------------------------- Ranking ---------------------------
+    # Rank ONLY passed students for both class & section.
+    df_filtered['Class_Rank'] = pd.NA
+    pass_mask = (df_filtered['Overall_Result'] == 'P')
+
+    # Class rank among passers
+    df_filtered.loc[pass_mask, 'Class_Rank'] = (
+        df_filtered.loc[pass_mask, 'Total_Marks']
+        .rank(method='min', ascending=False)
+        .astype('Int64')
+    )
+
+    # Section rank among passers in their own section
+    df_filtered['Section_Rank'] = pd.NA
     if 'Section' in df_filtered.columns:
-        df_filtered['Section_Rank'] = (
-            df_filtered.groupby('Section')['Total_Marks']
+        df_filtered.loc[pass_mask, 'Section_Rank'] = (
+            df_filtered.loc[pass_mask]
+            .groupby('Section')['Total_Marks']
             .rank(method='min', ascending=False)
             .astype('Int64')
         )
-    else:
-        df_filtered['Section_Rank'] = None
-    df_filtered['Class_Rank_Sort'] = df_filtered['Class_Rank'].fillna(9999)  # Failed at bottom
+
+    # Failed students at bottom (no class rank)
+    df_filtered['Class_Rank_Sort'] = df_filtered['Class_Rank'].fillna(9999)
     df_filtered = df_filtered.sort_values(by='Class_Rank_Sort', ascending=True).drop(columns=['Class_Rank_Sort'])
 
-    # KPI metrics/soft backgrounds/icons
+    # ----------------------------- KPIs ----------------------------
     total_students = len(df_filtered)
     passed_students = (df_filtered['Overall_Result'] == 'P').sum()
     failed_students = (df_filtered['Overall_Result'] == 'F').sum()
@@ -158,47 +219,54 @@ def display_ranking(filter_value, section_value, json_data, section_ranges):
         {"label": "Pass %", "icon": "bi-bar-chart-fill", "value": f"{pass_percentage}%", "color": "#fbbe24c9", "bg": "#fffceb2d"}
     ]
 
-    kpi_cards = dbc.Row([dbc.Col(
-        dbc.Card(
-            dbc.CardBody([
-                html.Div([
-                    html.I(className=f"bi {item['icon']} me-2", style={"fontSize": "2rem", "color": item["color"]}),
-                    html.H6(item["label"], className="text-muted mb-0"),
-                ], className="mb-1"),
-                html.H2(item["value"], className="fw-bold", style={"color": item["color"], "transition": "all 0.5s"}),
-            ]),
-            style={
-                "backgroundColor": item["bg"],
-                "borderLeft": f"5px solid {item['color']}",
-                "borderRadius": "12px",
-                "boxShadow": "0 6px 20px 0 rgba(32,36,54,0.07)",
-                "textAlign": "center",
-                "padding": "17px",
-                "transition": "all 0.6s"
-            }
-        ), md=3, xs=6, className="mb-2") for item in kpi_items
+    kpi_cards = dbc.Row([
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.I(className=f"bi {item['icon']} me-2", style={"fontSize": "2rem", "color": item["color"]}),
+                        html.H6(item["label"], className="text-muted mb-0"),
+                    ], className="mb-1"),
+                    html.H2(item["value"], className="fw-bold", style={"color": item["color"], "transition": "all 0.5s"}),
+                ]),
+                style={
+                    "backgroundColor": item["bg"],
+                    "borderLeft": f"5px solid {item['color']}",
+                    "borderRadius": "12px",
+                    "boxShadow": "0 6px 20px 0 rgba(32,36,54,0.07)",
+                    "textAlign": "center",
+                    "padding": "17px",
+                    "transition": "all 0.6s"
+                }
+            ),
+            md=3, xs=6, className="mb-2"
+        ) for item in kpi_items
     ], className="mb-4 g-3 justify-content-center align-items-stretch")
 
+    # --------------------------- Table -----------------------------
     display_cols = ['Class_Rank', 'Section_Rank', meta_col, 'Section', 'Total_Marks', 'Overall_Result']
+    # Include Name column if present (keeps your table flexible)
+    if 'Name' in df_filtered.columns:
+        display_cols.insert(3, 'Name')
+
     display_cols = [col for col in display_cols if col in df_filtered.columns]
 
-    # --- CORRECTED LOGIC FOR ROW STYLING ---
+    # Row styling (top 3 passers highlighted; failed rows red & bold)
     table_rows = []
     for _, row in df_filtered.iterrows():
-        row_class = ""  # Default row class
-        style = {}      # Default style
-        
+        row_class = ""   # default
+        style = {}       # default
         if row['Overall_Result'] == 'F':
-            row_class = "table-danger"  # Use Bootstrap's built-in class prop for rows
+            row_class = "table-danger"
             style = {'fontWeight': 'bold'}
         elif pd.notna(row['Class_Rank']) and row['Class_Rank'] <= 3:
-            row_class = "table-warning" # Use Bootstrap's built-in class prop for rows
+            row_class = "table-warning"
             style = {'fontWeight': 'bold'}
-            
-        table_rows.append(html.Tr([html.Td(row[col]) for col in display_cols], 
-                                 className=row_class, 
-                                 style=style))
-    # -------------------------------------------
+
+        table_rows.append(
+            html.Tr([html.Td(row[col]) for col in display_cols],
+                    className=row_class, style=style)
+        )
 
     table = dbc.Table(
         [html.Thead(html.Tr([html.Th(col.replace("_", " ")) for col in display_cols]))] +
@@ -207,9 +275,9 @@ def display_ranking(filter_value, section_value, json_data, section_ranges):
         className="shadow-sm text-center align-middle table-lg"
     )
 
+    # --------------------------- Return ----------------------------
     return dbc.Container([
         kpi_cards,
         html.H5("📋 Class Ranking Table", className="text-center mb-3 fw-bold"),
         table
     ], fluid=True, style={"maxWidth": "1000px"})
-
