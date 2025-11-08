@@ -1,5 +1,5 @@
 # pages/ranking.py
-# Clean, aligned, modern light-theme UI for Ranking page
+# Full upgraded Ranking page: fixes + UI improvements + animations + top5 colors
 
 import dash  # for dash.ctx in callbacks
 from dash import html, dcc, Input, Output, State, callback, dash_table, no_update
@@ -8,6 +8,7 @@ import pandas as pd
 import re
 from functools import lru_cache
 import ast  # safe parsing for section ranges
+import plotly.express as px
 
 # Register page
 dash.register_page(__name__, path="/ranking", name="Ranking")
@@ -107,9 +108,9 @@ def _section_key(section_ranges):
         return "None"
 
 
-# ==================== Styles (light theme only) ====================
+# ==================== Themes (CSS injected via <style>) ====================
 
-PAGE_CSS = """
+PAGE_CSS_LIGHT = r"""
 :root{
   --bg: #f5f7fb;
   --card: #ffffff;
@@ -118,14 +119,16 @@ PAGE_CSS = """
   --primary:#1f2937;
   --brand:#3b82f6;
   --shadow: 0 8px 24px rgba(16,24,40,.08);
+
+  --k1:#fff7e6; /* rank1 chip */
+  --k2:#eef2ff; /* rank2 chip */
+  --k3:#fef3c7; /* rank3 chip */
+  --k45:#f1f5f9; /* rank4/5 chip */
+  --fail:#fee2e2; /* soft red */
 }
 
 /* page wrapper */
-.rnk-wrap{
-  background: var(--bg);
-  padding: 18px;
-  border-radius: 14px;
-}
+.rnk-wrap{ background: var(--bg); padding: 18px; border-radius: 14px; }
 
 /* section cards */
 .rnk-card{
@@ -133,13 +136,15 @@ PAGE_CSS = """
   border: 0 !important;
   border-radius: 14px !important;
   box-shadow: var(--shadow);
+  transition: transform .2s ease, box-shadow .2s ease;
 }
+.rnk-card:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px rgba(16,24,40,.12); }
 
 /* header */
-.rnk-title{
-  color: var(--primary);
-  letter-spacing:.5px;
-}
+.rnk-title{ color: var(--primary); letter-spacing:.5px; }
+
+/* sticky controls */
+.rnk-controls-wrap{ position: sticky; top: 0; z-index: 10; }
 
 /* control row */
 .rnk-controls .btn, .rnk-controls .form-select, .rnk-controls .form-control{
@@ -147,20 +152,24 @@ PAGE_CSS = """
 }
 
 /* KPI */
-.kpi-card{
-  border-left: 6px solid transparent;
-}
+.kpi-card{ border-left: 6px solid transparent; }
 .kpi-label{ color: var(--muted); font-size:.9rem; }
-.kpi-value{ font-weight:800; }
+.kpi-value{ font-weight:800; transition: transform .3s ease; }
+.kpi-card:hover .kpi-value{ transform: scale(1.03); }
 
-/* toppers & bottom lists */
-.bullet{
-  margin: 0;
-  padding-left: 1rem;
-}
-.bullet li{
-  margin: .25rem 0;
-}
+/* chips */
+.rank-chip{ display:inline-block; padding:.35rem .6rem; border-radius: 9999px; font-weight:700; }
+.rank-1{ background:var(--k1); }
+.rank-2{ background:var(--k2); }
+.rank-3{ background:var(--k3); }
+.rank-4,.rank-5{ background:var(--k45); }
+
+.badge-pass{ background:#ecfdf5; color:#065f46; padding:.2rem .5rem; border-radius:9999px; font-weight:700; }
+.badge-fail{ background:#fee2e2; color:#7f1d1d; padding:.2rem .5rem; border-radius:9999px; font-weight:700; }
+
+/* lists */
+.bullet{ margin:0; padding-left: 1rem; }
+.bullet li{ margin:.35rem 0; }
 
 /* datatable polish */
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td,
@@ -172,15 +181,74 @@ PAGE_CSS = """
 }
 """
 
+PAGE_CSS_DARK = r"""
+:root{
+  --bg: #0b1220;
+  --card: #0f172a;
+  --text: #e5e7eb;
+  --muted:#9ca3af;
+  --primary:#e5e7eb;
+  --brand:#60a5fa;
+  --shadow: 0 8px 24px rgba(0,0,0,.45);
+
+  --k1:#1f2937;
+  --k2:#111827;
+  --k3:#1f2937;
+  --k45:#0b1220;
+  --fail:#3b0d0d;
+}
+
+.rnk-wrap{ background: var(--bg); padding: 18px; border-radius: 14px; }
+.rnk-card{
+  background: var(--card);
+  border: 0 !important;
+  border-radius: 14px !important;
+  box-shadow: var(--shadow);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.rnk-card:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px rgba(0,0,0,.6); }
+.rnk-title{ color: var(--primary); letter-spacing:.5px; }
+.rnk-controls-wrap{ position: sticky; top: 0; z-index: 10; }
+
+.kpi-card{ border-left: 6px solid transparent; }
+.kpi-label{ color: var(--muted); font-size:.9rem; }
+.kpi-value{ font-weight:800; transition: transform .3s ease; }
+.kpi-card:hover .kpi-value{ transform: scale(1.03); }
+.rank-chip{ display:inline-block; padding:.35rem .6rem; border-radius: 9999px; font-weight:700; }
+.rank-1{ background:var(--k1); color:#fde68a; }
+.rank-2{ background:var(--k2); color:#c7d2fe; }
+.rank-3{ background:var(--k3); color:#fde68a; }
+.rank-4,.rank-5{ background:var(--k45); color:#e5e7eb; }
+
+.badge-pass{ background:#064e3b; color:#ecfdf5; padding:.2rem .5rem; border-radius:9999px; font-weight:7E00; }
+.badge-fail{ background:#7f1d1d; color:#fee2e2; padding:.2rem .5rem; border-radius:9999px; font-weight:700; }
+
+.bullet{ margin:0; padding-left: 1rem; }
+.bullet li{ margin:.35rem 0; }
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{
+  border-color:#334155 !important;
+}
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td{
+  background:#0b1220 !important;
+}
+"""
+
+def themed_style_block(theme: str):
+    css = PAGE_CSS_DARK if theme == "dark" else PAGE_CSS_LIGHT
+    return dcc.Markdown(f"<style>{css}</style>", dangerously_allow_html=True)
+
 
 # ==================== Layout ====================
 
 layout = dbc.Container([
+    # Theme CSS injector (updated by callback)
+    html.Div(id="theme-style"),
+
     # Bootstrap Icons (for bi- classes)
     html.Link(rel="stylesheet",
               href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"),
-    
-    
 
     # Title
     html.Div([
@@ -189,58 +257,83 @@ layout = dbc.Container([
                className="text-center text-muted mb-4")
     ], className="rnk-wrap mb-3 rnk-card p-3"),
 
-    # Controls
-    dbc.Card(dbc.CardBody([
-        dbc.Row([
-            dbc.Col(dcc.Dropdown(
-                id="filter-dropdown",
-                options=[
-                    {"label": "All Students", "value": "ALL"},
-                    {"label": "Passed Students", "value": "PASS"},
-                    {"label": "Failed Students", "value": "FAIL"},
-                ],
-                value="ALL", clearable=False, className="shadow-sm"
-            ), md=3, xs=12),
+    # Controls (sticky)
+    html.Div(
+        dbc.Card(dbc.CardBody([
+            dbc.Row([
+                dbc.Col(dcc.Dropdown(
+                    id="filter-dropdown",
+                    options=[
+                        {"label": "All Students", "value": "ALL"},
+                        {"label": "Passed Students", "value": "PASS"},
+                        {"label": "Failed Students", "value": "FAIL"},
+                    ],
+                    value="ALL", clearable=False, className="shadow-sm"
+                ), md=3, xs=12),
 
-            dbc.Col(dcc.Dropdown(
-                id="section-dropdown",
-                options=[{"label": "All Sections", "value": "ALL"}],
-                value="ALL", clearable=False, className="shadow-sm"
-            ), md=3, xs=12),
+                dbc.Col(dcc.Dropdown(
+                    id="section-dropdown",
+                    options=[{"label": "All Sections", "value": "ALL"}],
+                    value="ALL", clearable=False, className="shadow-sm"
+                ), md=3, xs=12),
 
-            dbc.Col(
-                dbc.InputGroup([
-                    dbc.InputGroupText(html.I(className="bi bi-search")),
-                    dbc.Input(id="search-input",
-                              placeholder="Search by Student ID / Name / Section…",
-                              type="text")
-                ], className="shadow-sm"),
-            md=4, xs=12),
+                dbc.Col(
+                    dbc.InputGroup([
+                        dbc.InputGroupText(html.I(className="bi bi-search")),
+                        dbc.Input(id="search-input",
+                                  placeholder="Search by Student ID / Name / Section…",
+                                  type="text")
+                    ], className="shadow-sm"),
+                md=4, xs=12),
 
-            dbc.Col(
-                dbc.ButtonGroup([
-                    dbc.Button("Reset", id="reset-btn", color="secondary", outline=True, className="me-1"),
-                    dbc.Button("Export CSV", id="export-csv", color="primary", outline=True, className="me-1"),
-                    dbc.Button("Export Excel", id="export-xlsx", color="success", outline=True),
-                ], className="w-100 d-flex justify-content-end"),
-            md=2, xs=12),
-        ], className="g-2 rnk-controls")
-    ]), className="rnk-card mb-3"),
+                dbc.Col(
+                    dbc.ButtonGroup([
+                        dbc.Button("Reset", id="reset-btn", color="secondary", outline=True, className="me-1"),
+                        dbc.Button("Export CSV", id="export-csv", color="primary", outline=True, className="me-1"),
+                        dbc.Button("Export Excel", id="export-xlsx", color="success", outline=True),
+                    ], className="w-100 d-flex justify-content-end"),
+                md=2, xs=12),
+            ], className="g-2 rnk-controls"),
+
+            # Theme toggle row
+            dbc.Row([
+                dbc.Col(
+                    dbc.Checklist(
+                        id="theme-toggle",
+                        options=[{"label": "🌙 Dark Mode", "value": "dark"}],
+                        value=[],
+                        switch=True,
+                    ), width="auto"
+                )
+            ], className="mt-2")
+        ]), className="rnk-card"),
+        className="rnk-controls-wrap mb-3"
+    ),
 
     # KPIs
     dbc.Card(dbc.CardBody(
         html.Div(dbc.Spinner(html.Div(id='kpi-cards'), color="primary"), className="py-1")
     ), className="rnk-card mb-3"),
 
-    # Toppers + Bottom 5
+    # Overview row: Top5 + Section-wise toppers + Bottom 5
     dbc.Row([
         dbc.Col(dbc.Card(dbc.CardBody(
+            html.Div([
+                html.Div(
+                    [html.H6("🥇 Top 5 Overall", className="fw-bold mb-2 me-auto")],
+                    className="d-flex align-items-center"
+                ),
+                html.Div(id="overall-top5", className="mb-1")
+            ])
+        ), className="rnk-card"), md=4, xs=12),
+
+        dbc.Col(dbc.Card(dbc.CardBody(
             html.Div(id="section-toppers")
-        ), className="rnk-card"), md=7, xs=12),
+        ), className="rnk-card"), md=4, xs=12),
 
         dbc.Col(dbc.Card(dbc.CardBody(
             html.Div(id="bottom-five")
-        ), className="rnk-card"), md=5, xs=12),
+        ), className="rnk-card"), md=4, xs=12),
     ], className="g-3 mb-3"),
 
     # DataTable
@@ -300,6 +393,17 @@ layout = dbc.Container([
 ], fluid=True, className="pb-4")
 
 
+# ==================== Theme callback ====================
+
+@callback(
+    Output("theme-style", "children"),
+    Input("theme-toggle", "value")
+)
+def apply_theme(toggle_values):
+    theme = "dark" if ("dark" in (toggle_values or [])) else "light"
+    return themed_style_block(theme)
+
+
 # ==================== Callbacks ====================
 
 # Section dropdown options
@@ -329,9 +433,10 @@ def reset_filters(n_clicks):
     """Reset all filter controls to defaults."""
     return "ALL", "ALL", ""
 
-# Main build: KPIs, toppers/bottom, table
+# Main build: KPIs, Top5, toppers, bottom, table
 @callback(
     Output('kpi-cards', 'children'),
+    Output('overall-top5', 'children'),
     Output('section-toppers', 'children'),
     Output('bottom-five', 'children'),
     Output('ranking-table', 'columns'),
@@ -343,65 +448,76 @@ def reset_filters(n_clicks):
     State('section-data', 'data')
 )
 def build_views(filter_value, section_value, search_value, json_data, section_ranges):
-    """Build KPIs, toppers/bottom panes, and the main ranking table."""
+    """
+    Build KPIs, Top 5 overall (always show 1–5), Section-wise toppers, Bottom 5, and table.
+    KPI behavior:
+      * ALL  -> show Total, Passed, Failed, Pass %
+      * PASS -> show Total (in view) and Passed only
+      * FAIL -> show Total (in view) and Failed only
+    """
     if not json_data:
-        return (html.P("Upload data on Overview page.", className="text-muted"),
-                html.Div(), html.Div(), [], [])
+        empty = html.P("Upload data on Overview page.", className="text-muted")
+        return empty, html.Div(), html.Div(), html.Div(), [], []
 
     # Cached normalized base
-    base = _prepare_base(json_data, _section_key(section_ranges)).copy()
+    base_full = _prepare_base(json_data, _section_key(section_ranges)).copy()
 
-    # Filter by pass/fail
+    # ---------- Apply Pass/Fail & Section filters to get "scope" ----------
+    scope = base_full.copy()
     if filter_value == "PASS":
-        base = base[base["Overall_Result"] == "P"]
+        scope = scope[scope["Overall_Result"] == "P"]
     elif filter_value == "FAIL":
-        base = base[base["Overall_Result"] == "F"]
+        scope = scope[scope["Overall_Result"] == "F"]
 
-    # Filter by section
     if section_value != "ALL":
-        base = base[base["Section"] == section_value]
+        scope = scope[scope["Section"] == section_value]
 
-    # Search
-    if search_value:
-        s = str(search_value).strip()
-        mask = (
-            base['Student_ID'].astype(str).str.contains(s, case=False, na=False) |
-            base['Name'].astype(str).str.contains(s, case=False, na=False) |
-            base['Section'].astype(str).str.contains(s, case=False, na=False)
-        )
-        base = base[mask]
-
-    # Rankings
-    base['Class_Rank'] = base[base['Overall_Result'] == 'P']['Total_Marks'].rank(
+    # ---------- Rankings ----------
+    scope['Class_Rank'] = scope[scope['Overall_Result'] == 'P']['Total_Marks'].rank(
         method='min', ascending=False
     ).astype('Int64')
 
-    base['Section_Rank'] = (
-        base.groupby('Section')['Total_Marks']
+    scope['Section_Rank'] = (
+        scope.groupby('Section')['Total_Marks']
         .rank(method='min', ascending=False)
         .astype('Int64')
     )
 
-    # Sort (push fails to bottom)
-    base['__rank_sort'] = base['Class_Rank'].fillna(10**9)
-    base = base.sort_values(['__rank_sort', 'Total_Marks'], ascending=[True, False]).drop(columns='__rank_sort')
+    # ---------- KPIs ----------
+    total_in_scope = len(scope)
+    passed_in_scope = (scope['Overall_Result'] == 'P').sum()
+    failed_in_scope = (scope['Overall_Result'] == 'F').sum()
+    pass_pct_scope = round((passed_in_scope / total_in_scope) * 100, 2) if total_in_scope else 0
 
-    # KPIs
-    total_students = len(base)
-    passed = (base['Overall_Result'] == 'P').sum()
-    failed = (base['Overall_Result'] == 'F').sum()
-    pass_pct = round((passed / total_students) * 100, 2) if total_students else 0
+    if filter_value == "ALL":
+        kpi_items = [
+            {"label": "Total Students", "icon": "bi-people-fill", "value": total_in_scope,
+             "color": "#3b82f6", "bg": "#eff6ff"},
+            {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed_in_scope,
+             "color": "#10b981", "bg": "#ecfdf5"},
+            {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed_in_scope,
+             "color": "#ef4444", "bg": "#fef2f2"},
+            {"label": "Pass %", "icon": "bi-bar-chart-fill", "value": f"{pass_pct_scope}%",
+             "color": "#f59e0b", "bg": "#fffbeb"},
+        ]
+        col_md = 3
+    elif filter_value == "PASS":
+        kpi_items = [
+            {"label": "Total (in view)", "icon": "bi-people-fill", "value": total_in_scope,
+             "color": "#3b82f6", "bg": "#eff6ff"},
+            {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed_in_scope,
+             "color": "#10b981", "bg": "#ecfdf5"},
+        ]
+        col_md = 6
+    else:  # FAIL
+        kpi_items = [
+            {"label": "Total (in view)", "icon": "bi-people-fill", "value": total_in_scope,
+             "color": "#3b82f6", "bg": "#eff6ff"},
+            {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed_in_scope,
+             "color": "#ef4444", "bg": "#fef2f2"},
+        ]
+        col_md = 6
 
-    kpi_items = [
-        {"label": "Total Students", "icon": "bi-people-fill", "value": total_students,
-         "color": "#3b82f6", "bg": "#eff6ff"},
-        {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed,
-         "color": "#10b981", "bg": "#ecfdf5"},
-        {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed,
-         "color": "#ef4444", "bg": "#fef2f2"},
-        {"label": "Pass %", "icon": "bi-bar-chart-fill", "value": f"{pass_pct}%",
-         "color": "#f59e0b", "bg": "#fffbeb"},
-    ]
     kpi_cards = dbc.Row([
         dbc.Col(dbc.Card(dbc.CardBody([
             html.Div([
@@ -413,17 +529,40 @@ def build_views(filter_value, section_value, search_value, json_data, section_ra
         ]), className="kpi-card", style={
             "backgroundColor": item["bg"],
             "borderLeftColor": item["color"]
-        }), md=3, xs=6, className="mb-2")
+        }), md=col_md, xs=6, className="mb-2")
         for item in kpi_items
     ], className="g-3")
 
-    # Section toppers (best Total_Marks per section)
-    toppers_cards = []
-    if len(base):
-        idx = base.groupby('Section')['Total_Marks'].idxmax()
-        toppers = base.loc[idx].sort_values('Section')
+    # ---------- Top 5 Overall (ALWAYS show 1..5; ignore search, but respect filters) ----------
+    if len(scope):
+        top5 = scope.sort_values('Total_Marks', ascending=False).head(5)
+        chips = []
+        for i, (_, r) in enumerate(top5.iterrows(), start=1):
+            rank_cls = f"rank-chip rank-{i if i<=5 else 5}"
+            res_badge = html.Span("P", className="badge-pass") if r['Overall_Result'] == 'P' else html.Span("F", className="badge-fail")
+            chips.append(
+                html.Li(
+                    html.Span([
+                        html.Span(f"#{i}", className=rank_cls),
+                        html.Span(f"  {r['Student_ID']} (Sec {r['Section']}) — {int(r['Total_Marks'])}  "),
+                        html.Span(" "), res_badge
+                    ]),
+                    className=""
+                )
+            )
+        top5_children = html.Ul(chips, className="bullet mb-0")
+    else:
+        top5_children = html.P("No records in view.", className="text-muted mb-0")
+
+    # ---------- Section-wise Toppers ----------
+    if len(scope):
         cards = []
-        for _, r in toppers.iterrows():
+        by_sec = scope.groupby('Section', dropna=False)
+        for sec, g in by_sec:
+            if len(g) == 0:
+                continue
+            ridx = g['Total_Marks'].idxmax()
+            r = scope.loc[ridx]
             cards.append(
                 dbc.Col(dbc.Card(dbc.CardBody([
                     html.Div([
@@ -433,29 +572,54 @@ def build_views(filter_value, section_value, search_value, json_data, section_ra
                     html.Div(f"Student ID: {r['Student_ID']}"),
                     html.Div(f"Total: {int(r['Total_Marks'])}"),
                     html.Div(f"Class Rank: {r['Class_Rank'] if pd.notna(r['Class_Rank']) else '—'}"),
-                ]), className="rnk-card"), md=6, xs=12, className="mb-2")
+                ]), className="rnk-card"), md=12, xs=12, className="mb-2")
             )
-        toppers_cards = [
-            html.H6("🏆 Section-wise Toppers", className="fw-bold mb-3"),
-            dbc.Row(cards, className="g-3")
-        ]
+        section_toppers_children = [html.H6("🏆 Section-wise Toppers", className="fw-bold mb-2"), dbc.Row(cards, className="g-2")] if cards else html.P("No records.", className="text-muted mb-0")
+    else:
+        section_toppers_children = html.P("No records in view.", className="text-muted mb-0")
 
-    # Bottom 5 (by Total_Marks asc)
-    bottom_div = []
-    if len(base):
-        bottom = base.sort_values('Total_Marks', ascending=True).head(5)
-        items = [html.Li(f"{r['Student_ID']} (Sec {r['Section']}) — {int(r['Total_Marks'])}") for _, r in bottom.iterrows()]
-        bottom_div = [
-            html.H6("⬇️ Bottom 5 (by Total Marks)", className="fw-bold mb-3"),
-            html.Ul(items, className="bullet mb-0")
-        ]
+    # ---------- Bottom 5 (soft red background hint) ----------
+    if len(scope):
+        bottom = scope.sort_values('Total_Marks', ascending=True).head(5)
+        items = []
+        for _, r in bottom.iterrows():
+            li_style = {"background": "var(--fail)", "display": "inline-block", "padding": ".25rem .5rem", "borderRadius": "8px"} if r['Overall_Result'] == 'F' else {}
+            res_badge = html.Span("P", className="badge-pass") if r['Overall_Result'] == 'P' else html.Span("F", className="badge-fail")
+            items.append(
+                html.Li(
+                    html.Span([
+                        html.Span(f"{r['Student_ID']} (Sec {r['Section']}) — {int(r['Total_Marks'])} "),
+                        res_badge
+                    ]),
+                    style=li_style
+                )
+            )
+        bottom_children = html.Div([html.H6("⬇️ Bottom 5 (by Total Marks)", className="fw-bold mb-2"),
+                                     html.Ul(items, className="bullet mb-0")])
+    else:
+        bottom_children = html.P("No records in view.", className="text-muted mb-0")
 
-    # Table columns/data
+    # ---------- Table (search DOES apply here) ----------
+    table_df = scope.copy()
+    if search_value:
+        s = str(search_value).strip()
+        mask = (
+            table_df['Student_ID'].astype(str).str.contains(s, case=False, na=False) |
+            table_df['Name'].astype(str).str.contains(s, case=False, na=False) |
+            table_df['Section'].astype(str).str.contains(s, case=False, na=False)
+        )
+        table_df = table_df[mask]
+
+    # push fails to bottom for readability
+    table_df['__rank_sort'] = table_df['Class_Rank'].fillna(10**9)
+    table_df = table_df.sort_values(['__rank_sort', 'Total_Marks'], ascending=[True, False]).drop(columns='__rank_sort')
+
     display_cols = ['Class_Rank', 'Section_Rank', 'Student_ID', 'Name', 'Section', 'Total_Marks', 'Overall_Result']
-    table_cols = [{"name": c.replace("_", " "), "id": c} for c in display_cols if c in base.columns]
-    table_data = base[[c for c in display_cols if c in base.columns]].to_dict('records')
+    table_cols = [{"name": c.replace("_", " "), "id": c} for c in display_cols if c in table_df.columns]
+    table_data = table_df[[c for c in display_cols if c in table_df.columns]].to_dict('records')
 
-    return kpi_cards, html.Div(toppers_cards), html.Div(bottom_div), table_cols, table_data
+
+    return kpi_cards, top5_children, section_toppers_children, bottom_children, table_cols, table_data
 
 
 # Open modal on cell click
@@ -486,13 +650,17 @@ def show_student_modal(active_cell, view_data, close_click):
             html.Div(f"Student ID: {row.get('Student_ID', '')}"),
             html.Div(f"Name: {row.get('Name', '')}"),
             html.Div(f"Section: {row.get('Section', '')}"),
+            html.Div([
+                "Result: ",
+                html.Span("P", className="badge-pass") if row.get('Overall_Result') == 'P'
+                else html.Span("F", className="badge-fail")
+            ])
         ]), className="rnk-card border-0"), md=6),
         dbc.Col(dbc.Card(dbc.CardBody([
             html.H6("Performance", className="text-muted mb-2"),
             html.Div(f"Total Marks: {row.get('Total_Marks', '')}"),
             html.Div(f"Class Rank: {row.get('Class_Rank', '—')}"),
             html.Div(f"Section Rank: {row.get('Section_Rank', '—')}"),
-            html.Div(f"Overall Result: {row.get('Overall_Result', '')}"),
         ]), className="rnk-card border-0"), md=6),
     ], className="g-3")
     return True, body
@@ -524,5 +692,4 @@ def export_xlsx(n, table_data):
     if not table_data:
         return no_update
     df = pd.DataFrame(table_data)
-    # Use send_data_frame with to_excel to avoid non-JSON-serializable bytes
     return dcc.send_data_frame(df.to_excel, "ranking.xlsx", sheet_name="Ranking", index=False)
