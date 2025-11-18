@@ -1,5 +1,5 @@
 # pages/subject_analysis.py
-# Final stable version — Added individual spinners for each content block (KPIs, Table, Chart)
+# Final stable version — Fixed DuplicateCallback error with 'initial_duplicate'
 
 import dash
 from dash import html, dcc, Input, Output, State, callback, dash_table, no_update
@@ -197,7 +197,7 @@ layout = dbc.Container([
     Input("overview-selected-subjects", "data"),
     Input("select-all-btn", "n_clicks"),
     Input("deselect-all-btn", "n_clicks"),
-    prevent_initial_call=True
+    prevent_initial_call='initial_duplicate'  # <-- FIX IS HERE
 )
 def update_subject_dropdown(overview_subjects, select_all, deselect_all):
     if not overview_subjects:
@@ -205,19 +205,18 @@ def update_subject_dropdown(overview_subjects, select_all, deselect_all):
     options = [{"label": s, "value": s} for s in overview_subjects]
     all_values = [opt["value"] for opt in options]
     ctx = dash.callback_context
-    if not ctx.triggered:
-        return options, all_values
-    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "INITIAL_LOAD"
+
     if trigger == "select-all-btn":
         return options, all_values
     elif trigger == "deselect-all-btn":
         return options, []
+    
     return options, all_values
 
 
 # 2️⃣ Main Analysis
-# This one callback updates all the components. Because each component
-# is now in its own Loading wrapper, they will all get spinners.
 @callback(
     Output("selected-count", "children", allow_duplicate=True),
     Output("kpi-cards", "children", allow_duplicate=True),
@@ -228,11 +227,12 @@ def update_subject_dropdown(overview_subjects, select_all, deselect_all):
     Input("result-filter", "value"),
     Input("chart-tabs", "value"),
     State("stored-data", "data"),
-    prevent_initial_call=True
+    prevent_initial_call='initial_duplicate'  # <-- FIX IS HERE
 )
 def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
     if not json_data:
         raise PreventUpdate
+    
     if not selected_subjects:
         return "0 subjects selected", html.P("Please select at least one subject.", className="text-muted text-center"), [], [], html.Div()
 
