@@ -1,5 +1,3 @@
-# app.py
-
 import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
@@ -9,7 +7,9 @@ app = dash.Dash(
     __name__,
     use_pages=True,
     external_stylesheets=[dbc.themes.FLATLY],
-    suppress_callback_exceptions=True
+    suppress_callback_exceptions=True,
+    # This globally fixes the DuplicateCallback error for all pages
+    prevent_initial_callbacks='initial_duplicate'
 )
 app.title = "Student Performance Dashboard"
 
@@ -54,18 +54,10 @@ app.layout = dbc.Container([
     dcc.Store(id='overview-selected-subjects', storage_type='session'),
 
     # Page container
-    dbc.Card(
+    # Removed the dbc.Card wrapper to give pages full control of their layout
+    html.Div(
         dash.page_container,
-        body=True,
-        className="p-4 shadow-lg rounded text-center",
-        style={
-            "backgroundColor": "#fef9f0",
-            "borderLeft": "8px solid #3b82f6",
-            "borderRadius": "12px",
-            "boxShadow": "0 6px 25px rgba(0,0,0,0.15)",
-            "textAlign": "center",
-            "color": "#111827"
-        }
+        style={"paddingTop": "1rem"} # Added a little space
     )
 ],
 fluid=True,
@@ -80,4 +72,6 @@ server = app.server
 
 # ----------------- Run App -----------------
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Changed to debug=False as it's more stable. Set to True for development.
+    # Kept port 10000 and host 0.0.0.0 for Render compatibility
+    app.run(host='0.0.0.0', port=10000, debug=False)
