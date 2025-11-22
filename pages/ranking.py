@@ -7,7 +7,8 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import re
 from functools import lru_cache
-from io import StringIO  # <--- Added for Pandas compatibility
+import ast  # safe parsing for section ranges
+import plotly.express as px
 
 # Register page
 dash.register_page(__name__, path="/ranking", name="Ranking")
@@ -82,8 +83,13 @@ def _normalize_df(df, section_ranges):
 
 @lru_cache(maxsize=32)
 def _prepare_base(json_str, section_key):
-    # FIX: Wrapped in StringIO
-    df = pd.read_json(StringIO(json_str), orient='split')
+    """
+    Cached base prep to speed up repeated interactions when filters change.
+    The `section_key` must be hashable; we pass a repr string and parse safely.
+    """
+    df = pd.read_json(json_str, orient='split')
+
+    # Safely parse the section ranges repr into a dict (or None)
     section_ranges = None
     if section_key not in (None, "None"):
         try:
@@ -397,13 +403,6 @@ def apply_theme(toggle_values):
     theme = "dark" if ("dark" in (toggle_values or [])) else "light"
     return themed_style_block(theme)
 
-@callback(Output('section-dropdown', 'options'), Input('stored-data', 'data'), State('section-data', 'data'))
-def update_section_options(json_data, section_ranges):
-    if not json_data: return [{"label": "All Sections", "value": "ALL"}]
-    df = pd.read_json(StringIO(json_data), orient='split') # FIX: StringIO
-    df = _normalize_df(df, section_ranges)
-    sections = sorted(df['Section'].dropna().unique())
-    return [{"label": "All Sections", "value": "ALL"}] + [{"label": s, "value": s} for s in sections]
 
 # ==================== Callbacks ====================
 
@@ -413,39 +412,16 @@ def update_section_options(json_data, section_ranges):
     Input('stored-data', 'data'),
     State('section-data', 'data')
 )
-def generate_credit_panel(json_data, ranking_type, section_ranges):
-    if ranking_type != 'sgpa': return html.Div()
-    if not json_data: return ""
-    
-    df = pd.read_json(StringIO(json_data), orient='split') # FIX: StringIO
-    codes = set()
-    for col in df.columns:
-        m = re.match(r'^(.*?)\s+(Internal|External|Total)$', col, flags=re.IGNORECASE)
-        if m: codes.add(m.group(1).strip())
+def update_section_options(json_data, section_ranges):
+    """Rebuild section dropdown options from current data & mapping."""
+    if not json_data:
+        return [{"label": "All Sections", "value": "ALL"}]
+    df = pd.read_json(json_data, orient='split')
+    df = _normalize_df(df, section_ranges)
+    sections = sorted(df['Section'].dropna().unique())
+    return [{"label": "All Sections", "value": "ALL"}] + [{"label": s, "value": s} for s in sections]
 
-    if not codes: return dbc.Alert("No recognizable subject columns found.", color='info')
-    codes = sorted(codes)
-    
-    grid_items = []
-    for code in codes:
-        grid_items.append(dbc.Col(dbc.InputGroup([
-            dbc.InputGroupText(code, className="fw-bold bg-light text-dark", style={"width": "85px", "justifyContent": "center", "fontSize": "0.8rem"}),
-            dbc.Select(id={'type': 'credit-input', 'index': code}, options=[{'label': f'{i} Credits', 'value': str(i)} for i in [4,3,2,1,0]], value='3', className="form-select text-center")
-        ], size="sm", className="shadow-sm mb-3"), xs=12, sm=6, md=4, lg=3))
-
-    return dbc.Card([
-        dbc.CardHeader(html.Div([html.I(className="bi bi-sliders me-2"), "SGPA Configuration"], className="fw-bold text-primary"), className="bg-white border-bottom-0 pt-3"),
-        dbc.CardBody([
-            html.P("Assign credits to subjects. The system will calculate SGPA based on these values.", className="text-muted small mb-4"),
-            dbc.Row(grid_items, className="g-2 mb-2"),
-            html.Hr(className="my-3 text-muted opacity-25"),
-            dbc.Button([html.I(className="bi bi-calculator-fill me-2"), "Calculate SGPA"], id='calculate-sgpa-all', color='primary', size="lg", className='w-100 fw-bold shadow-sm mb-3'),
-            # Status Container (starts empty)
-            html.Div(id="sgpa-calc-status")
-        ])
-    ], className="rnk-card mb-4 border-start border-4 border-primary")
-
-# ========== SGPA Calculation (FIXED PASS/FAIL LOGIC) ==========
+# Reset filters
 @callback(
     Output('filter-dropdown', 'value'),
     Output('section-dropdown', 'value'),
@@ -485,14 +461,6 @@ def build_views(filter_value, section_value, search_value, json_data, section_ra
 
     # Cached normalized base
     base_full = _prepare_base(json_data, _section_key(section_ranges)).copy()
-    base_pre = base_full.copy()
-    if sgpa_json:
-        try:
-            sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split') # FIX: StringIO
-            base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
-            if 'Section' not in base_full.columns or base_full['Section'].isna().all():
-                if 'Section' in base_pre.columns: base_full['Section'] = base_pre['Section']
-        except: base_full = base_pre.copy()
 
     # ---------- Apply Pass/Fail & Section filters to get "scope" ----------
     scope = base_full.copy()
@@ -614,90 +582,20 @@ def build_views(filter_value, section_value, search_value, json_data, section_ra
     if len(scope):
         bottom = scope.sort_values('Total_Marks', ascending=True).head(5)
         items = []
-        for i, (_, r) in enumerate(sorted_df.iterrows(), 1):
-            val = r.get(val_col, 0)
-            
-            if rank_type == 'sgpa' and 'Result_Selected' in r:
-                is_pass = (r['Result_Selected'] == 'Pass')
-                res_txt = r['Result_Selected']
-            else:
-                is_pass = (r.get('Overall_Result') == 'P')
-                res_txt = r.get('Overall_Result')
-
-            res_cls = "badge-pass" if is_pass else "badge-fail"
-            
-            # Format ID and Section nicely
-            sec_txt = f" (Sec {r.get('Section')})" if r.get('Section') else ""
-            
-            items.append(html.Li([
-                # Rank number
-                html.Span(f"#{i}", className="fw-bold me-2 text-muted", style={"minWidth":"25px"}),
-                # ID + Section
-                html.Span([html.Strong(r.get('Student_ID')), html.Span(sec_txt, className="text-muted small")]),
-                html.Span("—", className="mx-2 text-muted"),
-                # Marks/SGPA
-                html.Span(f"{val}", className="fw-bold me-2"),
-                # Pass/Fail Badge
-                html.Span(res_txt[0], className=res_cls) # Just P or F
-            ], className="d-flex align-items-center mb-2 small"))
-        return html.Ul(items, className="list-unstyled mb-0")
-
-    sort_col = 'SGPA' if (rank_type == 'sgpa' and 'SGPA' in scope.columns) else 'Total_Marks'
-    top5_html = make_list(scope, sort_col, False)
-    bot_html = make_list(scope, sort_col, True)
-
-    # ---------- Section-wise Toppers (Card Style) ----------
-    sec_cards = []
-    if 'Section' in scope.columns:
-        for sec, g in sorted(scope.groupby('Section')):
-            if g.empty: continue
-            ridx = g[sort_col].idxmax()
-            r = g.loc[ridx]
-            
-            # FIX 1: CRITICAL FIX FOR VALUE ERROR
-            # Get rank column name based on type
-            rank_col_name = 'SGPA_Class_Rank' if rank_type=='sgpa' else 'Class_Rank'
-            
-            # Safely get the value
-            rank_val = r.get(rank_col_name)
-            
-            # Safely convert to int ONLY if numeric
-            if pd.notna(rank_val) and str(rank_val).replace('.', '', 1).isdigit():
-                rank_display = str(int(rank_val))
-            else:
-                rank_display = "-"
-            
-            card = html.Div([
-                html.H6([
-                    html.I(className="bi bi-trophy-fill me-2", style={"color":"#8b5cf6"}),
-                    f"Section {sec} Topper"
-                ], className="fw-bold mb-2", style={"color": "#4338ca", "fontSize": "0.95rem"}),
-                
-                html.Div([
-                    html.Div(f"Student ID: {r.get('Student_ID')}", className="mb-1 text-muted small"),
-                    html.Div([
-                        html.Span(f"{'SGPA' if rank_type=='sgpa' else 'Total'}: ", className="text-muted small"),
-                        html.Span(f"{r.get(sort_col)}", className="fw-bold text-dark")
-                    ], className="mb-1"),
-                    html.Div([
-                        html.Span("Class Rank: ", className="text-muted small"),
-                        html.Span(rank_display, className="fw-bold text-dark")
-                    ])
-                ])
-            ], className="p-3 mb-3 bg-white rounded shadow-sm border-start border-4 border-primary")
-            sec_cards.append(card)
-            
-    sec_html = html.Div(sec_cards) if sec_cards else html.P("No Data", className="text-muted small")
-
-    tdf = scope.copy()
-    if search_val:
-        s = str(search_val).strip()
-        mask = tdf['Student_ID'].astype(str).str.contains(s, case=False) | tdf['Name'].astype(str).str.contains(s, case=False)
-        tdf = tdf[mask]
-    
-    if rank_type == 'sgpa' and 'SGPA' in tdf.columns:
-        tdf = tdf.sort_values('SGPA', ascending=False)
-        cols = ['SGPA_Class_Rank', 'SGPA_Section_Rank', 'Student_ID', 'Name', 'Section', 'SGPA', 'Total_Marks_Selected', 'Result_Selected']
+        for _, r in bottom.iterrows():
+            li_style = {"background": "var(--fail)", "display": "inline-block", "padding": ".25rem .5rem", "borderRadius": "8px"} if r['Overall_Result'] == 'F' else {}
+            res_badge = html.Span("P", className="badge-pass") if r['Overall_Result'] == 'P' else html.Span("F", className="badge-fail")
+            items.append(
+                html.Li(
+                    html.Span([
+                        html.Span(f"{r['Student_ID']} (Sec {r['Section']}) — {int(r['Total_Marks'])} "),
+                        res_badge
+                    ]),
+                    style=li_style
+                )
+            )
+        bottom_children = html.Div([html.H6("⬇️ Bottom 5 (by Total Marks)", className="fw-bold mb-2"),
+                                     html.Ul(items, className="bullet mb-0")])
     else:
         bottom_children = html.P("No records in view.", className="text-muted mb-0")
 
