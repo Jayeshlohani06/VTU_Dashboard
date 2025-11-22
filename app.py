@@ -7,9 +7,7 @@ app = dash.Dash(
     __name__,
     use_pages=True,
     external_stylesheets=[dbc.themes.FLATLY],
-    suppress_callback_exceptions=True,
-    # This globally fixes the DuplicateCallback error for all pages
-    prevent_initial_callbacks='initial_duplicate'
+    suppress_callback_exceptions=True
 )
 app.title = "Student Performance Dashboard"
 
@@ -49,15 +47,26 @@ navbar = dbc.Navbar(
 app.layout = dbc.Container([
     navbar,
 
-    # Persistent Stores
-    dcc.Store(id='stored-data', storage_type='session'),
-    dcc.Store(id='overview-selected-subjects', storage_type='session'),
+    # --- GLOBAL STORES (Critical for Data Persistence) ---
+    # We use 'local' storage to ensure data survives page refreshes 
+    # and works reliably on deployment servers like Render.
+    
+    # Holds the main uploaded JSON data
+    dcc.Store(id='stored-data', storage_type='local'),
+    
+    # Holds the subject selection from Overview
+    dcc.Store(id='overview-selected-subjects', storage_type='local'),
+    
+    # Holds the Section Ranges configuration (e.g., "A": "1-60")
+    dcc.Store(id='section-data', storage_type='local'),
+    
+    # Holds the calculated SGPA and Ranks from the Ranking page
+    dcc.Store(id='sgpa-store', storage_type='local'),
 
     # Page container
-    # Removed the dbc.Card wrapper to give pages full control of their layout
     html.Div(
         dash.page_container,
-        style={"paddingTop": "1rem"} # Added a little space
+        style={"paddingTop": "1rem"} 
     )
 ],
 fluid=True,
@@ -72,6 +81,4 @@ server = app.server
 
 # ----------------- Run App -----------------
 if __name__ == '__main__':
-    # Changed to debug=False as it's more stable. Set to True for development.
-    # Kept port 10000 and host 0.0.0.0 for Render compatibility
     app.run(host='0.0.0.0', port=10000, debug=False)
