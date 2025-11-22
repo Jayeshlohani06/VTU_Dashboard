@@ -5,6 +5,7 @@ import pandas as pd
 import re
 from functools import lru_cache
 import ast
+from io import StringIO  # <--- Added for Pandas compatibility
 
 # Register page
 dash.register_page(__name__, path="/ranking", name="Ranking")
@@ -62,7 +63,8 @@ def _normalize_df(df, section_ranges):
 
 @lru_cache(maxsize=32)
 def _prepare_base(json_str, section_key):
-    df = pd.read_json(json_str, orient='split')
+    # FIX: Wrapped in StringIO
+    df = pd.read_json(StringIO(json_str), orient='split')
     section_ranges = None
     if section_key not in (None, "None"):
         try: section_ranges = ast.literal_eval(section_key)
@@ -278,7 +280,7 @@ def apply_theme(v): return themed_style_block("dark" if "dark" in (v or []) else
 @callback(Output('section-dropdown', 'options'), Input('stored-data', 'data'), State('section-data', 'data'))
 def update_section_options(json_data, section_ranges):
     if not json_data: return [{"label": "All Sections", "value": "ALL"}]
-    df = pd.read_json(json_data, orient='split')
+    df = pd.read_json(StringIO(json_data), orient='split') # FIX: StringIO
     df = _normalize_df(df, section_ranges)
     sections = sorted(df['Section'].dropna().unique())
     return [{"label": "All Sections", "value": "ALL"}] + [{"label": s, "value": s} for s in sections]
@@ -297,7 +299,7 @@ def generate_credit_panel(json_data, ranking_type, section_ranges):
     if ranking_type != 'sgpa': return html.Div()
     if not json_data: return ""
     
-    df = pd.read_json(json_data, orient='split')
+    df = pd.read_json(StringIO(json_data), orient='split') # FIX: StringIO
     codes = set()
     for col in df.columns:
         m = re.match(r'^(.*?)\s+(Internal|External|Total)$', col, flags=re.IGNORECASE)
@@ -407,7 +409,7 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     base_pre = base_full.copy()
     if sgpa_json:
         try:
-            sgpa_df = pd.read_json(sgpa_json, orient='split')
+            sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split') # FIX: StringIO
             base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
             if 'Section' not in base_full.columns or base_full['Section'].isna().all():
                 if 'Section' in base_pre.columns: base_full['Section'] = base_pre['Section']
@@ -527,8 +529,18 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
             ridx = g[sort_col].idxmax()
             r = g.loc[ridx]
             
-            # Get Global Rank
-            rank_val = r.get('SGPA_Class_Rank' if rank_type=='sgpa' else 'Class_Rank', '-')
+            # FIX 1: CRITICAL FIX FOR VALUE ERROR
+            # Get rank column name based on type
+            rank_col_name = 'SGPA_Class_Rank' if rank_type=='sgpa' else 'Class_Rank'
+            
+            # Safely get the value
+            rank_val = r.get(rank_col_name)
+            
+            # Safely convert to int ONLY if numeric
+            if pd.notna(rank_val) and str(rank_val).replace('.', '', 1).isdigit():
+                rank_display = str(int(rank_val))
+            else:
+                rank_display = "-"
             
             card = html.Div([
                 html.H6([
@@ -544,7 +556,7 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
                     ], className="mb-1"),
                     html.Div([
                         html.Span("Class Rank: ", className="text-muted small"),
-                        html.Span(f"{int(rank_val) if pd.notna(rank_val) else '-'}", className="fw-bold text-dark")
+                        html.Span(rank_display, className="fw-bold text-dark")
                     ])
                 ])
             ], className="p-3 mb-3 bg-white rounded shadow-sm border-start border-4 border-primary")
