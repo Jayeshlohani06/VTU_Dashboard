@@ -1,0 +1,60 @@
+:root{
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --text: #111827;
+  --muted:#6b7280;
+  --primary:#1f2937;
+  --brand:#3b82f6;
+  --shadow: 0 8px 24px rgba(16,24,40,.08);
+}
+
+/* page wrapper */
+.rnk-wrap{
+  background: var(--bg);
+  padding: 18px;
+  border-radius: 14px;
+}
+
+/* section cards */
+.rnk-card{
+  background: var(--card);
+  border: 0 !important;
+  border-radius: 14px !important;
+  box-shadow: var(--shadow);
+}
+
+/* header */
+.rnk-title{
+  color: var(--primary);
+  letter-spacing:.5px;
+}
+
+/* control row */
+.rnk-controls .btn, .rnk-controls .form-select, .rnk-controls .form-control{
+  border-radius: 10px !important;
+}
+
+/* KPI */
+.kpi-card{
+  border-left: 6px solid transparent;
+}
+.kpi-label{ color: var(--muted); font-size:.9rem; }
+.kpi-value{ font-weight:800; }
+
+/* toppers & bottom lists */
+.bullet{
+  margin: 0;
+  padding-left: 1rem;
+}
+.bullet li{
+  margin: .25rem 0;
+}
+
+/* datatable polish */
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{
+  border-color:#e5e7eb !important;
+}
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td{
+  background:#f8fafc !important;
+}
