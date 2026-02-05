@@ -12,16 +12,52 @@ dash.register_page(__name__, path='/', name="Overview")
 def process_uploaded_excel(contents):
     content_type, content_string = contents.split(',')
     decoded = base64.b64decode(content_string)
-    df = pd.read_excel(io.BytesIO(decoded), header=[0, 1])  # Multi-level header
-    df.columns = [' '.join([str(i) for i in col if str(i) != 'nan']).strip() for col in df.columns.values]
-    df = df.loc[:, df.columns.str.strip() != '']  # remove empty cols
+
+    df_raw = pd.read_excel(io.BytesIO(decoded), header=[0, 1])
+
+    fixed_cols = []
+    for h1, h2 in df_raw.columns:
+        h1 = str(h1).strip() if str(h1).lower() != "nan" else ""
+        h2 = str(h2).strip() if str(h2).lower() != "nan" else ""
+
+        # 🔥 FORCE Name column preservation
+        if h1.lower() == "name":
+            fixed_cols.append("Name")
+        elif h2:
+            fixed_cols.append(f"{h1} {h2}")
+        else:
+            fixed_cols.append(h1)
+
+    df_raw.columns = fixed_cols
+
+    # remove empty columns
+    df = df_raw.loc[:, df_raw.columns.str.strip() != ""]
     return df
 
+
 def get_subject_codes(df):
-    cols = df.columns[1:]  # skip first metadata column
-    cols = [c for c in cols if c.strip() != '']
-    subject_codes = sorted(list(set([c.split()[0] for c in cols])))
-    return subject_codes
+    subject_codes = set()
+
+    for col in df.columns:
+        col = col.strip()
+
+        # Must be like: BCS501 Internal / External / Total / Result
+        if " " not in col:
+            continue
+
+        prefix, suffix = col.rsplit(" ", 1)
+
+        # Accept only subject-related suffixes
+        if suffix not in ["Internal", "External", "Total", "Result"]:
+            continue
+
+        # STRICT VTU SUBJECT CODE FORMAT
+        # Examples: BCS501, BAIL504, BCS515C, BIS586, BRMK557
+        if re.fullmatch(r"[A-Z]{2,}\d{3}[A-Z]?", prefix):
+            subject_codes.add(prefix)
+
+    return sorted(subject_codes)
+
 
 def extract_numeric(roll):
     digits = re.findall(r'\d+', str(roll))
@@ -228,8 +264,17 @@ def update_dashboard(selected_subjects, section_ranges, json_data):
         )
     df = pd.read_json(json_data, orient='split')
     meta_col = df.columns[0]
-    selected_cols = [c for c in df.columns if any(c.startswith(s) for s in selected_subjects)]
-    df_filtered = df[[meta_col] + selected_cols].copy()
+    # ✅ keep Name column if present (NOT a subject)
+    base_cols = [meta_col]
+    if 'Name' in df.columns:
+        base_cols.append('Name')
+
+    selected_cols = [
+        c for c in df.columns
+        if any(c.startswith(s) for s in selected_subjects)
+    ]
+
+    df_filtered = df[base_cols + selected_cols].copy()
 
     for c in selected_cols:
         if any(k in c for k in ['Internal', 'External', 'Total']):
