@@ -8,9 +8,9 @@ app = dash.Dash(
     use_pages=True,
     external_stylesheets=[dbc.themes.FLATLY],
     suppress_callback_exceptions=True,
-    # This globally fixes the DuplicateCallback error for all pages
     prevent_initial_callbacks='initial_duplicate'
 )
+
 app.title = "Student Performance Dashboard"
 
 # ----------------- Styled Navbar -----------------
@@ -34,15 +34,9 @@ navbar = dbc.Navbar(
                 [
                     dbc.NavLink("🏠 Overview", href="/", active="exact", className="mx-2"),
                     dbc.NavLink("🏆 Ranking", href="/ranking", active="exact", className="mx-2"),
-                    dbc.NavLink(
-                        "📚 Subject Analysis",
-                        href="/subject_analysis",
-                        active="exact",
-                        className="mx-2",
-                    ),
-                    dbc.NavLink(
-                        "🎓 Student Detail", href="/student_detail", active="exact", className="mx-2"
-                    ),
+                    dbc.NavLink("📚 Subject Analysis", href="/subject_analysis", active="exact", className="mx-2"),
+                    dbc.NavLink("🎓 Student Detail", href="/student_detail", active="exact", className="mx-2"),
+                    dbc.NavLink("🏫 Branch Analysis", href="/branch-analysis", active="exact", className="mx-2"),
                 ],
                 pills=True,
                 className="ms-auto",
@@ -60,14 +54,21 @@ navbar = dbc.Navbar(
 app.layout = dbc.Container(
     [
         navbar,
-        # Persistent Stores
+
+        # 🔥 GLOBAL SESSION STORES (IMPORTANT)
         dcc.Store(id="stored-data", storage_type="session"),
         dcc.Store(id="overview-selected-subjects", storage_type="session"),
-        # Page container (pages control their own layout)
+        dcc.Store(id="branch-long-data", storage_type="session"),  # ⭐ ADD THIS
+
+        # Page container
         html.Div(dash.page_container, style={"paddingTop": "1rem"}),
     ],
     fluid=True,
-    style={"backgroundColor": "#f0f4f8", "padding": "25px", "minHeight": "100vh"},
+    style={
+        "backgroundColor": "#f0f4f8",
+        "padding": "25px",
+        "minHeight": "100vh"
+    },
 )
 
 # ----------------- Server for Deployment -----------------
@@ -75,5 +76,4 @@ server = app.server
 
 # ----------------- Run App -----------------
 if __name__ == "__main__":
-    # Changed to debug=False for stability; set to True during development.
     app.run(host="0.0.0.0", port=10000, debug=False)
