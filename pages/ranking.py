@@ -108,6 +108,12 @@ PAGE_CSS_LIGHT = r"""
 .badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td{ border-bottom: 1px solid #f1f5f9 !important; }
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{ border-bottom: 2px solid #e2e8f0 !important; font-weight: 700 !important; }
+.accordion-button:not(.collapsed){ background-color: #eff6ff; color: #1e40af; }
+.accordion-button{ color: #1f2937; }
+.table { margin-bottom: 0; }
+.table tbody tr { border-bottom: 1px solid #e9ecef; }
+.table tbody tr:hover { background-color: #f8f9fa; }
+.table thead { border-top: 2px solid #dee2e6; }
 """
 
 PAGE_CSS_DARK = r"""
@@ -140,6 +146,13 @@ PAGE_CSS_DARK = r"""
 .badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td{ border-color: #334155 !important; background-color: #1e293b !important; color: #f8fafc !important; }
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{ border-color: #475569 !important; background-color: #0f172a !important; color: #f8fafc !important; }
+.accordion-button:not(.collapsed){ background-color: #172554; color: #60a5fa; }
+.accordion-button{ color: #f8fafc; background-color: #1e293b; border-color: #334155; }
+.table { margin-bottom: 0; color: #f8fafc; }
+.table tbody tr { border-bottom-color: #334155; }
+.table tbody tr:hover { background-color: #334155 !important; }
+.table thead { border-top-color: #475569; background-color: #0f172a; }
+.table thead th { color: #f8fafc; }
 """
 
 def themed_style_block(theme: str):
@@ -202,6 +215,15 @@ layout = dbc.Container([
 
     # KPIs (Cards)
     html.Div(dbc.Spinner(html.Div(id='kpi-cards'), color="primary"), className="mb-4"),
+
+    # VTU Category Breakdown Table
+    dbc.Card(dbc.CardBody([
+        html.H6([html.I(className="bi bi-bar-chart me-2 text-success"), "VTU Category Breakdown"], className="fw-bold mb-3"),
+        dcc.Loading(
+            type="circle",
+            children=html.Div(id='category-breakdown-container')
+        )
+    ]), className="rnk-card mb-4"),
 
     # Overview (Explicitly Ordered: Top 5 -> Section -> Bottom 5)
     dbc.Row([
@@ -401,6 +423,7 @@ def calculate_sgpa_all(n_clicks, json_data, section_ranges, credit_ids, credit_v
     Output('bottom-five', 'children'),
     Output('ranking-table', 'columns'),
     Output('ranking-table', 'data'),
+    Output('category-breakdown-container', 'children'),
     Input('filter-dropdown', 'value'),
     Input('section-dropdown', 'value'),
     Input('search-input', 'value'),
@@ -410,7 +433,7 @@ def calculate_sgpa_all(n_clicks, json_data, section_ranges, credit_ids, credit_v
     State('section-data', 'data')
 )
 def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data, section_ranges):
-    if not json_data: return html.P("Upload data first.", className="text-center text-muted"), html.Div(), html.Div(), html.Div(), [], []
+    if not json_data: return html.P("Upload data first.", className="text-center text-muted"), html.Div(), html.Div(), html.Div(), [], [], html.Div()
 
     base_full = _prepare_base(json_data, _section_key(section_ranges)).copy()
     base_pre = base_full.copy()
@@ -459,23 +482,50 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     failed = total - passed
     pass_pct = round((passed / total) * 100, 2) if total else 0
     
+    # === CALCULATE VTU STANDARD CATEGORIES ===
+    # Find all subject "Total" columns to determine max marks
+    subject_total_cols = [c for c in base_full.columns if c.endswith(' Total') and c != 'Total_Marks']
+    num_subjects = len(subject_total_cols) if subject_total_cols else 1
+    max_marks_possible = num_subjects * 100 if num_subjects > 0 else 100
+    
+    # Calculate percentage for each student in scope
+    scope_calc = scope.copy()
+    scope_calc['percentage'] = (scope_calc['Total_Marks'] / max_marks_possible * 100).round(2)
+    
+    # Count VTU Categories
+    fcd_count = (scope_calc['percentage'] >= 70).sum()  # First Class Distinction
+    fc_count = ((scope_calc['percentage'] >= 60) & (scope_calc['percentage'] < 70)).sum()  # First Class
+    sc_count = ((scope_calc['percentage'] >= 50) & (scope_calc['percentage'] < 60)).sum()  # Second Class
+    fail_count = (scope_calc['Overall_Result'] == 'F').sum() if 'Overall_Result' in scope_calc.columns else 0
+    
     # Define Base KPIs
     kpi_objs = [
         {"id": "total", "label": "Total Students", "value": total, "color": "#2563eb", "bg": "#eff6ff"},
         {"id": "pass", "label": "Passed", "value": passed, "color": "#059669", "bg": "#ecfdf5"},
-        {"id": "fail", "label": "Failed", "value": failed, "color": "#dc2626", "bg": "#fef2f2"},
+        {"id": "fail", "label": "Failed", "value": fail_count, "color": "#dc2626", "bg": "#fef2f2"},
         {"id": "rate", "label": "Pass Rate", "value": f"{pass_pct}%", "color": "#d97706", "bg": "#fffbeb"},
     ]
+    
+    # Add VTU Category KPIs
+    vtu_kpis = [
+        {"id": "fcd", "label": "First Class Distinction (≥70%)", "value": fcd_count, "color": "#8b5cf6", "bg": "#faf5ff"},
+        {"id": "fc", "label": "First Class (60-70%)", "value": fc_count, "color": "#0ea5e9", "bg": "#f0f9ff"},
+        {"id": "sc", "label": "Second Class (50-60%)", "value": sc_count, "color": "#f59e0b", "bg": "#fffbf0"},
+    ]
+    
+    # Append VTU KPIs to base KPIs
+    kpi_objs.extend(vtu_kpis)
+    
     if rank_type == 'sgpa' and 'SGPA' in scope.columns:
         avg = round(scope['SGPA'].mean(), 2) if not scope['SGPA'].isna().all() else 0
         kpi_objs.insert(0, {"id": "avg", "label": "Avg SGPA", "value": avg, "color": "#7c3aed", "bg": "#f5f3ff"})
 
     # Filter KPIs based on User Selection
     if filter_val == "PASS":
-        # Show: Total, Passed, Avg. Hide: Failed, Rate
-        visible_kpis = [k for k in kpi_objs if k["id"] in ["avg", "total", "pass"]]
+        # Show: Total, Passed, Avg, and VTU categories. Hide: Failed, Rate
+        visible_kpis = [k for k in kpi_objs if k["id"] in ["avg", "total", "pass", "fcd", "fc", "sc"]]
     elif filter_val == "FAIL":
-        # Show: Total, Failed, Avg. Hide: Passed, Rate
+        # Show: Total, Failed, Avg. Hide: Passed, Rate, VTU categories
         visible_kpis = [k for k in kpi_objs if k["id"] in ["avg", "total", "fail"]]
     else:
         # Show All
@@ -568,7 +618,116 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     # FIX: Send only relevant columns to table data
     tdata = tdf[cols].to_dict('records') 
 
-    return kpi_cards, top5_html, sec_html, bot_html, tcols, tdata
+    # === GENERATE VTU CATEGORY BREAKDOWN TABLE ===
+    breakdown_data = []
+    if 'Section' in scope.columns:
+        sections = sorted(scope['Section'].unique())
+    else:
+        sections = ["Overall"]
+    
+    for section in sections:
+        if section == "Overall":
+            section_df = scope_calc
+        else:
+            section_df = scope_calc[scope_calc['Section'] == section]
+        
+        if section_df.empty:
+            continue
+        
+        fcd = (section_df['percentage'] >= 70).sum()
+        fc = ((section_df['percentage'] >= 60) & (section_df['percentage'] < 70)).sum()
+        sc = ((section_df['percentage'] >= 50) & (section_df['percentage'] < 60)).sum()
+        fail = (section_df['Overall_Result'] == 'F').sum()
+        total_sec = len(section_df)
+        
+        breakdown_data.append({
+            'Section': section,
+            'First Class Distinction (≥70%)': fcd,
+            'First Class (60-70%)': fc,
+            'Second Class (50-60%)': sc,
+            'Failed': fail,
+            'Total': total_sec
+        })
+    
+    # Add overall row
+    if breakdown_data:
+        overall_row = {
+            'Section': 'Overall',
+            'First Class Distinction (≥70%)': sum(row['First Class Distinction (≥70%)'] for row in breakdown_data),
+            'First Class (60-70%)': sum(row['First Class (60-70%)'] for row in breakdown_data),
+            'Second Class (50-60%)': sum(row['Second Class (50-60%)'] for row in breakdown_data),
+            'Failed': sum(row['Failed'] for row in breakdown_data),
+            'Total': sum(row['Total'] for row in breakdown_data)
+        }
+        breakdown_data.append(overall_row)
+    
+    # Create accordion items for each section
+    accordion_items = []
+    for bd_row in breakdown_data:
+        section_name = bd_row['Section']
+        if section_name == "Overall":
+            section_df = scope_calc
+        else:
+            section_df = scope_calc[scope_calc['Section'] == section_name]
+        
+        # Create category breakdown rows
+        category_items = []
+        categories = [
+            ('FCD (≥70%)', 'success', section_df[section_df['percentage'] >= 70]),
+            ('First Class (60-70%)', 'info', section_df[(section_df['percentage'] >= 60) & (section_df['percentage'] < 70)]),
+            ('Second Class (50-60%)', 'warning', section_df[(section_df['percentage'] >= 50) & (section_df['percentage'] < 60)]),
+            ('Failed', 'danger', section_df[section_df['Overall_Result'] == 'F'])
+        ]
+        
+        for cat_name, cat_color, cat_df in categories:
+            if len(cat_df) > 0:
+                # Create student list for this category
+                student_items = []
+                for _, student in cat_df.iterrows():
+                    student_items.append(
+                        html.Tr([
+                            html.Td(student.get('Student_ID'), className="fw-bold"),
+                            html.Td(student.get('Name')),
+                            html.Td(f"{student.get('Total_Marks', 0)}", className="fw-bold"),
+                            html.Td(f"{student.get('percentage', 0):.2f}%", className="fw-bold")
+                        ])
+                    )
+                
+                student_table = html.Table(
+                    [
+                        html.Thead(html.Tr([
+                            html.Th("Student ID", className="fw-bold"),
+                            html.Th("Name"),
+                            html.Th("Marks"),
+                            html.Th("Percentage")
+                        ], style={'backgroundColor': '#e9ecef', 'borderBottom': '2px solid #dee2e6'})),
+                        html.Tbody(student_items)
+                    ],
+                    className="table table-hover mb-0",
+                    style={'fontSize': '0.9rem', 'marginBottom': '1rem'}
+                )
+                
+                category_items.append(
+                    dbc.AccordionItem([
+                        student_table
+                    ], title=f"📊 {cat_name} ({len(cat_df)} students)", className="mb-2")
+                )
+        
+        # Main accordion item for section
+        section_title = f"Section {section_name} - Total: {bd_row['Total']} | First Class Distinction: {bd_row['First Class Distinction (≥70%)']}" if section_name != "Overall" else f"📈 Overall Summary - Total: {bd_row['Total']}"
+        
+        accordion_items.append(
+            dbc.AccordionItem(
+                dbc.Accordion(category_items, always_open=True),
+                title=section_title,
+                className="mb-2"
+            )
+        )
+    
+    # Create main accordion
+    breakdown_container = dbc.Accordion(accordion_items, always_open=False) if accordion_items else html.P("No data available", className="text-muted")
+
+    return kpi_cards, top5_html, sec_html, bot_html, tcols, tdata, breakdown_container
 
 @callback(Output("student-modal", "is_open"), Output("student-modal-body", "children"), Input("ranking-table", "active_cell"), State("ranking-table", "derived_viewport_data"), Input("close-modal", "n_clicks"), prevent_initial_call=True)
 def show_modal(cell, data, close):
