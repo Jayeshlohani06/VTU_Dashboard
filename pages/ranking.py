@@ -50,21 +50,51 @@ def _normalize_df(df, section_ranges):
         df['Total_Marks'] = df[total_cols].sum(axis=1)
     else:
         df['Total_Marks'] = 0
-    result_cols = [c for c in df.columns if 'result' in c.lower()]
+    result_cols = [c for c in df.columns if c.endswith('Result')]
     if result_cols:
-        def calc_res(row):
-            vals = [str(row[c]).strip().upper() for c in result_cols if pd.notna(row[c])]
-            if not vals: return 'P'
-            if any(v == 'A' for v in vals): return 'A'
-            if all(v == 'P' for v in vals): return 'P'
-            return 'F'
-        df['Overall_Result'] = df.apply(calc_res, axis=1)
+        def calc_overall(row):
+            subject_status = []
+            for res_col in result_cols:
+                base_name = res_col.replace(' Result', '').replace('Result', '').strip()
+                
+                i_val = row.get(f"{base_name} Internal", 0)
+                e_val = row.get(f"{base_name} External", 0)
+                
+                i = pd.to_numeric(i_val, errors='coerce')
+                e = pd.to_numeric(e_val, errors='coerce')
+                
+                if pd.isna(e): e = 0
+
+                r = str(row.get(res_col, "")).strip().upper()
+
+                # 🔥 ABSENT RULE
+                if (e == 0) and (r == 'A'):
+                    subject_status.append('A')
+                elif r == 'F':
+                    subject_status.append('F')
+                else:
+                    subject_status.append('P')
+
+            absent_count = subject_status.count('A')
+            fail_count = subject_status.count('F')
+
+            # === OVERALL LOGIC ===
+            if not subject_status: res = 'P'
+            elif absent_count == len(subject_status): res = 'A'
+            elif fail_count > 0 or absent_count > 0: res = 'F'
+            else: res = 'P'
+            
+            return pd.Series([res, absent_count, fail_count])
+
+        df[['Overall_Result', 'Absent_Subjects', 'Failed_Subjects']] = df.apply(calc_overall, axis=1)
     else:
         pass_mark = 18
         if total_cols:
             df['Overall_Result'] = df.apply(lambda row: 'F' if any(row[c] < pass_mark for c in total_cols) else 'P', axis=1)
         else:
             df['Overall_Result'] = 'P'
+        df['Absent_Subjects'] = 0
+        df['Failed_Subjects'] = 0
     if 'Name' not in df.columns: df['Name'] = ""
     return df
 
@@ -208,12 +238,13 @@ layout = dbc.Container([
                 dbc.Col(dbc.InputGroup([
                     dbc.InputGroupText(html.I(className="bi bi-search")),
                     dbc.Input(id="search-input", placeholder="Search ID / Name...", type="text")
-                ], className="shadow-sm"), md=4, xs=12),
+                ], className="shadow-sm"), md=3, xs=12),
                 dbc.Col(dbc.ButtonGroup([
+                    dbc.Button("ℹ️ Info", id="open-legend", color="info", outline=True),
                     dbc.Button("Reset", id="reset-btn", color="secondary", outline=True),
                     dbc.Button("CSV", id="export-csv", color="primary", outline=True),
                     dbc.Button("Excel", id="export-xlsx", color="success", outline=True),
-                ], className="w-100 d-flex justify-content-end"), md=2, xs=12),
+                ], className="w-100 d-flex justify-content-end"), md=3, xs=12),
             ], className="g-2 rnk-controls mb-3"),
 
             dbc.Row([
@@ -308,6 +339,34 @@ layout = dbc.Container([
         dbc.ModalFooter(dbc.Button("Close", id="close-modal", className="ms-auto", color="secondary"))
     ], id="student-modal", is_open=False, size="lg"),
 
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("📊 Dashboard Logic & Legends")),
+        dbc.ModalBody(
+            html.Div([
+                html.H6("📝 Subject & Student Status", className="text-primary fw-bold"),
+                html.Ul([
+                    html.Li([html.Strong("Absent (Subject):"), " External Marks = 0  AND  Result = 'A'"]),
+                    html.Li([html.Strong("Fail (Subject):"), " Internal < 18  OR  External < 18  (unless Result='P')"]),
+                    html.Li([html.Strong("Pass (Student):"), " Passed in ALL subjects"]),
+                    html.Li([html.Strong("Absent (Student):"), " Absent in ALL subjects"]),
+                    html.Li([html.Strong("Fail (Student):"), " Failed in ANY subject OR Absent in ANY subject (but appeared for others)"]),
+                ]),
+                html.Hr(),
+                html.H6("🏆 Ranking Logic", className="text-primary fw-bold"),
+                html.P("Ranking is calculated ONLY for students with Overall Result = 'Pass'. Failed students are excluded from rank list.", className="text-muted small"),
+                html.Hr(),
+                html.H6("🎓 VTU Class Categories (from %)", className="text-primary fw-bold"),
+                html.Ul([
+                    html.Li([html.Span("First Class Distinction (FCD):", className="fw-bold text-success"), " ≥ 70%"]),
+                    html.Li([html.Span("First Class (FC):", className="fw-bold text-info"), " 60%  –  69.99%"]),
+                    html.Li([html.Span("Second Class (SC):", className="fw-bold text-warning"), " 50%  –  59.99%"]),
+                    html.Li([html.Span("Pass Class:", className="fw-bold text-danger"), " < 50%"]),
+                ], className="mb-0")
+            ])
+        ),
+        dbc.ModalFooter(dbc.Button("Got it!", id="close-legend", className="ms-auto", color="primary"))
+    ], id="legend-modal", is_open=False, size="lg"),
+
     dcc.Download(id="download-csv"),
     dcc.Download(id="download-xlsx"),
     dcc.Store(id='stored-data', storage_type='session'),
@@ -317,6 +376,14 @@ layout = dbc.Container([
 
 
 # ==================== Callbacks ====================
+
+@callback(
+    Output("legend-modal", "is_open"),
+    [Input("open-legend", "n_clicks"), Input("close-legend", "n_clicks")],
+    [State("legend-modal", "is_open")],
+    prevent_initial_call=True
+)
+def toggle_legend(n1, n2, is_open): return not is_open if n1 or n2 else is_open
 
 @callback(Output("theme-style", "children"), Input("theme-toggle", "value"))
 def apply_theme(v): return themed_style_block("dark" if "dark" in (v or []) else "light")
@@ -511,9 +578,23 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     if sec_val != "ALL" and 'Section' in scope.columns: scope = scope[scope["Section"] == sec_val]
 
     if 'Total_Marks' in scope.columns:
-        scope['Class_Rank'] = scope[scope['Overall_Result'] == 'P']['Total_Marks'].rank(method='min', ascending=False).astype('Int64')
+        scope['Class_Rank'] = pd.NA
+        pass_mask = scope['Overall_Result'] == 'P'
+        scope.loc[pass_mask, 'Class_Rank'] = (
+            scope.loc[pass_mask, 'Total_Marks']
+            .rank(method='min', ascending=False)
+            .astype('Int64')
+        )
+
     if 'Section' in scope.columns and 'Total_Marks' in scope.columns:
-        scope['Section_Rank'] = scope.groupby('Section')['Total_Marks'].rank(method='min', ascending=False).astype('Int64')
+        scope['Section_Rank'] = pd.NA
+        for sec in scope['Section'].unique():
+            sec_mask = (scope['Section'] == sec) & (scope['Overall_Result'] == 'P')
+            scope.loc[sec_mask, 'Section_Rank'] = (
+                scope.loc[sec_mask, 'Total_Marks']
+                .rank(method='min', ascending=False)
+                .astype('Int64')
+            )
 
     # --- KPI Logic (Dynamic Visibility) ---
     total = len(scope)
@@ -549,7 +630,25 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     kpi_objs = [
         {"id": "total", "label": "Total Students", "value": total, "color": "#3b82f6", "bg": "#eff6ff"},
     ]
+
+    # Calculate Backlog counts - Only for students with Result='F'
+    # We include Absent_Subjects as backlogs for failed students
+    fail_1, fail_2, fail_3plus = 0, 0, 0
     
+    if 'Failed_Subjects' in scope.columns and 'Absent_Subjects' in scope.columns:
+        # Filter strictly for Failed students (matches the 'Failed' KPI logic)
+        is_fail_mask = scope[target_res_col].apply(lambda x: check_res(x, fail_val))
+        failed_df = scope[is_fail_mask].copy()
+
+        if not failed_df.empty:
+            # Backlog count = Fails + partial Absents
+            # (Note: Fully absent students have Result='A', so they are excluded here, which is correct because they aren't in 'Failed' count)
+            backlogs = failed_df['Failed_Subjects'] + failed_df['Absent_Subjects']
+            
+            fail_1 = (backlogs == 1).sum()
+            fail_2 = (backlogs == 2).sum()
+            fail_3plus = (backlogs >= 3).sum()
+
     if filter_val == "ALL":
         kpi_objs.extend([
             {"id": "appeared", "label": "Appeared", "value": appeared, "color": "#10b981", "bg": "#ecfdf5"},
@@ -558,10 +657,23 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
             {"id": "fail", "label": "Failed", "value": failed, "color": "#ef4444", "bg": "#fef2f2"},
             {"id": "rate", "label": "Pass % (Appeared)", "value": f"{pass_pct}%", "color": "#8b5cf6", "bg": "#f5f3ff"},
         ])
+        # Add Backlog Breakdown for ALL view
+        if failed > 0:
+            kpi_objs.extend([
+                {"id": "bk1", "label": "1 Subject Fail", "value": fail_1, "color": "#fb923c", "bg": "#fff7ed"},
+                {"id": "bk2", "label": "2 Subject Fails", "value": fail_2, "color": "#f97316", "bg": "#fff7ed"},
+                {"id": "bk3", "label": "3+ Subject Fails", "value": fail_3plus, "color": "#ef4444", "bg": "#fef2f2"},
+            ])
+    
     elif filter_val == "PASS":
         kpi_objs.append({"id": "pass", "label": "Passed", "value": passed, "color": "#0ea5e9", "bg": "#f0f9ff"})
     elif filter_val == "FAIL":
         kpi_objs.append({"id": "fail", "label": "Failed", "value": failed, "color": "#ef4444", "bg": "#fef2f2"})
+        kpi_objs.extend([
+            {"id": "bk1", "label": "1 Subject Fail", "value": fail_1, "color": "#fb923c", "bg": "#fff7ed"},
+            {"id": "bk2", "label": "2 Subject Fails", "value": fail_2, "color": "#f97316", "bg": "#fff7ed"},
+            {"id": "bk3", "label": "3+ Subject Fails", "value": fail_3plus, "color": "#ef4444", "bg": "#fef2f2"},
+        ])
     elif filter_val == "ABSENT": 
         kpi_objs.append({"id": "absent", "label": "Absent", "value": absent, "color": "#f59e0b", "bg": "#fffbeb"})
 
@@ -744,30 +856,31 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
         
         for cat_name, cat_color, cat_df in categories:
             if len(cat_df) > 0:
-                # Create student list for this category
-                student_items = []
-                for _, student in cat_df.iterrows():
-                    student_items.append(
-                        html.Tr([
-                            html.Td(student.get('Student_ID'), className="fw-bold"),
-                            html.Td(student.get('Name')),
-                            html.Td(f"{student.get('Total_Marks', 0)}", className="fw-bold"),
-                            html.Td(f"{student.get('percentage', 0):.2f}%", className="fw-bold")
-                        ])
-                    )
+                # Optimized: Use DataTable instead of HTML Loop for performance
+                dt_data = cat_df.copy()
+                dt_data['id'] = dt_data['Student_ID'].astype(str) # Vital for active_cell row_id
                 
-                student_table = html.Table(
-                    [
-                        html.Thead(html.Tr([
-                            html.Th("Student ID", className="fw-bold"),
-                            html.Th("Name"),
-                            html.Th("Marks"),
-                            html.Th("Percentage")
-                        ], style={'backgroundColor': '#e9ecef', 'borderBottom': '2px solid #dee2e6'})),
-                        html.Tbody(student_items)
+                # Format percentage for display
+                dt_data['percentage_disp'] = dt_data['percentage'].apply(lambda x: f"{x:.2f}%")
+                
+                student_table = dash_table.DataTable(
+                    id={'type': 'breakdown-table', 'section': section_name, 'category': cat_name},
+                    columns=[
+                        {'name': 'Student ID', 'id': 'Student_ID'},
+                        {'name': 'Name', 'id': 'Name'},
+                        {'name': 'Marks', 'id': 'Total_Marks'},
+                        {'name': 'Percentage', 'id': 'percentage_disp'}
                     ],
-                    className="table table-hover mb-0",
-                    style={'fontSize': '0.9rem', 'marginBottom': '1rem'}
+                    data=dt_data.to_dict('records'),
+                    row_selectable=False,
+                    cell_selectable=True,
+                    style_as_list_view=True,
+                    style_table={'minWidth': '100%'},
+                    style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold', 'borderBottom': '2px solid #dee2e6'},
+                    style_cell={'textAlign': 'left', 'padding': '12px', 'fontFamily': 'Inter, sans-serif', 'cursor': 'pointer'},
+                    style_data_conditional=[
+                        {'if': {'state': 'active'}, 'backgroundColor': 'rgba(0, 116, 217, 0.1)', 'border': '1px solid rgb(0, 116, 217)'}
+                    ]
                 )
                 
                 category_items.append(
@@ -781,7 +894,7 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
         
         accordion_items.append(
             dbc.AccordionItem(
-                dbc.Accordion(category_items, always_open=True),
+                dbc.Accordion(category_items, always_open=False, start_collapsed=True),
                 title=section_title,
                 className="mb-2"
             )
@@ -792,15 +905,94 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
 
     return kpi_cards, top5_html, sec_html, bot_html, tcols, tdata, breakdown_container
 
-@callback(Output("student-modal", "is_open"), Output("student-modal-body", "children"), Input("ranking-table", "active_cell"), State("ranking-table", "derived_viewport_data"), Input("close-modal", "n_clicks"), prevent_initial_call=True)
-def show_modal(cell, data, close):
-    if dash.ctx.triggered_id == "close-modal": return False, no_update
-    if not cell or not data: return no_update, no_update
-    r = data[cell['row']]
-    body = dbc.Row([
-        dbc.Col([html.H6("Identity", className="text-primary"), html.Div(f"ID: {r.get('Student_ID')}"), html.Div(f"Name: {r.get('Name')}")], md=6),
-        dbc.Col([html.H6("Stats", className="text-primary"), html.Div(f"Marks: {r.get('Total_Marks')}"), html.Div(f"SGPA: {r.get('SGPA', '-')}")], md=6)
+@callback(
+    Output("student-modal", "is_open"), 
+    Output("student-modal-body", "children"), 
+    Input("ranking-table", "active_cell"), 
+    Input({'type': 'breakdown-table', 'section': ALL, 'category': ALL}, 'active_cell'),
+    State("ranking-table", "derived_viewport_data"), 
+    State("stored-data", "data"),
+    State("section-data", "data"),
+    Input("close-modal", "n_clicks"), 
+    prevent_initial_call=True
+)
+def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
+    trigger = dash.ctx.triggered_id
+    if trigger == "close-modal" or not json_data: return False, no_update
+    
+    student_id = None
+    
+    # 1. Check Main Ranking Table
+    if trigger == "ranking-table" and main_cell and main_data:
+        # Safety check for row index
+        if main_cell['row'] < len(main_data):
+            student_id = main_data[main_cell['row']].get('Student_ID')
+        
+    # 2. Check Breakdown Tables
+    elif isinstance(trigger, dict) and trigger.get('type') == 'breakdown-table':
+        # Retrieve the relevant active_cell from the list
+        # ctx.triggered consists of a list of changed properties.
+        # We need to find the specific input that triggered.
+        # However, dealing with ALL here is tricky to get value directly.
+        # But wait! We injected 'id' into the data rows.
+        # So active_cell will contain 'row_id' which IS the Student_ID!
+        
+        # Iterate to find the non-None cell that triggered (or use context inputs)
+        # Dash context inputs_list is reliable
+        for input_item in dash.ctx.inputs_list[1]: # Index 1 corresponds to breakdown-table input
+            if input_item['id'] == trigger and input_item['value']:
+                student_id = input_item['value'].get('row_id')
+                break
+        
+    if not student_id: return no_update, no_update
+
+    # Use Cached Data Loader for Speed
+    # _prepare_base is lru_cached, so it won't re-parse JSON if string is identical
+    try:
+        df = _prepare_base(json_data, _section_key(section_data))
+    except:
+        df = pd.read_json(StringIO(json_data), orient='split')
+
+    if 'Student_ID' not in df.columns: df = df.rename(columns={df.columns[0]: 'Student_ID'})
+    
+    # Optimize filtering (convert to string once)
+    student_row = df[df['Student_ID'].astype(str) == str(student_id)]
+    
+    if student_row.empty: return True, "Student data not found for ID: " + str(student_id)
+    
+    row = student_row.iloc[0]
+    
+    # Identify subject codes dynamically
+    subject_codes = sorted(list(set([c.split(' ')[0] for c in df.columns if any(k in c for k in ['Internal', 'External']) and ' ' in c])))
+    
+    rows = []
+    for code in subject_codes:
+        rows.append(html.Tr([
+            html.Td(code, className="fw-bold"),
+            html.Td(row.get(f"{code} Internal", "-")),
+            html.Td(row.get(f"{code} External", "-")),
+            html.Td(row.get(f"{code} Total", "-"), className="fw-bold"),
+            html.Td(row.get(f"{code} Result", "-"), className="text-danger fw-bold" if str(row.get(f"{code} Result")).upper() in ['F', 'FAIL'] else "text-success fw-bold")
+        ]))
+
+    body = html.Div([
+        dbc.Row([
+            dbc.Col([
+                html.H4(row.get('Name', 'Unknown'), className="fw-bold text-primary"),
+                html.H6(f"USN: {student_id}", className="text-muted")
+            ], width=8),
+            dbc.Col([
+                dbc.Badge(f"Total: {row.get('Total_Marks', 0)}", color="info", className="p-2 fs-6 me-2"),
+                dbc.Badge(f"SGPA: {row.get('SGPA', 'N/A')}", color="success", className="p-2 fs-6")
+            ], width=4, className="text-end align-self-center")
+        ], className="mb-3 border-bottom pb-3"),
+        
+        dbc.Table([
+            html.Thead(html.Tr([html.Th("Subject"), html.Th("Internal"), html.Th("External"), html.Th("Total"), html.Th("Result")])),
+            html.Tbody(rows)
+        ], bordered=True, hover=True, striped=True, responsive=True, className="text-center small")
     ])
+    
     return True, body
 
 @callback(Output("download-csv", "data"), Input("export-csv", "n_clicks"), State('ranking-table', 'data'), prevent_initial_call=True)
