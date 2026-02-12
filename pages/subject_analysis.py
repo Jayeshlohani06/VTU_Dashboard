@@ -65,11 +65,19 @@ PAGE_CSS = """
   vertical-align: -0.1em;
 }
 
+/* UNIVERSAL BOX SIZING FIX FOR DROPDOWN */
+.Select, .Select div, .Select input, .Select span {
+  box-sizing: border-box !important;
+}
+
 /* Dropdown Styling for Visibility */
 .VirtualizedSelectOption {
   color: #1f2937 !important;
   background-color: #ffffff !important;
   padding: 10px !important;
+  white-space: nowrap !important; /* Prevent line breaks violating bounds */
+  text-overflow: ellipsis !important; /* Handle long text gracefully */
+  overflow: hidden !important;
 }
 
 .VirtualizedSelectOption:hover {
@@ -89,18 +97,28 @@ PAGE_CSS = """
   color: #ffffff !important;
 }
 
+/* Force Select wrapper to fill container */
 .Select {
   position: relative !important;
   z-index: 100 !important;
+  width: 100% !important; /* Ensure the anchor is full width */
+  box-sizing: border-box !important;
 }
 
-.Select-control {
+.Select-control, .Select-multi-value-wrapper, div[class*="-control"] {
   background-color: #ffffff !important;
   border-color: #d1d5db !important;
   border-width: 1px !important;
   border-radius: 6px !important;
   position: relative !important;
   z-index: 100 !important;
+  width: 100% !important; /* Ensure control matches anchor */
+  box-sizing: border-box !important;
+  height: auto !important; /* Allow wrapping */
+  min-height: 45px !important;
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
 }
 
 .Select-control.is-focused {
@@ -110,26 +128,42 @@ PAGE_CSS = """
 
 .Select-menu-outer {
   background-color: #ffffff !important;
-  border-color: #d1d5db !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid #d1d5db !important;
+  border-top: none !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
   display: block !important;
-  z-index: 10000 !important;
+  z-index: 9999 !important;
   position: absolute !important;
+  
+  /* STRICT ALIGNMENT FIX */
   top: 100% !important;
   left: 0 !important;
   right: 0 !important;
-  width: 100% !important;
-  border-top: none !important;
-  pointer-events: auto !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  max-height: 400px !important;
+  width: auto !important; /* Let left/right dictate width */
+  margin: 0 !important; /* Reset margins that push it out */
+  margin-top: -1px !important; /* Overlap border */
+  
+  box-sizing: border-box !important;
+  border-bottom-left-radius: 6px !important;
+  border-bottom-right-radius: 6px !important;
+  max-height: 300px !important;
+  min-width: 0 !important; /* Prevent content-based expansion */
+  max-width: 100% !important; /* Strictly enforce parent boundary */
   overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Fix rounding when open to make it look attached */
+.Select.is-open > .Select-control {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-color: #d1d5db !important;
 }
 
 .Select-menu {
-  max-height: 300px !important;
-  overflow-y: auto !important;
+  /* Disable inner scroll to prevent double scrollbars */
+  max-height: none !important; 
+  overflow-y: visible !important;
   overflow-x: hidden !important;
   display: block !important;
   visibility: visible !important;
@@ -252,9 +286,9 @@ layout = dbc.Container([
                             }
                         ),
                         html.Div(style={"height": "10px"})
-                    ], style={"overflow": "visible", "position": "relative", "zIndex": "1000"}),
+                    ], style={"position": "relative", "zIndex": "1000"}),
                     html.Div(style={"height": "15px"}),
-                ], md=5),
+                ], md=5, style={"position": "relative", "zIndex": "1060", "overflow": "visible"}), # Added explicit calc props
 
                 dbc.Col([
                     html.H6("Filter by Result", className="fw-bold text-muted mb-1"),
@@ -280,9 +314,9 @@ layout = dbc.Container([
                             }
                         ),
                         html.Div(style={"height": "10px"})
-                    ], style={"overflow": "visible", "position": "relative", "zIndex": "1000"}),
+                    ], style={"position": "relative", "zIndex": "1000"}),
                     html.Div(style={"height": "15px"}),
-                ], md=3),
+                ], md=3, style={"position": "relative", "zIndex": "1050", "overflow": "visible"}),
 
                 dbc.Col([
                     html.H6("Export", className="fw-bold text-muted mb-1"),
@@ -303,7 +337,7 @@ layout = dbc.Container([
                 )
             ], className="mt-1")
         ], style={"overflow": "visible", "position": "relative"}), className="sa-card", style={"overflow": "visible", "position": "relative"}),
-        className="mb-4", style={"overflow": "visible", "position": "relative", "zIndex": "100"}
+        className="mb-4", style={"overflow": "visible", "position": "relative", "zIndex": "1050"}
     ),
 
     # --- KPIs ---
@@ -320,19 +354,42 @@ layout = dbc.Container([
             dash_table.DataTable(
                 id="subject-table",
                 columns=[], data=[],
-                style_table={"overflowX": "auto", "borderRadius": "10px"},
+                style_table={
+                    "overflowX": "auto", 
+                    "borderRadius": "8px", 
+                    "border": "1px solid #d1d5db",
+                    "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+                },
                 style_cell={
-                    "textAlign": "center", "padding": "8px",
+                    "textAlign": "center", 
+                    "padding": "12px",
                     "fontFamily": "Inter, Segoe UI, system-ui, -apple-system, Arial",
-                    "fontSize": 13
+                    "fontSize": "13px",
+                    "color": "#1f2937",
+                    "border": "1px solid #e5e7eb"
                 },
                 style_header={
-                    "backgroundColor": "#1f2937", "color": "white", "fontWeight": "700"
+                    "backgroundColor": "#1f2937", 
+                    "color": "#ffffff",
+                    "fontWeight": "700",
+                    "textTransform": "uppercase",
+                    "fontSize": "12px",
+                    "letterSpacing": "0.5px",
+                    "borderBottom": "2px solid #111827"
+                },
+                style_data={
+                    "whiteSpace": "normal",
+                    "height": "auto",
+                    "backgroundColor": "#ffffff"
                 },
                 style_data_conditional=[
-                    {"if": {"filter_query": "{Overall_Result} = 'Fail'"}, "backgroundColor": "#fee2e2", "color": "#991b1b", "fontWeight": "600"},
-                    {"if": {"filter_query": "{Overall_Result} = 'Pass'"}, "backgroundColor": "#dcfce7", "color": "#065f46", "fontWeight": "600"},
-                    {"if": {"filter_query": "{Overall_Result} = 'Absent'"}, "backgroundColor": "#fed7aa", "color": "#92400e", "fontWeight": "700"},
+                    {'if': {'row_index': 'odd'}, 'backgroundColor': '#f3f4f6'},
+                    {"if": {"state": "selected"}, "backgroundColor": "rgba(59, 130, 246, 0.1)", "border": "1px solid #3b82f6"},
+                    
+                    # Result coloring
+                    {"if": {"filter_query": "{Overall_Result} = 'Fail'"}, "backgroundColor": "#fef2f2", "color": "#dc2626", "fontWeight": "700"},
+                    {"if": {"filter_query": "{Overall_Result} = 'Pass'"}, "backgroundColor": "#ecfdf5", "color": "#059669", "fontWeight": "700"},
+                    {"if": {"filter_query": "{Overall_Result} = 'Absent'"}, "backgroundColor": "#fff7ed", "color": "#d97706", "fontWeight": "700"},
                 ],
                 page_size=10,
                 sort_action="native",
@@ -444,16 +501,34 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
     result_cols = [c for c in df_sel.columns if "Result" in c]
     if result_cols:
         # Detect Absent ("A"), Pass ("P"), and Fail ("F")
+        # Logic: 
+        # - Fail if ANY 'F'
+        # - Fail if 'A' exists but not ALL are 'A' (Absent in 1 = Fail)
+        # - Absent only if ALL are 'A'
+        # - Pass otherwise
         def determine_result(x):
-            vals = [str(v).strip().upper() for v in x if pd.notna(v)]
-            if "A" in vals:
-                return "Absent"
-            elif all(v == "P" for v in vals):
-                return "Pass"
-            else:
+            vals = [str(v).strip().upper() for v in x if pd.notna(v) and str(v).strip() != ""]
+            
+            # If student has NO data for any selected subject, mark as NA (to filter out)
+            if not vals:
+                return "NA"
+
+            has_fail = any(v in ["F", "FAIL"] for v in vals)
+            has_absent = any(v in ["A", "ABSENT"] for v in vals)
+            all_absent = all(v in ["A", "ABSENT"] for v in vals)
+
+            if has_fail:
                 return "Fail"
+            elif has_absent:
+                # If absent in all, then Absent. If absent in some (and passed others), then Fail.
+                return "Absent" if all_absent else "Fail"
+            else:
+                return "Pass"
         
         df_sel["Overall_Result"] = df_sel[result_cols].apply(determine_result, axis=1)
+        
+        # Filter out students who aren't taking ANY of the selected subjects (Result = NA)
+        df_sel = df_sel[df_sel["Overall_Result"] != "NA"]
     else:
         df_sel["Overall_Result"] = "Pass"
 
@@ -509,15 +584,175 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
         ]
         col_md = 6  # 2 cards
 
-    cards = dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.I(className=f"bi {k['icon']} me-2", style={"color": k["color"], "fontSize": "1.4rem"}),
-            html.Span(k["label"], className="kpi-label"),
-            html.Div(str(k["value"]), className="kpi-value text-center", style={"color": k["color"]})
-        ]), className="kpi-card", style={"borderLeftColor": k["color"], "backgroundColor": "#fff"}), 
-        md=col_md, xs=6)
-        for k in kpis
-    ], className="g-3")
+    # =========================================================================
+    # SUBJECT-WISE BREAKDOWN (Handle Absent Logic Correctly)
+    # =========================================================================
+    
+    # 1. Subject-wise Analysis Data Structure
+    subject_stats = []
+    
+    for subj in selected_subjects:
+        # Robust column lookup: Find the actual column names in df_sel
+        # This prevents issues where 'BNSK559 Result' (constructed) doesn't match 'BNSK559  Result' (actual with double space)
+        # resulting in fallback or missing data. Use df_sel to ensure consistency with KPIs.
+        subj_cols = [c for c in df_sel.columns if c.startswith(subj)]
+        
+        res_col = next((c for c in subj_cols if "Result" in c), None)
+        int_col = next((c for c in subj_cols if "Internal" in c), None)
+        ext_col = next((c for c in subj_cols if "External" in c), None)
+        tot_col = next((c for c in subj_cols if "Total" in c), None)
+
+        if not res_col:
+            continue
+            
+        cols_to_fetch = [first_col, "Name", res_col]
+        if int_col: cols_to_fetch.append(int_col)
+        if ext_col: cols_to_fetch.append(ext_col)
+        if tot_col: cols_to_fetch.append(tot_col)
+        
+        # Use filtered dataset
+        subj_df = df_sel[cols_to_fetch].copy()
+
+        # --- LOGIC: Validate entries for this subject ---
+        # Ensure we only count students who have a valid entry for this subject
+        # Drop rows where Result is NaN/None/Empty (Student didn't take this subject)
+        subj_df = subj_df[subj_df[res_col].notna()]
+        subj_df = subj_df[subj_df[res_col].astype(str).str.strip() != ""]
+
+        if subj_df.empty:
+            subject_stats.append({
+                "Subject": subj,
+                "Total Students": 0, "Appeared": 0, "Absent": 0, "Passed": 0, "Failed": 0, "Pass %": 0
+            })
+            continue
+
+        # Standardize Result
+        subj_df[res_col] = subj_df[res_col].astype(str).str.strip().str.upper()
+        
+        # Identify Status
+        def get_subj_status(row):
+            r = row[res_col]
+            e = row[ext_col] if ext_col else 0 
+            
+            try:
+                e_val = float(e)
+            except:
+                e_val = 0
+            
+            if r in ['A', 'ABSENT'] and e_val == 0:
+                return 'Absent'
+            elif r in ['F', 'FAIL']:
+                return 'Fail'
+            elif r in ['P', 'PASS']:
+                return 'Pass'
+            else:
+                if r in ['A', 'ABSENT']: return 'Absent'
+                return 'Ignore' 
+        
+        if ext_col:
+            subj_df[ext_col] = pd.to_numeric(subj_df[ext_col], errors='coerce').fillna(0)
+        
+        subj_df['Status'] = subj_df.apply(get_subj_status, axis=1)
+        
+        # Filter invalid statuses
+        subj_df = subj_df[subj_df['Status'] != 'Ignore']
+
+        # Stats
+        s_total = len(subj_df)
+        s_absent = (subj_df['Status'] == 'Absent').sum()
+        s_appeared = s_total - s_absent
+        s_passed = (subj_df['Status'] == 'Pass').sum()
+        s_failed = (subj_df['Status'] == 'Fail').sum()
+        s_pass_pct = round((s_passed / s_appeared) * 100, 2) if s_appeared > 0 else 0
+        
+        subject_stats.append({
+            "Subject": subj,
+            "Total Students": s_total,
+            "Appeared": s_appeared,
+            "Absent": s_absent,
+            "Passed": s_passed,
+            "Failed": s_failed,
+            "Pass %": s_pass_pct
+        })
+        
+    subject_summary_df = pd.DataFrame(subject_stats)
+    
+    # If no subjects selected or found
+    if subject_summary_df.empty:
+        summary_card = html.Div(html.P("No subject data found.", className="text-muted"))
+    else:
+        # Create a Summary Table for Subject-wise stats
+        summary_card = dbc.Card(dbc.CardBody([
+            html.H5("📚 Subject Level Performance", className="fw-bold mb-3 text-primary"),
+            dash_table.DataTable(
+                data=subject_summary_df.to_dict('records'),
+                columns=[{"name": i, "id": i} for i in subject_summary_df.columns],
+                style_table={"overflowX": "auto", "borderRadius": "8px", "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1)"},
+                style_header={
+                    "backgroundColor": "#1f2937",
+                    "fontWeight": "700",
+                    "color": "#ffffff",
+                    "borderBottom": "2px solid #111827",
+                    "padding": "12px",
+                    "textTransform": "uppercase",
+                    "fontSize": "12px",
+                    "letterSpacing": "0.5px"
+                },
+                style_cell={
+                    "textAlign": "center", 
+                    "padding": "12px", 
+                    "fontFamily": "Inter, sans-serif",
+                    "fontSize": "14px",
+                    "border": "1px solid #e2e8f0",
+                    "color": "#1e293b"
+                },
+                style_data_conditional=[
+                    {
+                        'if': {'row_index': 'odd'},
+                        'backgroundColor': '#f3f4f6'
+                    },
+                    {
+                        "if": {"state": "selected"},
+                        "backgroundColor": "rgba(59, 130, 246, 0.1)",
+                        "border": "1px solid #3b82f6"
+                    },
+                    # Add simple conditional formatting for Pass %
+                    {
+                        "if": {
+                            "filter_query": "{Pass %} >= 50",
+                            "column_id": "Pass %"
+                        },
+                        "color": "#059669",
+                        "fontWeight": "bold"
+                    },
+                    {
+                        "if": {
+                            "filter_query": "{Pass %} < 50",
+                            "column_id": "Pass %"
+                        },
+                        "color": "#dc2626",
+                        "fontWeight": "bold"
+                    }
+                ],
+                sort_action="native"
+            )
+        ]), className="sa-card mb-4")
+
+    cards = html.Div([
+        dbc.Row([
+            dbc.Col(dbc.Card(dbc.CardBody([
+                html.I(className=f"bi {k['icon']} me-2", style={"color": k["color"], "fontSize": "1.4rem"}),
+                html.Span(k["label"], className="kpi-label"),
+                html.Div(str(k["value"]), className="kpi-value text-center", style={"color": k["color"]})
+            ]), className="kpi-card", style={"borderLeftColor": k["color"], "backgroundColor": "#fff"}), 
+            md=col_md, xs=6)
+            for k in kpis
+        ], className="g-3 mb-4"),
+        
+        # INSERT SUMMARY CARD HERE
+        summary_card
+    ])
+
 
     # Table
     columns_for_table = [{"name": [c.split(" ")[0], " ".join(c.split(" ")[1:])], "id": c} for c in selected_cols]
@@ -640,3 +875,4 @@ def export_xlsx(n, table_data, table_columns):
     df.columns = flat_headers
 
     return dcc.send_data_frame(df.to_excel, "subject_analysis.xlsx", sheet_name="Subject Analysis", index=False)
+

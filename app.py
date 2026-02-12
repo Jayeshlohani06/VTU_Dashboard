@@ -53,6 +53,7 @@ navbar = dbc.Navbar(
     dark=True,
     sticky="top",
     className="shadow-sm px-3",
+    style={"zIndex": 2000}
 )
 
 # ----------------- Layout -----------------
