@@ -876,10 +876,38 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
                     cell_selectable=True,
                     style_as_list_view=True,
                     style_table={'minWidth': '100%'},
-                    style_header={'backgroundColor': '#f8f9fa', 'fontWeight': 'bold', 'borderBottom': '2px solid #dee2e6'},
-                    style_cell={'textAlign': 'left', 'padding': '12px', 'fontFamily': 'Inter, sans-serif', 'cursor': 'pointer'},
+                    style_header={
+                        'backgroundColor': '#f1f5f9', 
+                        'fontWeight': '700', 
+                        'borderBottom': '2px solid #cbd5e1',
+                        'color': '#334155',
+                        'padding': '12px'
+                    },
+                    style_cell={
+                        'textAlign': 'left', 
+                        'padding': '12px', 
+                        'fontFamily': 'Inter, sans-serif', 
+                        'cursor': 'pointer',
+                        'color': '#1f2937',
+                        'fontSize': '0.9rem',
+                        'backgroundColor': 'transparent'
+                    },
                     style_data_conditional=[
-                        {'if': {'state': 'active'}, 'backgroundColor': 'rgba(0, 116, 217, 0.1)', 'border': '1px solid rgb(0, 116, 217)'}
+                        # Selected Cell
+                        {'if': {'state': 'active'}, 'backgroundColor': '#eff6ff', 'border': '1px solid #60a5fa'},
+                        
+                        # Student ID (Blue & Bold)
+                        {'if': {'column_id': 'Student_ID'}, 'color': '#2563eb', 'fontWeight': 'bold'},
+                        
+                        # Name (Semi-Bold)
+                        {'if': {'column_id': 'Name'}, 'fontWeight': '500'},
+                        
+                        # Stats (Bold & Darker)
+                        {'if': {'column_id': 'Total_Marks'}, 'fontWeight': 'bold', 'color': '#111827'},
+                        {'if': {'column_id': 'percentage_disp'}, 'fontWeight': 'bold', 'color': '#111827'},
+                        
+                        # Zebra Striping (Subtle)
+                        {'if': {'row_index': 'odd'}, 'backgroundColor': '#f8fafc'}
                     ]
                 )
                 
@@ -967,12 +995,38 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
     
     rows = []
     for code in subject_codes:
+        i_val = row.get(f"{code} Internal")
+        e_val = row.get(f"{code} External")
+        t_val = row.get(f"{code} Total")
+        r_val = row.get(f"{code} Result")
+
+        # STRICT VALIDATION: Filter out subjects the student didn't take
+        # 1. Internal and External are NaN (missing)
+        # 2. Total is NaN or 0 (0 is often auto-filled for missing cols)
+        # 3. Result is NaN or empty
+        
+        is_marks_missing = pd.isna(i_val) and pd.isna(e_val)
+        
+        try: t_num = float(t_val)
+        except (ValueError, TypeError): t_num = 0
+        
+        is_total_invalid = pd.isna(t_val) or (t_num == 0)
+        is_result_missing = pd.isna(r_val) or str(r_val).strip() == ""
+
+        if is_marks_missing and is_total_invalid and is_result_missing:
+            continue
+
+        # Helper for display
+        def fmt(v): return v if pd.notna(v) else "-"
+        
+        res_disp = fmt(r_val)
+
         rows.append(html.Tr([
             html.Td(code, className="fw-bold"),
-            html.Td(row.get(f"{code} Internal", "-")),
-            html.Td(row.get(f"{code} External", "-")),
-            html.Td(row.get(f"{code} Total", "-"), className="fw-bold"),
-            html.Td(row.get(f"{code} Result", "-"), className="text-danger fw-bold" if str(row.get(f"{code} Result")).upper() in ['F', 'FAIL'] else "text-success fw-bold")
+            html.Td(fmt(i_val)),
+            html.Td(fmt(e_val)),
+            html.Td(fmt(t_val), className="fw-bold"),
+            html.Td(res_disp, className="text-danger fw-bold" if str(res_disp).upper() in ['F', 'FAIL'] else "text-success fw-bold")
         ]))
 
     body = html.Div([
