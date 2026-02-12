@@ -76,8 +76,8 @@ layout = dbc.Container([
             dbc.Input(id="branch-count", type="number", min=1, max=10),
             html.Br(),
             dbc.Button("Generate Branch Inputs", id="generate-branch-inputs", color="primary")
-        ])
-    ], className="shadow-sm"),
+        ], style={"overflow": "visible"})
+    ], className="shadow-sm", style={"overflow": "visible"}),
 
     html.Br(),
     html.Div(id="branch-input-container"),
@@ -128,8 +128,8 @@ def generate_branch_inputs(n_clicks, branch_count):
                     html.Div(id={'type': 'upload-msg', 'index': i}),
                     html.Div(id={'type': 'process-msg', 'index': i})
 
-                ])
-            ], className="mb-3 shadow-sm")
+                ], style={"overflow": "visible"})
+            ], className="mb-3 shadow-sm", style={"overflow": "visible"})
         )
 
     return inputs
@@ -175,7 +175,6 @@ def update_upload_ui(contents_list, names):
     prevent_initial_call=True
 )
 def process_branch_files(n_clicks, branch_names, branch_files):
-
     if not branch_files or all(f is None for f in branch_files):
         return ["Upload files first"] * len(branch_names), ""
 
@@ -184,8 +183,15 @@ def process_branch_files(n_clicks, branch_names, branch_files):
 
     for name, content in zip(branch_names, branch_files):
 
+        # ✅ ALWAYS append something
         if not name or not content:
-            branch_summaries.append("")
+            branch_summaries.append(
+                dbc.Alert(
+                    "Branch name or file missing",
+                    color="warning",
+                    duration=4000
+                )
+            )
             continue
 
         df = process_uploaded_excel(content)
@@ -204,12 +210,21 @@ def process_branch_files(n_clicks, branch_names, branch_files):
 
         branch_summaries.append(
             dbc.Alert(
-                [html.H6(f"{name.upper()} Processed"),
-                 html.Div(f"Subjects: {len(subjects)}"),
-                 html.Div(f"Records: {len(df)}")],
+                [
+                    html.H6(f"{name.upper()} Processed"),
+                    html.Div(f"Subjects: {len(subjects)}"),
+                    html.Div(f"Records: {len(df)}")
+                ],
                 color="info",
                 duration=7000
             )
+        )
+
+    # ✅ SAFETY CHECK
+    if not all_long_data:
+        return branch_summaries, dbc.Alert(
+            "No valid branch data processed",
+            color="danger"
         )
 
     long_df = pd.DataFrame(all_long_data)
@@ -218,9 +233,13 @@ def process_branch_files(n_clicks, branch_names, branch_files):
     ms.MASTER_BRANCH_DATA = long_df
 
     actions = html.Div([
-
-        dbc.Button("Proceed to Branch Intelligence →", href="/branch-intelligence",
-                   color="primary", size="lg", className="w-100 mt-3")
+        dbc.Button(
+            "Proceed to Branch Intelligence →",
+            href="/branch-intelligence",
+            color="primary",
+            size="lg",
+            className="w-100 mt-3"
+        )
     ])
 
     return branch_summaries, actions

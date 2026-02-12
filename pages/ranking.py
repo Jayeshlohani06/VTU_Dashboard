@@ -36,6 +36,7 @@ def get_grade_point(percentage_score):
     elif 60 <= score < 70: return 7
     elif 55 <= score < 60: return 6
     elif 50 <= score < 55: return 5
+    elif 40 <= score < 50: return 4
     else: return 0
 
 def _normalize_df(df, section_ranges):
@@ -51,7 +52,13 @@ def _normalize_df(df, section_ranges):
         df['Total_Marks'] = 0
     result_cols = [c for c in df.columns if 'result' in c.lower()]
     if result_cols:
-        df['Overall_Result'] = df[result_cols].apply(lambda row: 'P' if all(str(v).strip().upper() == 'P' for v in row if pd.notna(v)) else 'F', axis=1)
+        def calc_res(row):
+            vals = [str(row[c]).strip().upper() for c in result_cols if pd.notna(row[c])]
+            if not vals: return 'P'
+            if any(v == 'A' for v in vals): return 'A'
+            if all(v == 'P' for v in vals): return 'P'
+            return 'F'
+        df['Overall_Result'] = df.apply(calc_res, axis=1)
     else:
         pass_mark = 18
         if total_cols:
@@ -164,6 +171,7 @@ def themed_style_block(theme: str):
 
 layout = dbc.Container([
     html.Div(id="theme-style"),
+    dcc.Markdown(f"<style>{PAGE_CSS_LIGHT}</style>", dangerously_allow_html=True),
     html.Link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"),
 
     # Header
@@ -176,16 +184,27 @@ layout = dbc.Container([
     html.Div(
         dbc.Card(dbc.CardBody([
             dbc.Row([
-                dbc.Col(dcc.Dropdown(
-                    id="filter-dropdown",
-                    options=[{"label": "All Students", "value": "ALL"}, {"label": "Passed Students", "value": "PASS"}, {"label": "Failed Students", "value": "FAIL"}],
-                    value="ALL", clearable=False, className="shadow-sm"
-                ), md=3, xs=12),
-                dbc.Col(dcc.Dropdown(
-                    id="section-dropdown",
-                    options=[{"label": "All Sections", "value": "ALL"}],
-                    value="ALL", clearable=False, className="shadow-sm"
-                ), md=3, xs=12),
+                dbc.Col(html.Div([
+                    dcc.Dropdown(
+                        id="filter-dropdown",
+                        options=[
+                            {"label": "All Students", "value": "ALL"},
+                            {"label": "Passed Students", "value": "PASS"},
+                            {"label": "Failed Students", "value": "FAIL"},
+                            {"label": "Absent Students", "value": "ABSENT"}
+                        ],
+                        value="ALL", clearable=False, className="shadow-sm",
+                        style={"position": "relative", "zIndex": "1001"}
+                    )
+                ], style={"position": "relative", "zIndex": "1001"}), md=3, xs=12),
+                dbc.Col(html.Div([
+                    dcc.Dropdown(
+                        id="section-dropdown",
+                        options=[{"label": "All Sections", "value": "ALL"}],
+                        value="ALL", clearable=False, className="shadow-sm",
+                        style={"position": "relative", "zIndex": "1001"}
+                    )
+                ], style={"position": "relative", "zIndex": "1001"}), md=3, xs=12),
                 dbc.Col(dbc.InputGroup([
                     dbc.InputGroupText(html.I(className="bi bi-search")),
                     dbc.Input(id="search-input", placeholder="Search ID / Name...", type="text")
@@ -207,7 +226,7 @@ layout = dbc.Container([
                     value='marks', inline=True, labelClassName='px-3 py-1 border rounded-pill me-2 cursor-pointer', inputClassName="me-2"
                 ), className='text-end')
             ])
-        ]), className="rnk-card"), className="rnk-controls-wrap mb-4"
+        ]), className="rnk-card", style={"overflow": "visible"}), className="rnk-controls-wrap mb-4", style={"overflow": "visible", "zIndex": 1000, "position": "relative"}
     ),
 
     # SGPA Panel
@@ -263,6 +282,10 @@ layout = dbc.Container([
                     # Fail Styles (Check both Marks 'F' and SGPA 'Fail')
                     {'if': {'filter_query': '{Overall_Result} = "F"'}, 'backgroundColor': '#fff1f2', 'color': '#991b1b'},
                     {'if': {'filter_query': '{Result_Selected} = "Fail"'}, 'backgroundColor': '#fff1f2', 'color': '#991b1b'},
+
+                    # Absent Styles
+                    {'if': {'filter_query': '{Overall_Result} = "A"'}, 'backgroundColor': '#fffbeb', 'color': '#b45309', 'fontWeight': 'bold'},
+                    {'if': {'filter_query': '{Result_Selected} = "Absent"'}, 'backgroundColor': '#fffbeb', 'color': '#b45309', 'fontWeight': 'bold'},
                     
                     # Top Ranks (Marks)
                     {'if': {'filter_query': '{Class_Rank} = 1'}, 'backgroundColor': '#fffbeb', 'color': '#92400e', 'fontWeight': 'bold'},
@@ -298,7 +321,11 @@ layout = dbc.Container([
 @callback(Output("theme-style", "children"), Input("theme-toggle", "value"))
 def apply_theme(v): return themed_style_block("dark" if "dark" in (v or []) else "light")
 
-@callback(Output('section-dropdown', 'options'), Input('stored-data', 'data'), State('section-data', 'data'))
+@callback(
+    Output('section-dropdown', 'options'), 
+    Input('stored-data', 'data'), 
+    Input('section-data', 'data')
+)
 def update_section_options(json_data, section_ranges):
     if not json_data: return [{"label": "All Sections", "value": "ALL"}]
     df = pd.read_json(StringIO(json_data), orient='split') 
@@ -333,20 +360,26 @@ def generate_credit_panel(json_data, ranking_type, section_ranges):
     for code in codes:
         grid_items.append(dbc.Col(dbc.InputGroup([
             dbc.InputGroupText(code, className="fw-bold bg-light text-dark", style={"width": "85px", "justifyContent": "center", "fontSize": "0.8rem"}),
-            dbc.Select(id={'type': 'credit-input', 'index': code}, options=[{'label': f'{i} Credits', 'value': str(i)} for i in [4,3,2,1,0]], value='3', className="form-select text-center")
-        ], size="sm", className="shadow-sm mb-3"), xs=12, sm=6, md=4, lg=3))
+            dbc.Select(
+                id={'type': 'credit-input', 'index': code}, 
+                options=[{'label': f'{i} Credits', 'value': str(i)} for i in [4,3,2,1,0]], 
+                value='3', 
+                className="form-select text-center",
+                style={"minHeight": "45px", "fontSize": "15px"}
+            )
+        ], size="sm", className="shadow-sm mb-3", style={"overflow": "visible"}), xs=12, sm=6, md=4, lg=3))
 
     return dbc.Card([
-        dbc.CardHeader(html.Div([html.I(className="bi bi-sliders me-2"), "SGPA Configuration"], className="fw-bold text-primary"), className="bg-white border-bottom-0 pt-3"),
+        dbc.CardHeader(html.Div([html.I(className="bi bi-sliders me-2"), "SGPA Configuration"], className="fw-bold text-primary"), className="bg-white border-bottom-0 pt-3", style={"overflow": "visible"}),
         dbc.CardBody([
             html.P("Assign credits to subjects. The system will calculate SGPA based on these values.", className="text-muted small mb-4"),
-            dbc.Row(grid_items, className="g-2 mb-2"),
+            dbc.Row(grid_items, className="g-2 mb-2", style={"overflow": "visible"}),
             html.Hr(className="my-3 text-muted opacity-25"),
             dbc.Button([html.I(className="bi bi-calculator-fill me-2"), "Calculate SGPA"], id='calculate-sgpa-all', color='primary', size="lg", className='w-100 fw-bold shadow-sm mb-3'),
             # Status Container (starts empty)
             html.Div(id="sgpa-calc-status")
-        ])
-    ], className="rnk-card mb-4 border-start border-4 border-primary")
+        ], style={"overflow": "visible"})
+    ], className="rnk-card mb-4 border-start border-4 border-primary", style={"overflow": "visible"})
 
 # ========== SGPA Calculation (FIXED PASS/FAIL LOGIC) ==========
 @callback(
@@ -403,7 +436,12 @@ def calculate_sgpa_all(n_clicks, json_data, section_ranges, credit_ids, credit_v
             total_marks += score
             
         sgpa = (total_cp / total_cre) if total_cre > 0 else 0.0
-        res = 'Pass' if (not fail_flag and total_cre > 0) else 'Fail'
+        
+        if row.get('Overall_Result') == 'A':
+            res = 'Absent'
+        else:
+            res = 'Pass' if (not fail_flag and total_cre > 0) else 'Fail'
+            
         sgpa_rows.append({'Student_ID': row['Student_ID'], 'SGPA': round(sgpa, 2), 'Total_Marks_Selected': round(total_marks, 2), 'Result_Selected': res})
 
     sgpa_df = pd.DataFrame(sgpa_rows)
@@ -452,11 +490,13 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     target_res_col = "Overall_Result"
     pass_val = ["P", "PASS"]
     fail_val = ["F", "FAIL"]
+    absent_val = ["A", "ABSENT"]
 
     if rank_type == 'sgpa' and 'Result_Selected' in scope.columns:
         target_res_col = "Result_Selected"
         pass_val = ["PASS", "Pass"]
         fail_val = ["FAIL", "Fail"]
+        absent_val = ["ABSENT", "Absent"]
 
     if filter_val == "PASS":
         if target_res_col in scope.columns:
@@ -464,6 +504,9 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     elif filter_val == "FAIL":
         if target_res_col in scope.columns:
             scope = scope[scope[target_res_col].astype(str).str.upper().isin([f.upper() for f in fail_val])]
+    elif filter_val == "ABSENT":
+        if target_res_col in scope.columns:
+            scope = scope[scope[target_res_col].astype(str).str.upper().isin([a.upper() for a in absent_val])]
     
     if sec_val != "ALL" and 'Section' in scope.columns: scope = scope[scope["Section"] == sec_val]
 
@@ -474,73 +517,78 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
 
     # --- KPI Logic (Dynamic Visibility) ---
     total = len(scope)
-    if rank_type == 'sgpa' and 'Result_Selected' in scope.columns:
-        passed = (scope['Result_Selected'] == 'Pass').sum()
-    else:
-        passed = (scope['Overall_Result'] == 'P').sum() if 'Overall_Result' in scope.columns else 0
-        
-    failed = total - passed
-    pass_pct = round((passed / total) * 100, 2) if total else 0
+    
+    # Calculate counts based on the filtered scope
+    def check_res(val, allowed): return str(val).upper() in [x.upper() for x in allowed]
+    
+    passed = scope[target_res_col].apply(lambda x: check_res(x, pass_val)).sum() if target_res_col in scope.columns else 0
+    absent = scope[target_res_col].apply(lambda x: check_res(x, absent_val)).sum() if target_res_col in scope.columns else 0
+    failed = scope[target_res_col].apply(lambda x: check_res(x, fail_val)).sum() if target_res_col in scope.columns else 0
+    
+    # 'Appeared' Logic: conceptually Total - Absent (or Passed + Failed if filtering is weird)
+    # If filtered to 'Absent', Total=Absent, Appeared=0.
+    appeared = total - absent
+    pass_pct = round((passed / appeared) * 100, 2) if appeared > 0 else 0
     
     # === CALCULATE VTU STANDARD CATEGORIES ===
-    # Find all subject "Total" columns to determine max marks
     subject_total_cols = [c for c in base_full.columns if c.endswith(' Total') and c != 'Total_Marks']
     num_subjects = len(subject_total_cols) if subject_total_cols else 1
     max_marks_possible = num_subjects * 100 if num_subjects > 0 else 100
     
-    # Calculate percentage for each student in scope
     scope_calc = scope.copy()
     scope_calc['percentage'] = (scope_calc['Total_Marks'] / max_marks_possible * 100).round(2)
     
-    # Count VTU Categories
-    fcd_count = (scope_calc['percentage'] >= 70).sum()  # First Class Distinction
-    fc_count = ((scope_calc['percentage'] >= 60) & (scope_calc['percentage'] < 70)).sum()  # First Class
-    sc_count = ((scope_calc['percentage'] >= 50) & (scope_calc['percentage'] < 60)).sum()  # Second Class
-    fail_count = (scope_calc['Overall_Result'] == 'F').sum() if 'Overall_Result' in scope_calc.columns else 0
+    # Only PASSING students get a class
+    pass_mask = scope_calc[target_res_col].apply(lambda x: check_res(x, pass_val))
     
-    # Define Base KPIs
+    fcd_count = ((scope_calc['percentage'] >= 70) & pass_mask).sum()
+    fc_count = ((scope_calc['percentage'] >= 60) & (scope_calc['percentage'] < 70) & pass_mask).sum()
+    sc_count = ((scope_calc['percentage'] >= 50) & (scope_calc['percentage'] < 60) & pass_mask).sum()
+    
+    # Define KPIs matching the user request style
     kpi_objs = [
-        {"id": "total", "label": "Total Students", "value": total, "color": "#2563eb", "bg": "#eff6ff"},
-        {"id": "pass", "label": "Passed", "value": passed, "color": "#059669", "bg": "#ecfdf5"},
-        {"id": "fail", "label": "Failed", "value": fail_count, "color": "#dc2626", "bg": "#fef2f2"},
-        {"id": "rate", "label": "Pass Rate", "value": f"{pass_pct}%", "color": "#d97706", "bg": "#fffbeb"},
+        {"id": "total", "label": "Total Students", "value": total, "color": "#3b82f6", "bg": "#eff6ff"},
     ]
     
-    # Add VTU Category KPIs
-    vtu_kpis = [
-        {"id": "fcd", "label": "First Class Distinction (≥70%)", "value": fcd_count, "color": "#8b5cf6", "bg": "#faf5ff"},
-        {"id": "fc", "label": "First Class (60-70%)", "value": fc_count, "color": "#0ea5e9", "bg": "#f0f9ff"},
-        {"id": "sc", "label": "Second Class (50-60%)", "value": sc_count, "color": "#f59e0b", "bg": "#fffbf0"},
-    ]
-    
-    # Append VTU KPIs to base KPIs
-    kpi_objs.extend(vtu_kpis)
+    if filter_val == "ALL":
+        kpi_objs.extend([
+            {"id": "appeared", "label": "Appeared", "value": appeared, "color": "#10b981", "bg": "#ecfdf5"},
+            {"id": "absent", "label": "Absent", "value": absent, "color": "#f59e0b", "bg": "#fffbeb"},
+            {"id": "pass", "label": "Passed", "value": passed, "color": "#0ea5e9", "bg": "#f0f9ff"},
+            {"id": "fail", "label": "Failed", "value": failed, "color": "#ef4444", "bg": "#fef2f2"},
+            {"id": "rate", "label": "Pass % (Appeared)", "value": f"{pass_pct}%", "color": "#8b5cf6", "bg": "#f5f3ff"},
+        ])
+    elif filter_val == "PASS":
+        kpi_objs.append({"id": "pass", "label": "Passed", "value": passed, "color": "#0ea5e9", "bg": "#f0f9ff"})
+    elif filter_val == "FAIL":
+        kpi_objs.append({"id": "fail", "label": "Failed", "value": failed, "color": "#ef4444", "bg": "#fef2f2"})
+    elif filter_val == "ABSENT": 
+        kpi_objs.append({"id": "absent", "label": "Absent", "value": absent, "color": "#f59e0b", "bg": "#fffbeb"})
+
+    # Add VTU Categories (Always visible for context unless irrelevant)
+    if filter_val in ["ALL", "PASS"]:
+        vtu_kpis = [
+            {"id": "fcd", "label": "First Class Distinction (≥70%)", "value": fcd_count, "color": "#8b5cf6", "bg": "#faf5ff"},
+            {"id": "fc", "label": "First Class (60-70%)", "value": fc_count, "color": "#0ea5e9", "bg": "#f0f9ff"},
+            {"id": "sc", "label": "Second Class (50-60%)", "value": sc_count, "color": "#f59e0b", "bg": "#fffbf0"},
+        ]
+        kpi_objs.extend(vtu_kpis)
     
     if rank_type == 'sgpa' and 'SGPA' in scope.columns:
         avg = round(scope['SGPA'].mean(), 2) if not scope['SGPA'].isna().all() else 0
         kpi_objs.insert(0, {"id": "avg", "label": "Avg SGPA", "value": avg, "color": "#7c3aed", "bg": "#f5f3ff"})
 
-    # Filter KPIs based on User Selection
-    if filter_val == "PASS":
-        # Show: Total, Passed, Avg, and VTU categories. Hide: Failed, Rate
-        visible_kpis = [k for k in kpi_objs if k["id"] in ["avg", "total", "pass", "fcd", "fc", "sc"]]
-    elif filter_val == "FAIL":
-        # Show: Total, Failed, Avg. Hide: Passed, Rate, VTU categories
-        visible_kpis = [k for k in kpi_objs if k["id"] in ["avg", "total", "fail"]]
-    else:
-        # Show All
-        visible_kpis = kpi_objs
-
     # Dynamic column width based on count
-    count = len(visible_kpis)
-    row_cls = f"row-cols-2 row-cols-md-{min(count, 4)} row-cols-lg-{min(count, 5)} g-3"
+    count = len(kpi_objs)
+    # Force 6 cards row for ALL view 
+    row_cls = "row-cols-2 row-cols-md-3 row-cols-lg-6 g-3" if count >= 6 else f"row-cols-2 row-cols-md-{min(count, 4)} row-cols-lg-{min(count, 4)} g-3"
 
     kpi_cards = dbc.Row([
         dbc.Col(dbc.Card(dbc.CardBody([
-            html.Div(x["label"], className="kpi-label mb-2"),
-            html.Div(str(x["value"]), className="kpi-value", style={"color": x["color"]})
-        ]), className="kpi-card", style={"backgroundColor": x["bg"], "borderLeftColor": x["color"]}))
-        for x in visible_kpis
+            html.Div(x["label"], className="kpi-label mb-2", style={"fontSize": "0.75rem"}),
+            html.Div(str(x["value"]), className="kpi-value", style={"color": x["color"], "fontSize": "1.8rem"})
+        ]), className="kpi-card shadow-sm h-100", style={"backgroundColor": x["bg"], "borderLeftColor": x["color"]}))
+        for x in kpi_objs
     ], className=row_cls)
 
     def make_list(df, val_col, is_asc=False):
@@ -634,10 +682,15 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
         if section_df.empty:
             continue
         
-        fcd = (section_df['percentage'] >= 70).sum()
-        fc = ((section_df['percentage'] >= 60) & (section_df['percentage'] < 70)).sum()
-        sc = ((section_df['percentage'] >= 50) & (section_df['percentage'] < 60)).sum()
-        fail = (section_df['Overall_Result'] == 'F').sum()
+        # Check Pass Status using result column logic
+        is_pass = section_df[target_res_col].apply(lambda x: check_res(x, pass_val))
+        
+        fcd = ((section_df['percentage'] >= 70) & is_pass).sum()
+        fc = ((section_df['percentage'] >= 60) & (section_df['percentage'] < 70) & is_pass).sum()
+        sc = ((section_df['percentage'] >= 50) & (section_df['percentage'] < 60) & is_pass).sum()
+        pc = ((section_df['percentage'] < 50) & is_pass).sum()
+        fail = section_df[target_res_col].apply(lambda x: check_res(x, fail_val)).sum()
+        absent = section_df[target_res_col].apply(lambda x: check_res(x, absent_val)).sum()
         total_sec = len(section_df)
         
         breakdown_data.append({
@@ -645,7 +698,9 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
             'First Class Distinction (≥70%)': fcd,
             'First Class (60-70%)': fc,
             'Second Class (50-60%)': sc,
+            'Pass Class (<50%)': pc,
             'Failed': fail,
+            'Absent': absent,
             'Total': total_sec
         })
     
@@ -656,7 +711,9 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
             'First Class Distinction (≥70%)': sum(row['First Class Distinction (≥70%)'] for row in breakdown_data),
             'First Class (60-70%)': sum(row['First Class (60-70%)'] for row in breakdown_data),
             'Second Class (50-60%)': sum(row['Second Class (50-60%)'] for row in breakdown_data),
+            'Pass Class (<50%)': sum(row['Pass Class (<50%)'] for row in breakdown_data),
             'Failed': sum(row['Failed'] for row in breakdown_data),
+            'Absent': sum(row['Absent'] for row in breakdown_data),
             'Total': sum(row['Total'] for row in breakdown_data)
         }
         breakdown_data.append(overall_row)
@@ -670,13 +727,19 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
         else:
             section_df = scope_calc[scope_calc['Section'] == section_name]
         
+        is_pass = section_df[target_res_col].apply(lambda x: check_res(x, pass_val))
+        is_fail = section_df[target_res_col].apply(lambda x: check_res(x, fail_val))
+        is_absent = section_df[target_res_col].apply(lambda x: check_res(x, absent_val))
+        
         # Create category breakdown rows
         category_items = []
         categories = [
-            ('FCD (≥70%)', 'success', section_df[section_df['percentage'] >= 70]),
-            ('First Class (60-70%)', 'info', section_df[(section_df['percentage'] >= 60) & (section_df['percentage'] < 70)]),
-            ('Second Class (50-60%)', 'warning', section_df[(section_df['percentage'] >= 50) & (section_df['percentage'] < 60)]),
-            ('Failed', 'danger', section_df[section_df['Overall_Result'] == 'F'])
+            ('FCD (≥70%) - Passed Only', 'success', section_df[(section_df['percentage'] >= 70) & is_pass]),
+            ('First Class (60-70%) - Passed Only', 'info', section_df[(section_df['percentage'] >= 60) & (section_df['percentage'] < 70) & is_pass]),
+            ('Second Class (50-60%) - Passed Only', 'warning', section_df[(section_df['percentage'] >= 50) & (section_df['percentage'] < 60) & is_pass]),
+            ('Pass Class (<50%) - Passed Only', 'primary', section_df[(section_df['percentage'] < 50) & is_pass]),
+            ('Failed', 'danger', section_df[is_fail]),
+            ('Absent', 'secondary', section_df[is_absent])
         ]
         
         for cat_name, cat_color, cat_df in categories:

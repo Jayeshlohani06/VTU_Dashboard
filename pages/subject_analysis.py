@@ -64,6 +64,156 @@ PAGE_CSS = """
   height: 0.8rem;
   vertical-align: -0.1em;
 }
+
+/* Dropdown Styling for Visibility */
+.VirtualizedSelectOption {
+  color: #1f2937 !important;
+  background-color: #ffffff !important;
+  padding: 10px !important;
+}
+
+.VirtualizedSelectOption:hover {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.VirtualizedSelectOption.isSelected {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+/* Dash Dropdown */
+.Select--multi .Select-value {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.Select {
+  position: relative !important;
+  z-index: 100 !important;
+}
+
+.Select-control {
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+  border-width: 1px !important;
+  border-radius: 6px !important;
+  position: relative !important;
+  z-index: 100 !important;
+}
+
+.Select-control.is-focused {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+.Select-menu-outer {
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+  display: block !important;
+  z-index: 10000 !important;
+  position: absolute !important;
+  top: 100% !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  border-top: none !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  max-height: 400px !important;
+  overflow-y: auto !important;
+}
+
+.Select-menu {
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  display: block !important;
+  visibility: visible !important;
+}
+
+.Select-option {
+  color: #1f2937 !important;
+  background-color: #ffffff !important;
+  padding: 12px 15px !important;
+  font-size: 14px !important;
+  cursor: pointer !important;
+  border: none !important;
+  pointer-events: auto !important;
+  display: block !important;
+  visibility: visible !important;
+}
+
+.Select-option:hover {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.Select-option.is-focused {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.Select-option.is-selected {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.Select-input input {
+  color: #1f2937 !important;
+  font-weight: 500 !important;
+}
+
+/* Make sure dropdown container doesn't clip menu */
+.Dropdown {
+  position: relative !important;
+  z-index: 100 !important;
+}
+
+#subject-checklist, #result-filter {
+  position: relative !important;
+}
+
+/* Ensure dropdown components are always visible and clickable */
+.Select-wrapper {
+  overflow: visible !important;
+  z-index: 100 !important;
+}
+
+.react-select__menu-portal {
+  z-index: 10001 !important;
+  position: fixed !important;
+}
+
+/* Override any Bootstrap container overflow */
+.pb-4 {
+  overflow: visible !important;
+}
+
+/* Additional selectors for dropdown menu in case of different Dash versions */
+.Select-menu,
+.Select-options,
+[class*="Select"] [class*="menu"] {
+  z-index: 10000 !important;
+  display: block !important;
+  visibility: visible !important;
+}
+
+/* Force dropdown to be visible even if hidden by default */
+div[class*="Select-menu"] {
+  display: block !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 10000 !important;
+}
+
+/* React-Select compatibility */
+.react-select__menu {
+  z-index: 10000 !important;
+}
 """
 
 # ==================== Layout ====================
@@ -83,34 +233,56 @@ layout = dbc.Container([
             dbc.Row([
                 dbc.Col([
                     html.H6("Select Subjects", className="fw-bold text-muted mb-1"),
-                    dcc.Dropdown(
-                        id="subject-checklist",
-                        options=[], value=[], multi=True,
-                        placeholder="Select subjects to analyze...",
-                        className="shadow-sm"
-                    ),
+                    html.Div([
+                        dcc.Dropdown(
+                            id="subject-checklist",
+                            options=[], value=[], multi=True,
+                            placeholder="Select subjects to analyze...",
+                            className="shadow-sm custom-dropdown",
+                            searchable=True,
+                            clearable=True,
+                            optionHeight=50,
+                            maxHeight=300,
+                            style={
+                                "color": "#1f2937", 
+                                "fontWeight": "500", 
+                                "position": "relative", 
+                                "zIndex": "1000",
+                                "minHeight": "45px"
+                            }
+                        ),
+                        html.Div(style={"height": "10px"})
+                    ], style={"overflow": "visible", "position": "relative", "zIndex": "1000"}),
+                    html.Div(style={"height": "15px"}),
                 ], md=5),
 
                 dbc.Col([
                     html.H6("Filter by Result", className="fw-bold text-muted mb-1"),
-                    dcc.Dropdown(
-                        id="result-filter",
-                        options=[
-                            {"label": "All Students", "value": "ALL"},
-                            {"label": "Passed Only", "value": "PASS"},
-                            {"label": "Failed Only", "value": "FAIL"},
-                        ],
-                        value="ALL", clearable=False, className="shadow-sm"
-                    )
+                    html.Div([
+                        dcc.Dropdown(
+                            id="result-filter",
+                            options=[
+                                {"label": "All Students", "value": "ALL"},
+                                {"label": "Passed Only", "value": "PASS"},
+                                {"label": "Failed Only", "value": "FAIL"},
+                                {"label": "Absent Only", "value": "ABSENT"},
+                            ],
+                            value="ALL", clearable=False, className="shadow-sm custom-dropdown",
+                            searchable=True,
+                            optionHeight=50,
+                            maxHeight=300,
+                            style={
+                                "color": "#1f2937", 
+                                "fontWeight": "500", 
+                                "position": "relative", 
+                                "zIndex": "1000",
+                                "minHeight": "45px"
+                            }
+                        ),
+                        html.Div(style={"height": "10px"})
+                    ], style={"overflow": "visible", "position": "relative", "zIndex": "1000"}),
+                    html.Div(style={"height": "15px"}),
                 ], md=3),
-
-                dbc.Col([
-                    html.H6("Select", className="fw-bold text-muted mb-1"),
-                    dbc.ButtonGroup([
-                        dbc.Button("Select All", id="select-all-btn", color="success", outline=True, className="me-1"),
-                        dbc.Button("Deselect All", id="deselect-all-btn", color="danger", outline=True),
-                    ], className="w-100"),
-                ], md=2),
 
                 dbc.Col([
                     html.H6("Export", className="fw-bold text-muted mb-1"),
@@ -130,8 +302,8 @@ layout = dbc.Container([
                     )
                 )
             ], className="mt-1")
-        ]), className="sa-card"),
-        className="sticky-top mb-4", style={"top": "10px", "zIndex": "10"}
+        ], style={"overflow": "visible", "position": "relative"}), className="sa-card", style={"overflow": "visible", "position": "relative"}),
+        className="mb-4", style={"overflow": "visible", "position": "relative", "zIndex": "100"}
     ),
 
     # --- KPIs ---
@@ -158,8 +330,9 @@ layout = dbc.Container([
                     "backgroundColor": "#1f2937", "color": "white", "fontWeight": "700"
                 },
                 style_data_conditional=[
-                    {"if": {"filter_query": "{Overall_Result} = 'Fail'"}, "backgroundColor": "#fee2e2"},
-                    {"if": {"filter_query": "{Overall_Result} = 'Pass'"}, "backgroundColor": "#dcfce7"},
+                    {"if": {"filter_query": "{Overall_Result} = 'Fail'"}, "backgroundColor": "#fee2e2", "color": "#991b1b", "fontWeight": "600"},
+                    {"if": {"filter_query": "{Overall_Result} = 'Pass'"}, "backgroundColor": "#dcfce7", "color": "#065f46", "fontWeight": "600"},
+                    {"if": {"filter_query": "{Overall_Result} = 'Absent'"}, "backgroundColor": "#fed7aa", "color": "#92400e", "fontWeight": "700"},
                 ],
                 page_size=10,
                 sort_action="native",
@@ -185,9 +358,10 @@ layout = dbc.Container([
     dcc.Download(id="sa-download-csv"),
     dcc.Download(id="sa-download-xlsx"),
 
-    # Hidden Stores
-    dcc.Store(id="stored-data", storage_type="session"),
-    dcc.Store(id="overview-selected-subjects", storage_type="session"),
+    # Use session stores to match global app.py stores
+    dcc.Store(id='stored-data', storage_type='session'),
+    dcc.Store(id='overview-selected-subjects', storage_type='session'),
+    dcc.Store(id='section-data', storage_type='session')
 ], fluid=True, className="pb-4")
 
 # ==================== CALLBACKS ====================
@@ -197,25 +371,35 @@ layout = dbc.Container([
     Output("subject-checklist", "options", allow_duplicate=True),
     Output("subject-checklist", "value", allow_duplicate=True),
     Input("overview-selected-subjects", "data"),
-    Input("select-all-btn", "n_clicks"),
-    Input("deselect-all-btn", "n_clicks"),
-    prevent_initial_call='initial_duplicate'  # <-- FIX IS HERE
+    Input("subject-checklist", "value"),
+    prevent_initial_call='initial_duplicate'
 )
-def update_subject_dropdown(overview_subjects, select_all, deselect_all):
+def update_subject_dropdown(overview_subjects, current_value):
     if not overview_subjects:
         return [], []
-    options = [{"label": s, "value": s} for s in overview_subjects]
-    all_values = [opt["value"] for opt in options]
-    ctx = dash.callback_context
     
+    # Add "Select All" and "Remove All" options at the top
+    options = [
+        {"label": "✓ Select All", "value": "__SELECT_ALL__"},
+        {"label": "✕ Remove All", "value": "__REMOVE_ALL__"}
+    ] + [{"label": s, "value": s} for s in overview_subjects]
+    all_subject_values = [opt["value"] for opt in options[2:]]  # Exclude the special markers
+    
+    ctx = dash.callback_context
     trigger = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "INITIAL_LOAD"
 
-    if trigger == "select-all-btn":
-        return options, all_values
-    elif trigger == "deselect-all-btn":
-        return options, []
+    if trigger == "subject-checklist":
+        # If "Select All" is clicked, select all subjects
+        if current_value and "__SELECT_ALL__" in current_value:
+            return options, all_subject_values
+        # If "Remove All" is clicked, clear all
+        elif current_value and "__REMOVE_ALL__" in current_value:
+            return options, []
+        # Remove special markers if user manually selects other subjects
+        filtered_value = [v for v in (current_value or []) if not v.startswith("__")]
+        return options, filtered_value
     
-    return options, all_values
+    return options, all_subject_values
 
 
 # 2️⃣ Main Analysis
@@ -235,6 +419,9 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
     if not json_data:
         raise PreventUpdate
     
+    # Remove the special markers if present
+    selected_subjects = [s for s in (selected_subjects or []) if not s.startswith("__")]
+    
     if not selected_subjects:
         return "0 subjects selected", html.P("Please select at least one subject.", className="text-muted text-center"), [], [], html.Div()
 
@@ -252,47 +439,75 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
     df_sel = df[[first_col, "Name"] + selected_cols].copy()
     num_cols = [c for c in df_sel.columns if any(k in c for k in ["Internal", "External", "Total"])]
     for c in num_cols:
-        df_sel[c] = pd.to_numeric(df_sel[c], errors="coerce").fillna(0)
+        df_sel[c] = pd.to_numeric(df_sel[c], errors="coerce")
 
     result_cols = [c for c in df_sel.columns if "Result" in c]
     if result_cols:
-        df_sel["Overall_Result"] = df_sel[result_cols].apply(
-            lambda x: "Pass" if all(str(v).strip().upper() == "P" for v in x if pd.notna(v)) else "Fail", axis=1
-        )
+        # Detect Absent ("A"), Pass ("P"), and Fail ("F")
+        def determine_result(x):
+            vals = [str(v).strip().upper() for v in x if pd.notna(v)]
+            if "A" in vals:
+                return "Absent"
+            elif all(v == "P" for v in vals):
+                return "Pass"
+            else:
+                return "Fail"
+        
+        df_sel["Overall_Result"] = df_sel[result_cols].apply(determine_result, axis=1)
     else:
         df_sel["Overall_Result"] = "Pass"
 
+    # Count Absent, Appeared, Passed, Failed (before filtering)
+    total_students = len(df_sel)
+    absent = (df_sel["Overall_Result"] == "Absent").sum()
+    appeared = total_students - absent
+    passed = (df_sel["Overall_Result"] == "Pass").sum()
+    failed = (df_sel["Overall_Result"] == "Fail").sum()
+    pass_pct_appeared = round((passed / appeared) * 100, 2) if appeared > 0 else 0
+
+    # Apply result filter
     if result_filter == "PASS":
         df_sel = df_sel[df_sel["Overall_Result"] == "Pass"]
     elif result_filter == "FAIL":
         df_sel = df_sel[df_sel["Overall_Result"] == "Fail"]
+    elif result_filter == "ABSENT":
+        df_sel = df_sel[df_sel["Overall_Result"] == "Absent"]
+    # For "ALL" filter, keep all rows including Absent
 
     total = len(df_sel)
-    passed = (df_sel["Overall_Result"] == "Pass").sum()
-    failed = (df_sel["Overall_Result"] == "Fail").sum()
-    pass_pct = round((passed / total) * 100, 2) if total else 0
+    passed_filtered = (df_sel["Overall_Result"] == "Pass").sum()
+    failed_filtered = (df_sel["Overall_Result"] == "Fail").sum()
+    absent_filtered = (df_sel["Overall_Result"] == "Absent").sum()
 
     # Dynamically build KPI list based on filter
     if result_filter == "ALL":
         kpis = [
             {"label": "Total Students", "icon": "bi-people-fill", "value": total, "color": "#3b82f6"},
-            {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed, "color": "#10b981"},
+            {"label": "Appeared", "icon": "bi-person-check-fill", "value": appeared, "color": "#10b981"},
+            {"label": "Absent", "icon": "bi-person-x-fill", "value": absent, "color": "#f59e0b"},
+            {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed, "color": "#06b6d4"},
             {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed, "color": "#ef4444"},
-            {"label": "Pass %", "icon": "bi-graph-up", "value": f"{pass_pct}%", "color": "#f59e0b"},
+            {"label": "Pass % (Appeared)", "icon": "bi-graph-up", "value": f"{pass_pct_appeared}%", "color": "#8b5cf6"},
         ]
-        col_md = 3 # 4 cards
+        col_md = 2  # 6 cards
     elif result_filter == "PASS":
         kpis = [
             {"label": "Total (in view)", "icon": "bi-people-fill", "value": total, "color": "#3b82f6"},
-            {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed, "color": "#10b981"},
+            {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed_filtered, "color": "#10b981"},
         ]
-        col_md = 6 # 2 cards
-    else:  # result_filter == "FAIL"
+        col_md = 6  # 2 cards
+    elif result_filter == "FAIL":
         kpis = [
             {"label": "Total (in view)", "icon": "bi-people-fill", "value": total, "color": "#3b82f6"},
-            {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed, "color": "#ef4444"},
+            {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed_filtered, "color": "#ef4444"},
         ]
-        col_md = 6 # 2 cards
+        col_md = 6  # 2 cards
+    else:  # result_filter == "ABSENT"
+        kpis = [
+            {"label": "Total (in view)", "icon": "bi-people-fill", "value": total, "color": "#3b82f6"},
+            {"label": "Absent", "icon": "bi-person-x-fill", "value": absent_filtered, "color": "#f59e0b"},
+        ]
+        col_md = 6  # 2 cards
 
     cards = dbc.Row([
         dbc.Col(dbc.Card(dbc.CardBody([
@@ -313,32 +528,63 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
 
     # Charts
     if chart_tab == "pie":
+        # Use df_sel for pie counts (already filtered)
+        pie_pass = (df_sel["Overall_Result"] == "Pass").sum()
+        pie_fail = (df_sel["Overall_Result"] == "Fail").sum()
+        pie_absent = (df_sel["Overall_Result"] == "Absent").sum()
+        
+        # Include Absent in pie chart when showing ALL filter
+        if result_filter == "ALL":
+            chart_values = [pie_pass, pie_fail, pie_absent]
+            chart_labels = ["Pass", "Fail", "Absent"]
+            chart_colors = ["#10b981", "#ef4444", "#f59e0b"]
+        elif result_filter == "ABSENT":
+            # When filtering for Absent only, show a pie with just absent count
+            chart_values = [pie_absent]
+            chart_labels = ["Absent"]
+            chart_colors = ["#f59e0b"]
+        else:
+            chart_values = [pie_pass, pie_fail] if result_filter == "PASS" else [pie_fail] if result_filter == "FAIL" else [pie_pass]
+            chart_labels = ["Pass", "Fail"] if result_filter == "PASS" else ["Fail"] if result_filter == "FAIL" else ["Pass"]
+            chart_colors = ["#10b981", "#ef4444"] if result_filter == "PASS" else ["#ef4444"] if result_filter == "FAIL" else ["#10b981"]
+        
         fig = px.pie(
-            values=[passed, failed],
-            names=["Pass", "Fail"],
-            color=["Pass", "Fail"],
-            color_discrete_map={"Pass": "#10b981", "Fail": "#ef4444"},
+            values=chart_values,
+            names=chart_labels,
+            color=chart_labels,
+            color_discrete_map={label: color for label, color in zip(chart_labels, chart_colors)},
             hole=0.4
+        )
+        # Fix pie chart tooltip (clean style, no label=value=color)
+        fig.update_traces(
+            hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>"
         )
         fig.update_layout(title="Pass vs Fail Distribution", title_x=0.5, template="plotly_white")
         chart = dcc.Graph(figure=fig)
     else:
-        avg_marks = {subj: df_sel[[c for c in selected_cols if subj in c and "Total" in c]].mean(axis=1).mean()
-                     for subj in selected_subjects}
-        bar_fig = px.bar(x=list(avg_marks.keys()), y=list(avg_marks.values()),
-                         text=[f"{v:.1f}" for v in avg_marks.values()],
-                         color=list(avg_marks.keys()), color_discrete_sequence=px.colors.qualitative.Plotly)
+        # Exclude Absent students from bar averages
+        df_for_avg = df_sel[df_sel["Overall_Result"] != "Absent"].copy()
         
-        # --- CUSTOM TOOLTIP ADDED HERE ---
-        bar_fig.update_traces(
-            textposition="outside",
-            hovertemplate="<b>Subject Code:</b> %{x}<br><b>Average Marks:</b> %{y:.2f}<extra></extra>"
-        )
-        # ---------------------------------
-        
-        bar_fig.update_layout(title="Average Total Marks per Subject", title_x=0.5, template="plotly_white",
-                              yaxis_title="Average Marks", xaxis_title="Subject")
-        chart = dcc.Graph(figure=bar_fig)
+        # If all students are absent, show a message
+        if df_for_avg.empty:
+            chart = html.P("No students with marks to display. All selected students are absent.", className="text-muted text-center")
+        else:
+            avg_marks = {subj: df_for_avg[[c for c in selected_cols if subj in c and "Total" in c]].mean(axis=1).mean()
+                         for subj in selected_subjects}
+            bar_fig = px.bar(x=list(avg_marks.keys()), y=list(avg_marks.values()),
+                             text=[f"{v:.1f}" for v in avg_marks.values()],
+                             color=list(avg_marks.keys()), color_discrete_sequence=px.colors.qualitative.Plotly)
+            
+            # --- CUSTOM TOOLTIP (clean style) ---
+            bar_fig.update_traces(
+                textposition="outside",
+                hovertemplate="<b>Subject:</b> %{x}<br><b>Avg Marks:</b> %{y:.2f}<extra></extra>"
+            )
+            # -----------------------------------
+            
+            bar_fig.update_layout(title="Average Total Marks per Subject", title_x=0.5, template="plotly_white",
+                                  yaxis_title="Average Marks", xaxis_title="Subject")
+            chart = dcc.Graph(figure=bar_fig)
 
     return f"{len(selected_subjects)} subjects selected", cards, columns_for_table, data, chart
 
