@@ -288,7 +288,7 @@ layout = dbc.Container([
                         html.Div(style={"height": "10px"})
                     ], style={"position": "relative", "zIndex": "1000"}),
                     html.Div(style={"height": "15px"}),
-                ], md=5, style={"position": "relative", "zIndex": "1060", "overflow": "visible"}), # Added explicit calc props
+                ], md=4, style={"position": "relative", "zIndex": "1060", "overflow": "visible"}), # Added explicit calc props
 
                 dbc.Col([
                     html.H6("Filter by Result", className="fw-bold text-muted mb-1"),
@@ -319,12 +319,13 @@ layout = dbc.Container([
                 ], md=3, style={"position": "relative", "zIndex": "1050", "overflow": "visible"}),
 
                 dbc.Col([
-                    html.H6("Export", className="fw-bold text-muted mb-1"),
+                    html.H6("Actions", className="fw-bold text-muted mb-1"),
                     dbc.ButtonGroup([
                         dbc.Button("CSV", id="sa-export-csv", color="primary", outline=True, className="me-1"),
-                        dbc.Button("Excel", id="sa-export-xlsx", color="success", outline=True),
+                        dbc.Button("Excel", id="sa-export-xlsx", color="success", outline=True, className="me-1"),
+                        dbc.Button("ℹ️", id="sa-open-legend", color="info", outline=True),
                     ], className="w-100"),
-                ], md=2),
+                ], md=3), 
             ], className="g-3"),
             dbc.Row([
                 dbc.Col(
@@ -397,6 +398,32 @@ layout = dbc.Container([
             ),
         ]), className="sa-card mb-4"),
     ]),
+
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("📊 Analysis Logic & Legends")),
+        dbc.ModalBody(
+            html.Div([
+                html.H6("📝 Student Status Logic", className="text-primary fw-bold"),
+                html.Ul([
+                    html.Li([html.Strong("Pass:"), " Student has passed in ALL selected subjects."]),
+                    html.Li([html.Strong("Fail:"), " Student has failed or is absent in AT LEAST ONE selected subject."]),
+                    html.Li([html.Strong("Absent:"), " Student is absent in ALL selected subjects."]),
+                ]),
+                html.Hr(),
+                html.H6("📚 Subject Status Logic", className="text-primary fw-bold"),
+                html.Ul([
+                    html.Li([html.Strong("Based on Result Column:"), " The dashboard uses the 'Result' column (P/F/A) from the uploaded data."]),
+                    html.Li([html.Strong("P / Pass:"), " Considered as Passed."]),
+                    html.Li([html.Strong("F / Fail:"), " Considered as Failed."]),
+                    html.Li([html.Strong("A / Absent:"), " Considered as Absent."]), 
+                ]),
+                html.Div(
+                    dbc.Alert("Note: This page focuses on subject-wise performance. For SGPA/ranks and Class Categories (FCD, FC, etc.), please visit the Ranking page.", color="info", className="mt-3 small")
+                )
+            ])
+        ),
+        dbc.ModalFooter(dbc.Button("Got it!", id="sa-close-legend", className="ms-auto", color="primary"))
+    ], id="sa-legend-modal", is_open=False, size="lg", style={"zIndex": 10000}),
 
     # --- Tabs for Charts ---
     # Wrapped in its own Loading component
@@ -875,4 +902,14 @@ def export_xlsx(n, table_data, table_columns):
     df.columns = flat_headers
 
     return dcc.send_data_frame(df.to_excel, "subject_analysis.xlsx", sheet_name="Subject Analysis", index=False)
+
+@callback(
+    Output("sa-legend-modal", "is_open"),
+    [Input("sa-open-legend", "n_clicks"), Input("sa-close-legend", "n_clicks")],
+    [State("sa-legend-modal", "is_open")],
+)
+def sa_toggle_legend(n1, n2, is_open):
+    if n1 or n2:
+        return not is_open
+    return is_open
 
