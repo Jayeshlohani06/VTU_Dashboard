@@ -366,16 +366,178 @@ def analyze_branches(n, file_contents, branch_names):
     )
 
     # --- ASSEMBLE VIEW ---
+    
+    # 1. Top 10 University Rankers
+    top_10_df = university_df[university_df['Overall_Result'] == 'P'].sort_values('Percentage', ascending=False).head(10)
+    top_10_df = top_10_df[['Student_ID', 'Name', 'Branch', 'Total_Marks', 'Percentage']]
+    
+    rank_table = dash_table.DataTable(
+        data=top_10_df.to_dict('records'),
+        columns=[
+            {"name": "Rank", "id": "rank"},
+            {"name": "Student ID", "id": "Student_ID"},
+            {"name": "Name", "id": "Name"},
+            {"name": "Branch", "id": "Branch"},
+            {"name": "Total", "id": "Total_Marks"},
+            {"name": "Percentage", "id": "Percentage"}
+        ],
+        style_header={'backgroundColor': '#f59e0b', 'color': 'white', 'fontWeight': 'bold'},
+        style_cell={'padding': '10px', 'textAlign': 'center'},
+        data_previous=[{**row, "rank": i+1} for i, row in enumerate(top_10_df.to_dict('records'))] # Hack to add rank? No, better to add col
+    )
+    # Add rank column explicitly
+    top_10_df.insert(0, 'Rank', range(1, 1 + len(top_10_df)))
+    rank_table.data = top_10_df.to_dict('records')
+    rank_table.columns = [{"name": i, "id": i} for i in top_10_df.columns]
+
+    # 2. Score Distribution (Histogram)
+    fig_hist = px.histogram(
+        university_df, x="Percentage", color="Branch", 
+        nbins=20, marginal="box", opacity=0.7,
+        title="University Score Distribution (Bell Curve Analysis)",
+        color_discrete_sequence=px.colors.qualitative.G10
+    )
+    fig_hist.update_layout(template="plotly_white", xaxis_title="Percentage Scored", yaxis_title="Number of Students")
+
+    # 3. Toughest Subjects Analysis (Data Mining)
+    # Scan all columns in the merged dataframe for 'Result'
+    subject_failure_data = []
+    
+    # We iterate over the original processed chunks to avoid sparse matrix issues if needed, 
+    # but university_df has all columns. 
+    # Let's verify failure counts per subject column.
+    
+    all_cols = university_df.columns
+    result_cols = [c for c in all_cols if c.endswith('Result') and c != 'Overall_Result']
+    
+    for r_col in result_cols:
+        # Extract Subject Name (Remove ' Result')
+        subj_name = r_col.replace(' Result', '').strip()
+        
+        # Count Fails (F, FAIL)
+        # We must filter only rows where this column is NOT NaN (meaning the student took the subject)
+        subset = university_df[university_df[r_col].notna()]
+        if subset.empty: continue
+            
+        # Normalize to find fails
+        fails = subset[subset[r_col].astype(str).str.upper().isin(['F', 'FAIL'])]
+        fail_count = len(fails)
+        total_attempts = len(subset)
+        
+        if fail_count > 0:
+            # Find which branch this subject belongs to mostly (mode of branch for these students)
+            # A subject might be common, but usually specific to a branch in higher sems
+            main_branch = subset['Branch'].mode()[0] if not subset['Branch'].empty else "Mix"
+            
+            subject_failure_data.append({
+                "Subject": subj_name,
+                "Failures": fail_count,
+                "Appeared": total_attempts,
+                "Failure Rate %": round((fail_count/total_attempts)*100, 1),
+                "Primary Branch": main_branch
+            })
+            
+    # Top 5 Toughest Subjects
+    tough_df = pd.DataFrame(subject_failure_data).sort_values("Failures", ascending=False).head(5)
+    
+    tough_table = dash_table.DataTable(
+        data=tough_df.to_dict('records'),
+        columns=[{"name": i, "id": i} for i in ["Subject", "Failures", "Failure Rate %", "Primary Branch"]],
+        style_header={'backgroundColor': '#ef4444', 'color': 'white', 'fontWeight': 'bold'},
+        style_cell={'padding': '10px', 'textAlign': 'center'},
+        style_data_conditional=[{'if': {'column_id': 'Failures'}, 'fontWeight': 'bold', 'color': '#dc2626'}]
+    ) if not tough_df.empty else html.P("No failures detected in specific subjects.", className="text-muted")
+
+    # 4. Consistency Analysis (Box Plot)
+    fig_box = px.box(
+        university_df, x="Branch", y="Percentage", color="Branch",
+        title="Consistency Analysis (Score Spread)",
+        points="outliers", # show only outliers to keep it clean, or "all"
+        color_discrete_sequence=px.colors.qualitative.Bold
+    )
+    fig_box.update_layout(template="plotly_white", showlegend=False)
+
+    # 5. Strategic Performance Matrix (Scatter)
+    fig_scatter = px.scatter(
+        stats_df, x="Pass %", y="Avg %", 
+        size="Total Students", color="Branch",
+        text="Branch", size_max=60,
+        title="Strategic Performance Matrix",
+        labels={"Pass %": "Pass Percentage", "Avg %": "Average Score %"}
+    )
+    fig_scatter.update_traces(textposition='top center')
+    fig_scatter.update_layout(
+        template="plotly_white",
+        shapes=[
+            # Add quadrant lines (approximate means)
+            dict(type="line", x0=50, y0=0, x1=50, y1=100, line=dict(color="Gray", width=1, dash="dot")),
+            dict(type="line", x0=0, y0=50, x1=100, y1=50, line=dict(color="Gray", width=1, dash="dot")),
+        ]
+    )
+
+
+    # --- TABS LAYOUT ---
     return html.Div([
         kpi_section,
         
-        dbc.Row([
-            dbc.Col(dcc.Graph(figure=fig_pass), md=6),
-            dbc.Col(dcc.Graph(figure=fig_dist), md=6)
-        ], className="mb-4"),
-        
-        dbc.Card([
-            dbc.CardHeader("📋 Detailed Branch Performance Report", className="fw-bold bg-white"),
-            dbc.CardBody(table)
-        ], className="shadow-sm border-0")
+        dcc.Tabs([
+            dcc.Tab(label="📊 Overview & Graphs", children=[
+                html.Br(),
+                dbc.Row([
+                    dbc.Col(dcc.Graph(figure=fig_pass), md=6, className="mb-4"),
+                    dbc.Col(dcc.Graph(figure=fig_dist), md=6, className="mb-4")
+                ]),
+                dbc.Row([
+                    dbc.Col(dcc.Graph(figure=fig_hist), md=12, className="mb-4")
+                ])
+            ]),
+            
+            dcc.Tab(label="🧠 Deep Insights", children=[
+                html.Br(),
+                dbc.Row([
+                    dbc.Col(dbc.Card([
+                        dbc.CardHeader("📉 Consistency Analysis (Box Plot)", className="fw-bold"),
+                        dbc.CardBody([
+                            html.Small("Wider box = Inconsistent Batch. Narrow box = Consistent Performance.", className="text-muted"),
+                            dcc.Graph(figure=fig_box)
+                        ])
+                    ], className="shadow-sm border-0 h-100"), md=6),
+                    
+                    dbc.Col(dbc.Card([
+                        dbc.CardHeader("🎯 Strategic Performance Matrix", className="fw-bold"),
+                        dbc.CardBody([
+                            html.Small("Top Right = High Performance. Bottom Left = Critical Attention Needed.", className="text-muted"),
+                            dcc.Graph(figure=fig_scatter)
+                        ])
+                    ], className="shadow-sm border-0 h-100"), md=6)
+                ], className="mb-4")
+            ]),
+
+            dcc.Tab(label="🏆 University Rankings", children=[
+                html.Br(),
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardHeader("👑 Top 10 University Rankers", className="bg-warning text-white fw-bold"),
+                            dbc.CardBody(rank_table)
+                        ], className="shadow-sm border-0 h-100")
+                    ], md=7),
+                    
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardHeader("⚠️ Toughest Subjects (Most Failures)", className="bg-danger text-white fw-bold"),
+                            dbc.CardBody(tough_table)
+                        ], className="shadow-sm border-0 h-100")
+                    ], md=5)
+                ])
+            ]),
+            
+            dcc.Tab(label="📋 Detailed Reports", children=[
+                html.Br(),
+                dbc.Card([
+                    dbc.CardHeader("Branch-wise Performance Grid", className="fw-bold bg-light"),
+                    dbc.CardBody(table)
+                ], className="shadow-sm border-0")
+            ])
+        ])
     ])

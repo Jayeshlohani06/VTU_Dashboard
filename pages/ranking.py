@@ -43,13 +43,52 @@ def _normalize_df(df, section_ranges):
     if df.columns[0] != 'Student_ID':
         df = df.rename(columns={df.columns[0]: 'Student_ID'})
     df['Section'] = df['Student_ID'].apply(lambda x: assign_section(str(x), section_ranges))
-    total_cols = [c for c in df.columns if any(k in c.lower() for k in ['total', 'marks', 'score'])]
-    total_cols = [c for c in total_cols if c != 'Total_Marks']
-    if total_cols:
-        df[total_cols] = df[total_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-        df['Total_Marks'] = df[total_cols].sum(axis=1)
+    
+    # === ROBUST TOTAL MARKS CALCULATION ===
+    # 1. Identify valid subject columns (ending in ' Total')
+    subject_cols = [c for c in df.columns if c.strip().endswith(' Total')]
+    
+    # 2. Exclude aggregate columns like 'Grand Total'
+    exclude_keywords = ['grand total', 'total marks', 'percentage', 'result']
+    subject_cols = [c for c in subject_cols if c.strip().lower() not in exclude_keywords and 'total marks' not in c.lower()]
+
+    # 3. Filter out "Phantom Columns" (columns present but with NO marks > 0 for any student)
+    temp_numeric = df[subject_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+    valid_subject_cols = [c for c in subject_cols if temp_numeric[c].max() > 0]
+
+    # 4. Strict Column Validation (Must have Internal/External sibling)
+    # This prevents counting aggregate columns like 'Grand Total' or 'Semester Total' as subjects
+    final_subject_cols = []
+    for c in valid_subject_cols:
+        base_name = c.rsplit(' Total', 1)[0].strip()
+        # Check against common patterns
+        # 1. Existence of sibling columns
+        has_sibling = any(f"{base_name} {suffix}" in df.columns for suffix in ['Internal', 'External'])
+        # 2. Or if the base_name looks like a VTU code (contains Digit)
+        looks_like_code = any(char.isdigit() for char in base_name)
+        
+        if has_sibling or looks_like_code:
+            final_subject_cols.append(c)
+            
+    if final_subject_cols:
+        valid_subject_cols = final_subject_cols
+
+    # Fallback to loose matching if strict matching fails
+    if not valid_subject_cols:
+        total_cols = [c for c in df.columns if any(k in c.lower() for k in ['total', 'marks', 'score'])]
+        total_cols = [c for c in total_cols if c != 'Total_Marks' and c.lower() not in ['grand total', 'total marks']]
+        valid_subject_cols = total_cols
+    
+    if valid_subject_cols:
+        df[valid_subject_cols] = df[valid_subject_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+        df['Total_Marks'] = df[valid_subject_cols].sum(axis=1)
+        df['__Num_Subjects_Calc'] = len(valid_subject_cols)
+        print(f"DEBUG: Calculated Subjects ({len(valid_subject_cols)}): {valid_subject_cols}")
     else:
         df['Total_Marks'] = 0
+        df['__Num_Subjects_Calc'] = 0
+    # ======================================
+
     result_cols = [c for c in df.columns if c.endswith('Result')]
     if result_cols:
         def calc_overall(row):
@@ -346,7 +385,7 @@ layout = dbc.Container([
                 html.H6("📝 Subject & Student Status", className="text-primary fw-bold"),
                 html.Ul([
                     html.Li([html.Strong("Absent (Subject):"), " External Marks = 0  AND  Result = 'A'"]),
-                    html.Li([html.Strong("Fail (Subject):"), " Internal < 18  OR  External < 18  (unless Result='P')"]),
+                    html.Li([html.Strong("Fail (Subject):"), " Result = 'F' (or Marks < 18 if Result unavailable)"]),
                     html.Li([html.Strong("Pass (Student):"), " Passed in ALL subjects"]),
                     html.Li([html.Strong("Absent (Student):"), " Absent in ALL subjects"]),
                     html.Li([html.Strong("Fail (Student):"), " Failed in ANY subject OR Absent in ANY subject (but appeared for others)"]),
@@ -487,14 +526,23 @@ def calculate_sgpa_all(n_clicks, json_data, section_ranges, credit_ids, credit_v
             else:
                 score = (i + e) if (i and e) else (i or e or 0)
             
-            # 3. --- REVISED FAIL LOGIC ---
-            # Fail if both Internal and External < 18 (Strict rule)
-            # BUT: If External is 0 (missing/absent/no exam), check Result Column override
-            if (i < 18) or (e < 18):
-                # Check for Result column override (e.g. 18CS51 Result)
-                # If Result is 'P', ignore the low mark (trust the result)
-                res_val = str(row.get(f"{code} Result", "")).strip().upper()
-                if res_val != 'P':
+            # 3. --- REVISED FAIL LOGIC (PRECISE) ---
+            # Priority 1: Trust the Result Column (P/F/A)
+            # Priority 2: If Result is missing, use Marks
+            res_val = str(row.get(f"{code} Result", "")).strip().upper()
+            
+            if res_val == 'P':
+                fail_flag = False
+            elif res_val == 'F':
+                fail_flag = True
+            elif res_val == 'A':
+                 # Treated as fail for credit purposes (0 credits earned)
+                 fail_flag = True
+            else:
+                # Fallback when Result column is empty/unknown
+                # Fail if Total Score is < 18 (matching the normalize logic)
+                # OR if External is 0 (likely absent) AND Internal is present
+                if score < 18:
                     fail_flag = True
             # -----------------------------
 
@@ -611,13 +659,43 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     appeared = total - absent
     pass_pct = round((passed / appeared) * 100, 2) if appeared > 0 else 0
     
-    # === CALCULATE VTU STANDARD CATEGORIES ===
-    subject_total_cols = [c for c in base_full.columns if c.endswith(' Total') and c != 'Total_Marks']
-    num_subjects = len(subject_total_cols) if subject_total_cols else 1
-    max_marks_possible = num_subjects * 100 if num_subjects > 0 else 100
-    
+    # =====================================================
+    # ✅ FIXED PERCENTAGE CALCULATION (ACCURATE VERSION)
+    # =====================================================
+
+    # Identify all subject total columns (exclude aggregates)
+    subject_total_cols = [
+        c for c in base_full.columns
+        if c.strip().endswith(' Total')
+        and c not in ['Total_Marks', 'Grand Total']
+        and 'grand total' not in c.lower()
+    ]
+
+    # Remove fake/phantom columns (all zeros)
+    valid_subject_cols = []
+    for col in subject_total_cols:
+        col_numeric = pd.to_numeric(base_full[col], errors='coerce').fillna(0)
+        if col_numeric.sum() > 0:
+            valid_subject_cols.append(col)
+
+    num_subjects = len(valid_subject_cols)
+
+    # Safety fallback
+    if num_subjects == 0:
+        num_subjects = 1
+
+    max_marks_possible = num_subjects * 100
+
+    # Debug (optional — remove later)
+    # print("Valid Subjects:", valid_subject_cols)
+    # print("Number of Subjects:", num_subjects)
+    # print("Max Marks:", max_marks_possible)
+
     scope_calc = scope.copy()
-    scope_calc['percentage'] = (scope_calc['Total_Marks'] / max_marks_possible * 100).round(2)
+
+    scope_calc['percentage'] = (
+        scope_calc['Total_Marks'] / max_marks_possible * 100
+    ).round(2)
     
     # Only PASSING students get a class
     pass_mask = scope_calc[target_res_col].apply(lambda x: check_res(x, pass_val))
@@ -968,7 +1046,7 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
         # Iterate to find the non-None cell that triggered (or use context inputs)
         # Dash context inputs_list is reliable
         for input_item in dash.ctx.inputs_list[1]: # Index 1 corresponds to breakdown-table input
-            if input_item['id'] == trigger and input_item['value']:
+            if input_item['id'] == trigger and input_item.get('value'):
                 student_id = input_item['value'].get('row_id')
                 break
         
@@ -1006,6 +1084,7 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
         # 3. Result is NaN or empty
         
         is_marks_missing = pd.isna(i_val) and pd.isna(e_val)
+
         
         try: t_num = float(t_val)
         except (ValueError, TypeError): t_num = 0
