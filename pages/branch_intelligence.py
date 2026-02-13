@@ -1,27 +1,20 @@
 import dash
-from dash import html, dcc, Input, Output, callback
+from dash import html, dcc, Input, Output, callback, State, no_update
 import dash_bootstrap_components as dbc
 import pandas as pd
-from io import StringIO
 
 import utils.master_store as ms
 
-
 dash.register_page(__name__, path="/branch-intelligence", name="Branch Intelligence")
 
-
-# ---------------- Ranking Logic Import ----------------
-
+# --------------------------------------------------
+# NORMALIZATION (STUDENT-LEVEL PASS / FAIL)
+# --------------------------------------------------
 def normalize_for_branch(df_long):
-    """
-    Convert long subject rows → wide student rows
-    then apply ranking-style normalization with VTU pass/fail logic
-    """
 
     if df_long.empty:
         return df_long
 
-    # Pivot long → wide
     df_wide = df_long.pivot_table(
         index=["Student_ID", "Name", "Branch"],
         columns="Subject",
@@ -29,36 +22,31 @@ def normalize_for_branch(df_long):
         aggfunc="first"
     ).reset_index()
 
-    # Get subject Result columns
     subject_cols = [c for c in df_wide.columns if c not in ["Student_ID", "Name", "Branch"]]
 
-    # Apply same pass/fail logic as ranking page:
-    # Student passes only if ALL subjects show 'P' result
-    # OR if Result columns exist, trust them as the authority
     df_wide["Overall_Result"] = df_wide[subject_cols].apply(
-        lambda row: "P" if all(str(v).strip().upper() == "P" for v in row if pd.notna(v)) else "F",
+        lambda row: "P" if all(str(v).upper() == "P" for v in row if pd.notna(v)) else "F",
         axis=1
     )
 
     return df_wide
 
 
-# ---------------- Layout ----------------
-
+# --------------------------------------------------
+# LAYOUT
+# --------------------------------------------------
 layout = dbc.Container([
 
     html.Br(),
     html.H2("🧠 Branch Intelligence Dashboard", className="text-center"),
-
     html.P(
         "Advanced analytics across branches, subjects and student performance.",
         className="text-center text-muted"
     ),
-
     html.Hr(),
 
+    # ---------- BASIC KPIs ----------
     dbc.Row([
-
         dbc.Col(dbc.Card(dbc.CardBody([
             html.H6("Total Students"),
             html.H3(id="bi-total-students")
@@ -78,34 +66,131 @@ layout = dbc.Container([
             html.H6("Overall Pass %"),
             html.H3(id="bi-pass-percent")
         ]), className="shadow-sm text-center"), md=3),
+    ], className="mb-3"),
 
+    # ---------- INTELLIGENCE KPIs ----------
+    dbc.Row([
+        dbc.Col(dbc.Card(dbc.CardBody([
+            html.H6("Best Performing Branch"),
+            html.H3(id="bi-best-branch")
+        ]), className="shadow-sm text-center"), md=3),
+
+        dbc.Col(dbc.Card(dbc.CardBody([
+            html.H6("Weak Branch"),
+            html.H3(id="bi-weak-branch")
+        ]), className="shadow-sm text-center"), md=3),
+
+        dbc.Col(dbc.Card(dbc.CardBody([
+            html.H6("Hardest Subject"),
+            html.H3(id="bi-hardest-subject")
+        ]), className="shadow-sm text-center"), md=3),
+
+        dbc.Col(dbc.Card(dbc.CardBody([
+            html.H6("Easiest Subject"),
+            html.H3(id="bi-easiest-subject")
+        ]), className="shadow-sm text-center"), md=3),
     ], className="mb-4"),
 
+    # ---------- FILTERS ----------
     dbc.Card([
         dbc.CardBody([
             html.H4("📊 Branch Performance Comparison"),
 
             dbc.Row([
-                dbc.Col(dcc.Dropdown(id="bi-branch-selector", placeholder="Select branch"), md=6),
-                dbc.Col(dcc.Dropdown(id="bi-subject-selector", placeholder="Select subject"), md=6),
+                dbc.Col([
+                    html.Label("Select Branch(es)", className="fw-bold"),
+                    html.Div([
+                        dcc.Dropdown(
+                            id="bi-branch-selector",
+                            multi=True,
+                            placeholder="Select branch(es)",
+                            className="custom-dropdown",
+                            optionHeight=50,
+                            maxHeight=300,
+                            style={
+                                "position": "relative", 
+                                "zIndex": "1000",
+                                "minHeight": "45px"
+                            }
+                        ),
+                        html.Div(style={"height": "10px"})
+                    ], style={"overflow": "visible", "position": "relative", "zIndex": "1000"})
+                ], md=5),
+
+                dbc.Col([
+                    html.Label(" ", className="d-block"),
+                    dbc.ButtonGroup([
+                        dbc.Button("Select All", id="bi-select-all-btn",
+                                   color="success", outline=True, size="sm"),
+                        dbc.Button("Clear", id="bi-clear-btn",
+                                   color="danger", outline=True, size="sm"),
+                    ], className="w-100")
+                ], md=2),
+
+                dbc.Col([
+                    html.Label("Select Subject(s)", className="fw-bold"),
+                    html.Div([
+                        dcc.Dropdown(
+                            id="bi-subject-selector",
+                            multi=True,
+                            placeholder="Select subject(s)",
+                            className="custom-dropdown",
+                            optionHeight=50,
+                            maxHeight=300,
+                            style={
+                                "position": "relative", 
+                                "zIndex": "1000",
+                                "minHeight": "45px"
+                            }
+                        ),
+                        html.Div(style={"height": "10px"})
+                    ], style={"overflow": "visible", "position": "relative", "zIndex": "100"})
+                ], md=5),
             ], className="mb-3"),
 
             html.Div(id="bi-branch-table")
-        ])
-    ], className="shadow-sm mb-4"),
+        ], style={"overflow": "visible", "position": "relative"})
+    ], className="shadow-sm mb-4", style={"overflow": "visible"}),
 
     dbc.Card([
         dbc.CardBody([
             html.H4("📚 Subject Overview"),
             html.Div(id="bi-subject-summary")
-        ])
-    ], className="shadow-sm mb-4")
+        ], style={"overflow": "visible"})
+    ], className="shadow-sm mb-4", style={"overflow": "visible"})
 
 ], fluid=True)
 
 
-# ---------------- KPI LOAD ----------------
+# --------------------------------------------------
+# SELECT ALL / CLEAR (BRANCHES)
+# --------------------------------------------------
+@callback(
+    Output("bi-branch-selector", "value"),
+    Input("bi-select-all-btn", "n_clicks"),
+    Input("bi-clear-btn", "n_clicks"),
+    State("bi-branch-selector", "options"),
+    prevent_initial_call=True
+)
+def handle_select_buttons(select_all, clear, options):
 
+    if not options:
+        return []
+
+    triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
+
+    if triggered == "bi-select-all-btn":
+        return [o["value"] for o in options]
+
+    if triggered == "bi-clear-btn":
+        return []
+
+    return no_update
+
+
+# --------------------------------------------------
+# KPI CONTROLLER (FILTER AWARE)
+# --------------------------------------------------
 @callback(
     Output("bi-total-students", "children"),
     Output("bi-total-branches", "children"),
@@ -113,14 +198,28 @@ layout = dbc.Container([
     Output("bi-pass-percent", "children"),
     Output("bi-branch-selector", "options"),
     Output("bi-subject-selector", "options"),
-    Input("bi-branch-selector", "value")
+    Output("bi-best-branch", "children"),
+    Output("bi-weak-branch", "children"),
+    Output("bi-hardest-subject", "children"),
+    Output("bi-easiest-subject", "children"),
+    Input("bi-branch-selector", "value"),
+    Input("bi-subject-selector", "value")
 )
-def load_branch_intelligence(_):
+def update_kpis(branches, subjects):
 
     if ms.MASTER_BRANCH_DATA is None:
-        return "-", "-", "-", "-", [], []
+        return "-", "-", "-", "-", [], [], "-", "-", "-", "-"
 
-    df = ms.MASTER_BRANCH_DATA
+    df = ms.MASTER_BRANCH_DATA.copy()
+
+    if branches:
+        df = df[df["Branch"].isin(branches)]
+
+    if subjects:
+        df = df[df["Subject"].isin(subjects)]
+
+    if df.empty:
+        return "0", "0", "0", "0%", [], [], "-", "-", "-", "-"
 
     df_students = normalize_for_branch(df)
 
@@ -128,43 +227,75 @@ def load_branch_intelligence(_):
     total_branches = df_students["Branch"].nunique()
     total_subjects = df["Subject"].nunique()
 
-    pass_percent = round(
-        (df_students[df_students["Overall_Result"] == "P"].shape[0] /
-         df_students.shape[0]) * 100, 2
+    pass_percent = round((df_students["Overall_Result"] == "P").mean() * 100, 2)
+
+    branch_options = [
+        {"label": b, "value": b}
+        for b in sorted(ms.MASTER_BRANCH_DATA["Branch"].unique())
+    ]
+
+    subject_options = [
+        {"label": s, "value": s}
+        for s in sorted(df["Subject"].unique())
+    ]
+
+    # ---------- BRANCH INTELLIGENCE ----------
+    if total_branches <= 1:
+        best_branch = "N/A"
+        weak_branch = "N/A"
+    else:
+        perf = df_students.groupby("Branch").apply(
+            lambda x: (x["Overall_Result"] == "P").mean()
+        ).reset_index(name="PassRate")
+
+        best_branch = perf.sort_values("PassRate", ascending=False).iloc[0]["Branch"]
+        weak_branch = perf.sort_values("PassRate").iloc[0]["Branch"]
+
+    # ---------- SUBJECT INTELLIGENCE ----------
+    subject_perf = df.groupby("Subject").apply(
+        lambda x: (x["Result"] == "F").mean()
+    ).reset_index(name="FailRate")
+
+    hardest_subject = subject_perf.sort_values("FailRate", ascending=False).iloc[0]["Subject"]
+    easiest_subject = subject_perf.sort_values("FailRate").iloc[0]["Subject"]
+
+    return (
+        total_students,
+        total_branches,
+        total_subjects,
+        f"{pass_percent}%",
+        branch_options,
+        subject_options,
+        best_branch,
+        weak_branch,
+        hardest_subject,
+        easiest_subject
     )
 
-    branch_options = [{"label": b, "value": b} for b in sorted(df["Branch"].unique())]
-    subject_options = [{"label": s, "value": s} for s in sorted(df["Subject"].unique())]
 
-    return total_students, total_branches, total_subjects, f"{pass_percent}%", branch_options, subject_options
-
-
-# ---------------- BRANCH TABLE ----------------
-
+# --------------------------------------------------
+# BRANCH TABLE
+# --------------------------------------------------
 @callback(
     Output("bi-branch-table", "children"),
     Input("bi-branch-selector", "value"),
     Input("bi-subject-selector", "value")
 )
-def generate_branch_table(selected_branch, selected_subject):
+def branch_table(branches, subjects):
 
-    if ms.MASTER_BRANCH_DATA is None:
-        return dbc.Alert("Upload branch files first.", color="warning")
+    df = ms.MASTER_BRANCH_DATA.copy()
 
-    df = ms.MASTER_BRANCH_DATA
+    if branches:
+        df = df[df["Branch"].isin(branches)]
 
-    # First normalize to wide format (student-level, not subject-level)
+    if subjects:
+        df = df[df["Subject"].isin(subjects)]
+
+    if df.empty:
+        return dbc.Alert("No data for selected filters", color="warning")
+
     df_students = normalize_for_branch(df)
 
-    if selected_branch:
-        df_students = df_students[df_students["Branch"] == selected_branch]
-
-    if selected_subject:
-        # Filter by subject in original long data, then re-normalize
-        df_filtered = df[df["Subject"] == selected_subject]
-        df_students = normalize_for_branch(df_filtered)
-
-    # Now aggregate at student level (not subject level)
     summary = df_students.groupby("Branch").agg(
         Students=("Student_ID", "nunique"),
         Passed=("Overall_Result", lambda x: (x == "P").sum()),
@@ -174,26 +305,23 @@ def generate_branch_table(selected_branch, selected_subject):
     return dbc.Table.from_dataframe(summary, bordered=True, striped=True, hover=True)
 
 
-# ---------------- SUBJECT SUMMARY ----------------
-
+# --------------------------------------------------
+# SUBJECT SUMMARY
+# --------------------------------------------------
 @callback(
     Output("bi-subject-summary", "children"),
     Input("bi-branch-selector", "value")
 )
-def subject_summary(selected_branch):
+def subject_summary(branches):
 
-    if ms.MASTER_BRANCH_DATA is None:
-        return ""
+    df = ms.MASTER_BRANCH_DATA.copy()
 
-    df = ms.MASTER_BRANCH_DATA
+    if branches:
+        df = df[df["Branch"].isin(branches)]
 
-    if selected_branch:
-        df = df[df["Branch"] == selected_branch]
+    if df.empty:
+        return dbc.Alert("No subject data", color="warning")
 
-    # Normalize to student level first
-    df_students = normalize_for_branch(df)
-
-    # Count pass/fail by subject from the normalized data
     subject_stats = df.groupby("Subject").agg(
         Students=("Student_ID", "nunique"),
         Pass=("Result", lambda x: (x == "P").sum()),

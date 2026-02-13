@@ -1,0 +1,184 @@
+/* ==================== GLOBAL THEME ==================== */
+:root {
+    --primary: #3498db;
+    --primary-dark: #2980b9;
+    --secondary: #2ecc71;
+    --danger: #e74c3c;
+    --warning: #f39c12;
+    --info: #3498db;
+    --light: #ecf0f1;
+    --dark: #2c3e50;
+    --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.08);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.15);
+    --border-radius: 12px;
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==================== CONTAINER OVERFLOW FIX ==================== */
+.container, .container-fluid,
+.row, .col, [class*="col-"],
+.card, .card-body, .card-header,
+.rnk-card, .sa-card, .rnk-controls-wrap,
+.pb-4, .pb-5, .p-4, .p-3, .pt-4, .pt-3 {
+    overflow: visible !important;
+}
+
+/* ==================== SAFE DASH DROPDOWN FIX ==================== */
+
+/* Dropdown control */
+.Select-control,
+div[class*="__control"] {
+    background-color: #ffffff !important;
+    border: 2px solid #d1d5db !important;
+    min-height: 45px !important;
+    border-radius: 8px !important;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+/* Hover & focus */
+.Select-control:hover,
+div[class*="__control"]:hover {
+    border-color: var(--primary) !important;
+}
+
+.Select-control.is-focused,
+div[class*="__control--is-focused"] {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(52,152,219,.2) !important;
+}
+
+/* Dropdown menu (NO forced positioning) */
+.Select-menu-outer,
+div[class*="__menu"] {
+    z-index: 9999 !important;
+    background-color: #ffffff !important;
+    border: 2px solid var(--primary) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 12px 32px rgba(0,0,0,.25) !important;
+}
+
+/* Dropdown options */
+.Select-option,
+div[class*="__option"] {
+    padding: 12px 16px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    border-bottom: 1px solid #e5e7eb !important;
+}
+
+.Select-option:hover,
+div[class*="__option--is-focused"] {
+    background-color: var(--primary) !important;
+    color: #ffffff !important;
+}
+
+div[class*="__option--is-selected"] {
+    background-color: var(--primary) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* Portal menu (MOST IMPORTANT) */
+div[class*="__menu-portal"] {
+    z-index: 99999 !important;
+}
+
+/* ==================== BOOTSTRAP SELECT ==================== */
+.form-select {
+    background-color: #ffffff !important;
+    border: 2px solid #d1d5db !important;
+    border-radius: 8px !important;
+    min-height: 45px !important;
+    font-size: 15px !important;
+}
+
+.form-select:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(52,152,219,.2) !important;
+}
+
+/* ==================== NAVIGATION ==================== */
+.nav-link.active {
+    background: var(--bg-gradient) !important;
+    color: #fff !important;
+    border-radius: 25px !important;
+    padding: .6rem 1.5rem !important;
+    font-weight: 600 !important;
+    box-shadow: var(--shadow-md);
+}
+
+/* ==================== BUTTONS ==================== */
+.btn {
+    border-radius: var(--border-radius) !important;
+    font-weight: 600 !important;
+    transition: var(--transition);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+/* ==================== CARDS ==================== */
+.card {
+    border-radius: var(--border-radius) !important;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+/* ==================== TABLES ==================== */
+.dash-table-container {
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+}
+
+/* ==================== KPI CARDS ==================== */
+.kpi-card {
+    transition: var(--transition);
+}
+
+.kpi-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ==================== SCROLLBAR ==================== */
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-gradient);
+    border-radius: 10px;
+}
+
+/* ==================== ANIMATIONS ==================== */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn .5s ease-out;
+}
+
+/* ==================== TOOLTIPS ==================== */
+.tooltip-custom:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    background: rgba(0,0,0,.9);
+    color: #fff;
+    padding: .5rem 1rem;
+    border-radius: 8px;
+    z-index: 1000;
+}

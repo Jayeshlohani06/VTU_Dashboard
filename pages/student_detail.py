@@ -17,6 +17,7 @@ def get_grade_point(percentage_score):
     elif 60 <= score < 70: return 7
     elif 55 <= score < 60: return 6
     elif 50 <= score < 55: return 5
+    elif 40 <= score < 50: return 4
     else: return 0
 
 def extract_numeric(roll):
@@ -35,55 +36,137 @@ def assign_section(roll_no, section_ranges=None):
 
 # ---------- Layout ----------
 layout = dbc.Container([
-    dbc.Row([
-        dbc.Col(html.H2("🎓 Student Detail & SGPA Dashboard", className="mb-1 fw-bold"), md=8),
-        dbc.Col(html.Div([
-            dbc.Badge("Version: 1.0", color="secondary", className="me-1"),
-            dbc.Badge("Interactive", color="info")
-        ], className="text-end"), md=4, className="align-self-center")
-    ], className="mb-3 align-items-center"),
+    # Hero Header with Gradient
+    html.Div([
+        html.Div([
+            html.I(className="bi bi-mortarboard-fill me-3", style={"fontSize": "2.5rem", "color": "white"}),
+            html.H2("Student Performance Dashboard", className="mb-1 fw-bold d-inline-block", style={"color": "white"})
+        ], className="d-flex align-items-center justify-content-center mb-2"),
+        html.P("Comprehensive SGPA Analysis & Performance Tracking", 
+               className="text-center mb-0", 
+               style={"color": "rgba(255,255,255,0.9)", "fontSize": "1.1rem"}),
+        html.Div([
+            dbc.Badge("📊 Analytics", color="light", className="me-2", style={"padding": "0.5rem 1rem"}),
+            dbc.Badge("🎯 SGPA Calculator", color="light", className="me-2", style={"padding": "0.5rem 1rem"}),
+            dbc.Badge("📈 Live Updates", color="light", style={"padding": "0.5rem 1rem"})
+        ], className="text-center mt-3")
+    ], style={
+        "background": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        "padding": "3rem 1rem",
+        "borderRadius": "0 0 20px 20px",
+        "marginBottom": "2rem",
+        "boxShadow": "0 10px 40px rgba(102, 126, 234, 0.3)"
+    }),
 
-    dbc.Card(
+    # Search Card with Enhanced Design
+    dbc.Card([
+        dbc.CardHeader([
+            html.I(className="bi bi-search me-2"),
+            html.Span("Search Student", className="fw-bold")
+        ], className="bg-white border-0", style={"fontSize": "1.1rem", "overflow": "visible"}),
+
         dbc.CardBody([
             dbc.Row([
-                dbc.Col(html.Div([
-                    html.Label("Student ID / Name", className="form-label small text-muted"),
-                    dcc.Input(id='student-search', type='text', placeholder='USN: 1**YY**XXX', debounce=True, className="form-control")
-                ]), md=4),
-                dbc.Col(html.Div([
-                    html.Label("Subject Codes (choose or leave All)", className="form-label small text-muted"),
-                    dcc.Dropdown(id='student-subject-dropdown', placeholder="Select Subject Code(s)", multi=True)
-                ]), md=5),
-                dbc.Col(html.Div([
-                    html.Label(" ", className="form-label small text-muted"),
-                    dbc.Button("Search", id='search-btn', color="primary", className="w-100", n_clicks=0)
-                ]), md=3)
+                # Student ID/Name Search
+                dbc.Col([
+                    html.Label([
+                        html.I(className="bi bi-person-badge me-2", style={"color": "#667eea"}),
+                        "Student ID / Name"
+                    ], className="form-label fw-semibold", style={"color": "#2c3e50"}),
+                    dbc.InputGroup([
+                        dbc.InputGroupText(html.I(className="bi bi-search"), style={"background": "#f8f9fa"}),
+                        dcc.Input(
+                            id='student-search',
+                            type='text',
+                            placeholder='🔍 Enter USN or Name (e.g., 1XX20CS001)',
+                            debounce=True,
+                            className="form-control",
+                            style={"border": "2px solid #e0e0e0"}
+                        )
+                    ], className="shadow-sm")
+                ], md=12, lg=4, className="mb-3"),
+                
+                # Subject Dropdown
+                dbc.Col([
+                    html.Label([
+                        html.I(className="bi bi-book me-2", style={"color": "#667eea"}),
+                        "Subject Codes"
+                    ], className="form-label fw-semibold", style={"color": "#2c3e50"}),
+                    html.Div([
+                        dcc.Dropdown(
+                            id='student-subject-dropdown',
+                            placeholder="📚 Select Subject Code(s) or leave All",
+                            multi=True,
+                            className="custom-dropdown",
+                            optionHeight=50,
+                            maxHeight=300,
+                            style={
+                                "position": "relative", 
+                                "zIndex": "1000",
+                                "minHeight": "45px"
+                            }
+                        ),
+                        html.Div(style={"height": "10px"})
+                    ], style={"overflow": "visible", "position": "relative", "zIndex": "1000"})
+                ], md=12, lg=5, className="mb-3"),
+                
+                # Search Button
+                dbc.Col([
+                    html.Label(" ", className="form-label", style={"visibility": "hidden"}),
+                    dbc.Button([
+                        html.I(className="bi bi-search me-2"),
+                        "Search Student"
+                    ], id='search-btn', color="primary", className="w-100 shadow", n_clicks=0,
+                    style={"height": "45px", "fontSize": "1rem", "fontWeight": "600"})
+                ], md=12, lg=3, className="mb-3")
             ], className="g-2"),
-            html.Hr(className="my-3"),
+            
+            html.Hr(style={"margin": "1.5rem 0", "opacity": "0.3"}),
+            
+            # Analysis Type Section
             dbc.Row([
-                dbc.Col(html.H6("Analysis Type", className="mb-1 fw-semibold"), width="auto"),
-                dbc.Col(dcc.RadioItems(
-                    id='analysis-type-radio',
-                    options=[
-                        {'label': 'Internal', 'value': 'Internal'},
-                        {'label': 'External', 'value': 'External'},
-                        {'label': 'Total', 'value': 'Total'},
-                    ],
-                    value='Total',
-                    inline=True,
-                    labelClassName="me-3",
-                    inputClassName="me-1"
-                ), md=8)
-            ], align="center")
-        ]),
-        className="shadow-sm mb-4"
-    ),
-    html.Div(id='credit-input-container'),
-    html.Div(id='student-detail-content'),
+                dbc.Col([
+                    html.Div([
+                        html.I(className="bi bi-sliders me-2", style={"color": "#667eea", "fontSize": "1.3rem"}),
+                        html.H6("Analysis Type", className="mb-0 fw-bold d-inline", style={"color": "#2c3e50"})
+                    ], className="mb-3"),
+                    dbc.ButtonGroup([
+                        dbc.RadioItems(
+                            id='analysis-type-radio',
+                            options=[
+                                {'label': ' 📝 Internal Marks', 'value': 'Internal'},
+                                {'label': ' 📄 External Marks', 'value': 'External'},
+                                {'label': ' 📊 Total Marks', 'value': 'Total'},
+                            ],
+                            value='Total',
+                            inline=True,
+                            className="btn-group",
+                            labelClassName="btn btn-outline-primary",
+                            inputClassName="btn-check"
+                        )
+                    ])
+                ], className="text-center")
+            ])
+        ], style={"padding": "2rem", "overflow": "visible", "position": "relative"})
+    ], className="shadow-custom mb-4", style={"borderRadius": "15px", "overflow": "visible"}),
+    
+    # Results Sections
+    dbc.Row([
+        dbc.Col([
+            html.Div(id='credit-input-container', className="fade-in", style={"overflow": "visible", "position": "relative"})
+        ], width=12)
+    ], style={"overflow": "visible"}),
+    
+    dbc.Row([
+        dbc.Col([
+            html.Div(id='student-detail-content', className="fade-in")
+        ], width=12)
+    ]),
+    
     dcc.Store(id='stored-data', storage_type='session'),
     dcc.Store(id='overview-selected-subjects', storage_type='session'),
     dcc.Store(id='section-data', storage_type='session')
-], fluid=True, className="py-3")
+], fluid=True, className="py-4", style={"background": "#f8f9fa", "minHeight": "100vh"})
 
 # ---------- Populate Subject Dropdown ----------
 @callback(
@@ -152,32 +235,54 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
         )
 
     credit_inputs = []
-    for code in subject_codes_for_credits:
+    for idx, code in enumerate(subject_codes_for_credits):
+        z_index = 1000 - (idx * 5)  # Decreasing z-index for each card
         credit_inputs.append(
-            dbc.Row([
-                dbc.Col(html.Label(code, className="fw-bold"), width=5, className="text-end"),
-                dbc.Col(
-                    dcc.Dropdown(
-                        id={'type': 'credit-input-student', 'index': code},
-                        options=[{'label': str(i), 'value': i} for i in range(0, 5)],
-                        value=3,
-                        clearable=False,
-                        className="form-select"
-                    ), width=4
-                ),
-                dbc.Col(html.Span("credits", className="text-muted small ms-2"), width=3, className="align-self-center")
-            ], className="mb-2")
+            dbc.Card([
+                dbc.CardBody([
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div([
+                                html.I(className="bi bi-journal-code me-2", style={"color": "#667eea", "fontSize": "1.2rem"}),
+                                html.Span(code, className="fw-bold", style={"fontSize": "1.1rem", "color": "#2c3e50"})
+                            ])
+                        ], width=6, className="text-start align-self-center"),
+                        dbc.Col([
+                            dcc.Dropdown(
+                                id={'type': 'credit-input-student', 'index': code},
+                                options=[{'label': f'{i} Credit{"s" if i != 1 else ""}', 'value': i} for i in range(0, 5)],
+                                value=3,
+                                clearable=False,
+                                className="custom-dropdown",
+                                style={"zIndex": str(z_index + 1)}
+                            )
+                        ], width=6, style={"position": "relative", "zIndex": str(z_index + 1)})
+                    ], align="center")
+                ], className="py-2 px-3", style={"overflow": "visible"})
+            ], className="shadow-sm mb-2", style={"border": "1px solid #e0e0e0", "borderRadius": "10px", "overflow": "visible", "position": "relative", "zIndex": str(z_index)})
         )
 
     card = dbc.Card([
         dbc.CardBody([
-            html.H5("Step 2: Enter Subject Credits", className="fw-bold text-center mb-2"),
-            html.P("Select credits (0–4) for subjects you want included in SGPA / KPI calculations.",
-                   className="text-muted small text-center mb-3"),
-            dbc.Row(dbc.Col(credit_inputs), className="mb-2"),
-            dbc.Button("Calculate & View Full Report", id='calculate-sgpa-btn', color="success", className="w-100 mt-2")
-        ])
-    ], className="shadow-sm mb-4 p-2")
+            html.Div([
+                html.I(className="bi bi-calculator me-2", style={"color": "#667eea", "fontSize": "1.5rem"}),
+                html.H5("Step 2: Enter Subject Credits", className="fw-bold d-inline mb-0")
+            ], className="text-center mb-2", style={"color": "#2c3e50"}),
+            html.P([
+                html.I(className="bi bi-info-circle me-2", style={"color": "#667eea"}),
+                "Select credits (0–4) for subjects you want included in SGPA / KPI calculations."
+            ], className="text-muted text-center mb-3", style={"fontSize": "0.9rem"}),
+            html.Div(
+                credit_inputs,
+                style={"maxHeight": "400px", "overflowY": "auto", "overflowX": "visible", "padding": "0.5rem", "position": "relative"}
+            ),
+            dbc.Button([
+                html.I(className="bi bi-calculator-fill me-2"),
+                "Calculate & View Full Report"
+            ], id='calculate-sgpa-btn', color="success", className="w-100 mt-3 shadow",
+            style={"fontSize": "1.05rem", "fontWeight": "600", "height": "50px"})
+        ], style={"padding": "2rem", "overflow": "visible"})
+    ], className="shadow-custom mb-4", style={"borderRadius": "15px", "overflow": "visible"})
 
     return card
 
@@ -360,13 +465,18 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
         card = dbc.Card(
             dbc.CardBody([
                 html.Div([
-                    html.I(className=f"{item['icon']} me-2", style={"color": item['color'], "fontSize": "1.2rem"}),
-                    html.Small(item["label"], className="text-muted fw-semibold"),
-                ]),
-                html.H4(item["value"], className="fw-bold mt-2", style={"color": item["color"]}),
+                    html.I(className=f"{item['icon']} me-2", style={"color": item['color'], "fontSize": "1.5rem"}),
+                    html.Small(item["label"], className="text-muted fw-semibold d-block", style={"fontSize": "0.8rem"}),
+                ], className="mb-2"),
+                html.H4(item["value"], className="fw-bold mb-0", style={"color": item["color"]}),
             ]),
-            style={"backgroundColor": item["bg"], "border": "none", "borderRadius": "12px"},
-            className="text-center shadow-sm p-2"
+            style={
+                "backgroundColor": item["bg"], 
+                "border": f"2px solid {item['color']}20", 
+                "borderRadius": "15px",
+                "transition": "all 0.3s ease"
+            },
+            className="text-center shadow-custom p-3 kpi-card"
         )
         kpi_cards.append(dbc.Col(card, md=2, sm=4, xs=6, className="mb-3"))
 
@@ -374,16 +484,43 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
 
     # ---------- Header ----------
     header_row = dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H5(student_series.get('Name', ''), className="mb-0 text-center"),
-            html.H6(f"Student ID: {student_series.get('Student ID', '')}", className="text-muted text-center"),
-            html.H6(f"Section: {student_series.get('Section', 'Not Assigned')}", className="text-muted text-center")
-        ]), className="mb-3 p-3 shadow-sm"), md=6),
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("SGPA", className="text-muted text-center"),
-            html.H2(f"{sgpa:.2f}", className="fw-bold text-info text-center")
-        ]), className="mb-3 p-3 shadow-sm"), md=6)
-    ], className="mb-4 justify-content-center align-items-center")
+        dbc.Col(dbc.Card([
+            dbc.CardBody([
+                html.Div([
+                    html.I(className="bi bi-person-circle me-2", style={"color": "#667eea", "fontSize": "2rem"}),
+                    html.H4(student_series.get('Name', ''), className="mb-0 d-inline-block fw-bold", style={"color": "#2c3e50"}),
+                ], className="text-center mb-3"),
+                dbc.Row([
+                    dbc.Col([
+                        html.Div([
+                            html.I(className="bi bi-credit-card me-2", style={"color": "#667eea"}),
+                            html.Span("Student ID", className="text-muted small")
+                        ]),
+                        html.H6(student_series.get('Student ID', ''), className="fw-bold mb-0", style={"color": "#2c3e50"})
+                    ], className="text-center", width=6),
+                    dbc.Col([
+                        html.Div([
+                            html.I(className="bi bi-people-fill me-2", style={"color": "#667eea"}),
+                            html.Span("Section", className="text-muted small")
+                        ]),
+                        html.H6(student_series.get('Section', 'Not Assigned'), className="fw-bold mb-0", style={"color": "#2c3e50"})
+                    ], className="text-center", width=6)
+                ])
+            ])
+        ], className="mb-3 shadow-custom", style={"borderRadius": "15px", "background": "linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)"}), md=7),
+        
+        dbc.Col(dbc.Card([
+            dbc.CardBody([
+                html.Div([
+                    html.I(className="bi bi-award-fill me-2", style={"color": "#ffd700", "fontSize": "2rem"}),
+                    html.Span("SGPA Score", className="text-muted d-block small mb-2")
+                ], className="text-center"),
+                html.H1(f"{sgpa:.2f}", className="fw-bold text-center mb-0 text-gradient", 
+                       style={"fontSize": "3rem", "background": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", 
+                              "WebkitBackgroundClip": "text", "WebkitTextFillColor": "transparent"})
+            ])
+        ], className="mb-3 shadow-custom", style={"borderRadius": "15px", "background": "linear-gradient(135deg, #fff9e6 0%, #fffbf0 100%)"}), md=5)
+    ], className="mb-4 justify-content-center align-items-stretch")
 
     # ---------- Charts ----------
     subject_scores = pd.Series({s: pd.to_numeric(student_series.get(s, 0), errors='coerce') for s in kpi_cols_all}).dropna()
@@ -406,27 +543,43 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
             y=scores_above_zero.values,
             text=[f"{v:.0f}" for v in scores_above_zero.values],
             textposition='auto',
-            marker=dict(color='rgb(31,119,180)')
+            marker=dict(
+                color=scores_above_zero.values,
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title="Marks")
+            )
         )
     ])
     bar_fig.update_layout(
-        title_text=f"Subject-wise Performance ({analysis_type})",
+        title_text=f"📊 Subject-wise Performance ({analysis_type})",
         title_x=0.5,
-        plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=40, b=20, l=20, r=20)
+        title_font=dict(size=16, color='#2c3e50', family='Arial, sans-serif'),
+        plot_bgcolor='rgba(248,249,250,0.5)',
+        paper_bgcolor='white',
+        margin=dict(t=50, b=40, l=40, r=40),
+        xaxis=dict(title="Subjects", titlefont=dict(size=13, color='#667eea')),
+        yaxis=dict(title="Marks", titlefont=dict(size=13, color='#667eea'), gridcolor='#e0e0e0')
     )
 
     class_averages = df[kpi_cols_all].replace(0, pd.NA).mean()
     comp_fig = go.Figure(data=[
-        go.Bar(x=scores_above_zero.index, y=scores_above_zero.values, name="Student", marker_color='dodgerblue'),
-        go.Bar(x=scores_above_zero.index, y=class_averages.reindex(scores_above_zero.index).fillna(0).values, name="Class Avg", marker_color='orange')
+        go.Bar(x=scores_above_zero.index, y=scores_above_zero.values, name="Student", 
+               marker_color='#667eea', text=[f"{v:.0f}" for v in scores_above_zero.values], textposition='auto'),
+        go.Bar(x=scores_above_zero.index, y=class_averages.reindex(scores_above_zero.index).fillna(0).values, 
+               name="Class Avg", marker_color='#f59e0b', text=[f"{v:.0f}" for v in class_averages.reindex(scores_above_zero.index).fillna(0).values], textposition='auto')
     ])
     comp_fig.update_layout(
-        title_text="Student vs Class Average",
+        title_text="📈 Student vs Class Average",
         title_x=0.5,
+        title_font=dict(size=16, color='#2c3e50', family='Arial, sans-serif'),
         barmode='group',
-        plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=40, b=20, l=20, r=20)
+        plot_bgcolor='rgba(248,249,250,0.5)',
+        paper_bgcolor='white',
+        margin=dict(t=50, b=40, l=40, r=40),
+        xaxis=dict(title="Subjects", titlefont=dict(size=13, color='#667eea')),
+        yaxis=dict(title="Marks", titlefont=dict(size=13, color='#667eea'), gridcolor='#e0e0e0'),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
 
     pie_fig = go.Figure(data=[
@@ -437,22 +590,58 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
                 ((scores_above_zero >= 50) & (scores_above_zero <= 75)).sum(),
                 (scores_above_zero < 50).sum()
             ],
-            marker=dict(colors=['#2ecc71', '#f1c40f', '#e74c3c']),
-            hole=0.35
+            marker=dict(colors=['#22c55e', '#f59e0b', '#ef4444']),
+            hole=0.4,
+            textinfo='label+percent',
+            textfont=dict(size=12, color='white', family='Arial, sans-serif'),
+            pull=[0.05, 0, 0]
         )
     ])
-    pie_fig.update_layout(title_text="Performance Distribution", title_x=0.5, margin=dict(t=30, b=10))
+    pie_fig.update_layout(
+        title_text="📊 Performance Distribution", 
+        title_x=0.5,
+        title_font=dict(size=16, color='#2c3e50', family='Arial, sans-serif'),
+        paper_bgcolor='white',
+        margin=dict(t=50, b=20, l=20, r=20),
+        annotations=[dict(text='Overall', x=0.5, y=0.5, font_size=14, showarrow=False, font_color='#667eea')]
+    )
 
     top_subjects = scores_above_zero.nlargest(3)
     weak_subjects = scores_above_zero.nsmallest(3)
+    
     strong_card = dbc.Card([
-        dbc.CardHeader("💪 Top Subjects", className="bg-success text-white"),
-        dbc.CardBody([html.Ul([html.Li(f"{s}: {m:.0f}") for s, m in top_subjects.items()])])
-    ], className="shadow-sm")
+        dbc.CardHeader([
+            html.I(className="bi bi-trophy-fill me-2", style={"fontSize": "1.2rem", "color": "#000000"}),
+            html.Span("Top Subjects", style={"fontSize": "1rem", "color": "#000000"})
+        ], className="fw-bold", style={"background": "#16a34a", "borderRadius": "15px 15px 0 0", "padding": "0.75rem 1rem"}),
+        dbc.CardBody([
+            html.Ul([
+                html.Li([
+                    html.Div([
+                        html.Span(f"{s}", className="fw-bold d-block", style={"color": "#1e293b", "fontSize": "1.05rem"}),
+                        html.Span(f"{m:.0f} marks", className="fw-semibold", style={"color": "#000000", "fontSize": "0.95rem"})
+                    ])
+                ], className="mb-3 pb-2", style={"borderBottom": "1px solid #e0e0e0"}) for s, m in top_subjects.items()
+            ], className="mb-0", style={"listStyle": "none", "paddingLeft": "0"})
+        ], style={"background": "#86efac", "padding": "1.25rem"})
+    ], className="shadow-sm h-100", style={"borderRadius": "15px", "border": "2px solid #22c55e"})
+    
     weak_card = dbc.Card([
-        dbc.CardHeader("⚠️ Bottom Subjects", className="bg-danger text-white"),
-        dbc.CardBody([html.Ul([html.Li(f"{s}: {m:.0f}") for s, m in weak_subjects.items()])])
-    ], className="shadow-sm")
+        dbc.CardHeader([
+            html.I(className="bi bi-exclamation-triangle-fill me-2", style={"fontSize": "1.2rem", "color": "#000000"}),
+            html.Span("Bottom Subjects", style={"fontSize": "1rem", "color": "#000000"})
+        ], className="fw-bold", style={"background": "#dc2626", "borderRadius": "15px 15px 0 0", "padding": "0.75rem 1rem"}),
+        dbc.CardBody([
+            html.Ul([
+                html.Li([
+                    html.Div([
+                        html.Span(f"{s}", className="fw-bold d-block", style={"color": "#1e293b", "fontSize": "1.05rem"}),
+                        html.Span(f"{m:.0f} marks", className="fw-semibold", style={"color": "#000000", "fontSize": "0.95rem"})
+                    ])
+                ], className="mb-3 pb-2", style={"borderBottom": "1px solid #e0e0e0"}) for s, m in weak_subjects.items()
+            ], className="mb-0", style={"listStyle": "none", "paddingLeft": "0"})
+        ], style={"background": "#fca5a5", "padding": "1.25rem"})
+    ], className="shadow-sm h-100", style={"borderRadius": "15px", "border": "2px solid #ef4444"})
 
     # ---------- Result Table ----------
         # ---------- Result Table ----------
@@ -515,50 +704,111 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
         columns=[{"name": i, "id": i} for i in result_table_df.columns],
         style_cell={
             'textAlign': 'center',
-            'padding': '6px',
+            'padding': '12px',
             'font-family': 'Arial, sans-serif',
-            'fontSize': 13,
-            'whiteSpace': 'normal'
+            'fontSize': 14,
+            'whiteSpace': 'normal',
+            'border': '1px solid #e0e0e0'
         },
         style_header={
-            'backgroundColor': '#0d6efd',
+            'backgroundColor': '#1e40af',
             'color': 'white',
-            'fontWeight': 'bold'
+            'fontWeight': 'bold',
+            'fontSize': 15,
+            'textAlign': 'center',
+            'border': 'none',
+            'padding': '12px'
         },
         style_data_conditional=[
             {'if': {'row_index': 'even'}, 'backgroundColor': '#f8f9fa'},
+            {'if': {'row_index': 'odd'}, 'backgroundColor': '#ffffff'},
             {
                 'if': {'filter_query': '{Result} = "Pass"', 'column_id': 'Result'},
-                'color': 'green',
-                'fontWeight': 'bold'
+                'color': 'white',
+                'fontWeight': 'bold',
+                'backgroundColor': '#22c55e'
             },
             {
                 'if': {'filter_query': '{Result} = "Fail"', 'column_id': 'Result'},
-                'color': 'red',
-                'fontWeight': 'bold'
+                'color': 'white',
+                'fontWeight': 'bold',
+                'backgroundColor': '#ef4444'
             },
         ],
-        page_size=8,
-        style_table={'overflowX': 'auto', 'maxHeight': '360px'}
+        page_size=10,
+        style_table={'overflowX': 'auto', 'maxHeight': '500px', 'borderRadius': '10px', 'overflow': 'hidden'},
+        style_as_list_view=False,
     )
 
     # ---------- Final Layout ----------
     return dbc.Card(dbc.CardBody([
-        html.H4("Full Performance Report", className="text-center mb-3"),
+        # Hero Header
+        html.Div([
+            html.I(className="bi bi-file-earmark-bar-graph me-3", style={"fontSize": "2rem", "color": "#667eea"}),
+            html.H3("Full Performance Report", className="d-inline fw-bold mb-0", style={"color": "#2c3e50"})
+        ], className="text-center mb-4 pb-3", style={"borderBottom": "3px solid #667eea"}),
+        
+        # Student Info & SGPA
         header_row,
-        kpi_cards_row,
-        html.Hr(),
-        dbc.Row([
-            dbc.Col(strong_card, md=4, align='center'),
-            dbc.Col(weak_card, md=4, align='center'),
-            dbc.Col(dbc.Card(dbc.CardBody([dcc.Graph(figure=pie_fig, config={"displayModeBar": False})]),
-                             className="h-100 shadow-sm"), md=4, align='center')
-        ], className="g-3 mb-4 justify-content-center"),
-        dbc.Row([
-            dbc.Col(dcc.Graph(figure=bar_fig), md=6),
-            dbc.Col(dcc.Graph(figure=comp_fig), md=6)
+        
+        # KPI Cards
+        html.Div([
+            html.H5([
+                html.I(className="bi bi-speedometer2 me-2", style={"color": "#667eea"}),
+                "Performance Metrics"
+            ], className="text-center mb-3 fw-bold", style={"color": "#2c3e50"}),
+            kpi_cards_row
+        ]),
+        
+        html.Hr(style={"margin": "2rem 0", "opacity": "0.2"}),
+        
+        # Insights Section
+        html.Div([
+            html.H5([
+                html.I(className="bi bi-lightbulb-fill me-2", style={"color": "#f59e0b"}),
+                "Subject Insights"
+            ], className="text-center mb-4 fw-bold", style={"color": "#2c3e50"}),
+            dbc.Row([
+                dbc.Col(strong_card, md=4, className="mb-3"),
+                dbc.Col(weak_card, md=4, className="mb-3"),
+                dbc.Col(dbc.Card([
+                    dbc.CardBody([
+                        dcc.Graph(figure=pie_fig, config={"displayModeBar": False})
+                    ])
+                ], className="h-100 shadow-custom", style={"borderRadius": "15px"}), md=4, className="mb-3")
+            ], className="g-3 justify-content-center")
         ], className="mb-4"),
-        html.Hr(),
-        html.H5("📘 Detailed Performance", className="text-center mb-3"),
-        result_table
-    ]), className="mt-3 shadow")
+        
+        html.Hr(style={"margin": "2rem 0", "opacity": "0.2"}),
+        
+        # Charts Section
+        html.Div([
+            html.H5([
+                html.I(className="bi bi-graph-up me-2", style={"color": "#667eea"}),
+                "Performance Analysis"
+            ], className="text-center mb-4 fw-bold", style={"color": "#2c3e50"}),
+            dbc.Row([
+                dbc.Col(dbc.Card([
+                    dbc.CardBody([dcc.Graph(figure=bar_fig, config={"displayModeBar": False})])
+                ], className="shadow-custom", style={"borderRadius": "15px"}), md=12, lg=6, className="mb-3"),
+                dbc.Col(dbc.Card([
+                    dbc.CardBody([dcc.Graph(figure=comp_fig, config={"displayModeBar": False})])
+                ], className="shadow-custom", style={"borderRadius": "15px"}), md=12, lg=6, className="mb-3")
+            ])
+        ], className="mb-4"),
+        
+        html.Hr(style={"margin": "2rem 0", "opacity": "0.2"}),
+        
+        # Detailed Table
+        html.Div([
+            html.H5([
+                html.I(className="bi bi-table me-2", style={"color": "#667eea"}),
+                "Detailed Performance Table"
+            ], className="text-center mb-4 fw-bold", style={"color": "#2c3e50"}),
+            dbc.Card([
+                dbc.CardBody([
+                    result_table
+                ], style={"padding": "1.5rem"})
+            ], className="shadow-custom", style={"borderRadius": "15px"})
+        ])
+    ]), className="mt-4 p-4 shadow-custom fade-in", style={"borderRadius": "20px", "background": "white"})
