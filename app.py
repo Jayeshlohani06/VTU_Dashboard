@@ -100,8 +100,30 @@ app.layout = dbc.Container(
             }
         ),
 
+        # ----------------- Footer -----------------
+        html.Footer(
+            html.Div(
+                [
+                    html.Span("Designed & Developed by Students of Acharya Institute of Technology:", className="fw-bold"),
+                    html.Br(),
+                    html.Span("Jayesh Lohani | Amit Kumar Thakur | Aman Raj | Avni Chauhan", className="fw-medium")
+                ],
+                className="text-center",
+                style={
+                    "fontSize": "1rem", 
+                    "padding": "15px", 
+                    "color": "#333",
+                    "backgroundColor": "#e9ecef",
+                    "borderRadius": "8px",
+                    "border": "1px solid #ced4da"
+                }
+            ),
+            style={"marginTop": "30px", "paddingBottom": "20px"}
+        )
+
     ],
     fluid=True,
+    className="d-flex flex-column",
     style={
         "backgroundColor": "#f3f4f6",
         "padding": "25px",
