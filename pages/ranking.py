@@ -5,7 +5,7 @@ import pandas as pd
 import re
 from functools import lru_cache
 import ast
-from io import StringIO 
+from io import StringIO, BytesIO 
 
 # Register page
 dash.register_page(__name__, path="/ranking", name="Ranking")
@@ -150,6 +150,32 @@ def _prepare_base(json_str, section_key):
 def _section_key(section_ranges):
     try: return repr(section_ranges)
     except: return "None"
+
+def calculate_student_metrics(df):
+    """Calculates percentage based on attempted subjects for each student."""
+    # Identify all subject total columns (exclude aggregates)
+    subject_total_cols = [
+        c for c in df.columns
+        if c.strip().endswith(' Total')
+        and c not in ['Total_Marks', 'Grand Total']
+        and 'grand total' not in c.lower()
+    ]
+
+    def _calc_row(row):
+        subjects_attempted = 0
+        for col in subject_total_cols:
+            value = pd.to_numeric(row.get(col), errors='coerce')
+            if pd.notna(value) and value > 0:
+                subjects_attempted += 1
+        
+        if subjects_attempted == 0:
+            return 0.0
+        
+        max_marks = subjects_attempted * 100
+        return round((row.get('Total_Marks', 0) / max_marks) * 100, 2)
+
+    df['percentage'] = df.apply(_calc_row, axis=1)
+    return df
 
 
 # ==================== Styles ====================
@@ -307,7 +333,10 @@ layout = dbc.Container([
 
     # VTU Category Breakdown Table
     dbc.Card(dbc.CardBody([
-        html.H6([html.I(className="bi bi-bar-chart me-2 text-success"), "VTU Category Breakdown"], className="fw-bold mb-3"),
+        html.Div([
+            html.H6([html.I(className="bi bi-bar-chart me-2 text-success"), "VTU Category Breakdown"], className="fw-bold mb-0"),
+            dbc.Button("📥 Category Report", id="download-category-report-btn", size="sm", color="success", outline=True, className="fw-bold")
+        ], className="d-flex justify-content-between align-items-center mb-3"),
         dcc.Loading(
             type="circle",
             children=html.Div(id='category-breakdown-container')
@@ -376,7 +405,7 @@ layout = dbc.Container([
         dbc.ModalHeader(dbc.ModalTitle("Student Profile")),
         dbc.ModalBody(id="student-modal-body"),
         dbc.ModalFooter(dbc.Button("Close", id="close-modal", className="ms-auto", color="secondary"))
-    ], id="student-modal", is_open=False, size="lg"),
+    ], id="student-modal", is_open=False, size="lg", style={"zIndex": 10500}),
 
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("📊 Dashboard Logic & Legends")),
@@ -404,10 +433,11 @@ layout = dbc.Container([
             ])
         ),
         dbc.ModalFooter(dbc.Button("Got it!", id="close-legend", className="ms-auto", color="primary"))
-    ], id="legend-modal", is_open=False, size="lg"),
+    ], id="legend-modal", is_open=False, size="lg", style={"zIndex": 10500}),
 
     dcc.Download(id="download-csv"),
     dcc.Download(id="download-xlsx"),
+    dcc.Download(id="download-category-report"),
     dcc.Store(id='stored-data', storage_type='session'),
     dcc.Store(id='section-data', storage_type='session'),
     dcc.Store(id='sgpa-store', storage_type='session'),
@@ -660,42 +690,10 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     pass_pct = round((passed / appeared) * 100, 2) if appeared > 0 else 0
     
     # =====================================================
-    # ✅ FIXED PERCENTAGE CALCULATION (ACCURATE VERSION)
+    # ✅ PER-STUDENT ACCURATE PERCENTAGE CALCULATION
     # =====================================================
-
-    # Identify all subject total columns (exclude aggregates)
-    subject_total_cols = [
-        c for c in base_full.columns
-        if c.strip().endswith(' Total')
-        and c not in ['Total_Marks', 'Grand Total']
-        and 'grand total' not in c.lower()
-    ]
-
-    # Remove fake/phantom columns (all zeros)
-    valid_subject_cols = []
-    for col in subject_total_cols:
-        col_numeric = pd.to_numeric(base_full[col], errors='coerce').fillna(0)
-        if col_numeric.sum() > 0:
-            valid_subject_cols.append(col)
-
-    num_subjects = len(valid_subject_cols)
-
-    # Safety fallback
-    if num_subjects == 0:
-        num_subjects = 1
-
-    max_marks_possible = num_subjects * 100
-
-    # Debug (optional — remove later)
-    # print("Valid Subjects:", valid_subject_cols)
-    # print("Number of Subjects:", num_subjects)
-    # print("Max Marks:", max_marks_possible)
-
-    scope_calc = scope.copy()
-
-    scope_calc['percentage'] = (
-        scope_calc['Total_Marks'] / max_marks_possible * 100
-    ).round(2)
+    
+    scope_calc = calculate_student_metrics(scope.copy())
     
     # Only PASSING students get a class
     pass_mask = scope_calc[target_res_col].apply(lambda x: check_res(x, pass_val))
@@ -1133,3 +1131,64 @@ def exp_csv(n, d): return dcc.send_data_frame(pd.DataFrame(d).to_csv, "rank.csv"
 
 @callback(Output("download-xlsx", "data"), Input("export-xlsx", "n_clicks"), State('ranking-table', 'data'), prevent_initial_call=True)
 def exp_xlsx(n, d): return dcc.send_data_frame(pd.DataFrame(d).to_excel, "rank.xlsx", index=False) if d else no_update
+
+# ==================== Download Reports ====================
+
+@callback(
+    Output("download-category-report", "data"),
+    Input("download-category-report-btn", "n_clicks"),
+    State("stored-data", "data"),
+    State("section-data", "data"),
+    prevent_initial_call=True
+)
+def download_category_report(n_clicks, json_data, section_data):
+    if not json_data: return no_update
+    
+    # Load Full Data (All Sections) - Use copy to avoid modifying cached data
+    df = _prepare_base(json_data, _section_key(section_data)).copy()
+    
+    # Apply Metrics (Percentage)
+    df = calculate_student_metrics(df)
+    
+    # Create Excel Buffer
+    out = BytesIO()
+    writer = pd.ExcelWriter(out, engine='openpyxl')
+    
+    # Define Export Columns
+    desired_cols = ['Student_ID', 'Name', 'Section', 'Total_Marks', 'percentage', 'Overall_Result', 'Failed_Subjects', 'Absent_Subjects']
+    export_cols = [c for c in desired_cols if c in df.columns]
+    
+    # Filter Pass/Fail/Absent
+    pass_complete = df[df['Overall_Result'] == 'P'].copy()
+    fail_students = df[df['Overall_Result'] == 'F'].copy()
+    absent_students = df[df['Overall_Result'] == 'A'].copy()
+    
+    # 1. First Class Distinction (>= 70%)
+    fcd = pass_complete[pass_complete['percentage'] >= 70]
+    if not fcd.empty: fcd[export_cols].to_excel(writer, sheet_name='FCD (Distinction)', index=False)
+    
+    # 2. First Class (60% - 69.99%)
+    fc = pass_complete[(pass_complete['percentage'] >= 60) & (pass_complete['percentage'] < 70)]
+    if not fc.empty: fc[export_cols].to_excel(writer, sheet_name='First Class', index=False)
+    
+    # 3. Second Class (50% - 59.99%)
+    sc = pass_complete[(pass_complete['percentage'] >= 50) & (pass_complete['percentage'] < 60)]
+    if not sc.empty: sc[export_cols].to_excel(writer, sheet_name='Second Class', index=False)
+    
+    # 4. Pass Class (< 50%)
+    pc = pass_complete[pass_complete['percentage'] < 50]
+    if not pc.empty: pc[export_cols].to_excel(writer, sheet_name='Pass Class', index=False)
+    
+    # 5. Failed
+    if not fail_students.empty: 
+        fail_students[export_cols].to_excel(writer, sheet_name='Failed', index=False)
+        
+    # 6. Absent
+    if not absent_students.empty:
+        absent_students[export_cols].to_excel(writer, sheet_name='Absent', index=False)
+        
+    # Save
+    writer.close()
+    out.seek(0)
+    
+    return dcc.send_bytes(out.read(), "VTU_Category_Report.xlsx")
