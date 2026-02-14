@@ -178,24 +178,44 @@ layout = dbc.Container([
                     ], style={"overflow": "visible", "position": "relative", "zIndex": "1000"}),
                     html.Div(style={"height": "10px"}),
                     
-                    html.Label("Manage Sections", className="small fw-bold mb-1"),
-                    dbc.InputGroup([
-                        dbc.Input(id='num-sections', type='number', value=1, min=1, max=10),
-                        dbc.Button("Generate", id='generate-sections-btn', color="secondary"),
-                    ], size="sm", className="mb-3"),
-                    
-                    html.Div(id='section-input-container'),
-                    dbc.Button("Apply Config & Refresh", id='submit-sections-btn', color='info', className='w-100 mt-3 fw-bold text-white'),
+                    html.Label("Section Config Mode", className="small fw-bold mb-2"),
+                    dbc.RadioItems(
+                        id="config-mode-selector",
+                        options=[
+                            {"label": "Manual Ranges", "value": "manual"},
+                            {"label": "Upload Files", "value": "upload"},
+                        ],
+                        value="manual",
+                        inline=True,
+                        className="mb-3 small",
+                        inputClassName="me-1",
+                        labelClassName="me-3"
+                    ),
 
-                    html.Hr(),
-                    html.Label("Upload USN Files per Section", className="small fw-bold mb-1"),
-                    dbc.InputGroup([
-                        dbc.Input(id='num-upload-sections', type='number', value=1, min=1, max=10),
-                        dbc.Button("Generate", id='generate-upload-sections-btn', color="secondary"),
-                    ], size="sm", className="mb-3"),
-                    
-                    html.Div(id='upload-sections-container'),
-                    html.Div(id='usn-upload-status', className="small text-muted mt-1"),
+                    # --- MANUAL MODE ---
+                    html.Div([
+                        html.Label("Define Ranges", className="small fw-bold mb-1"),
+                        dbc.InputGroup([
+                            dbc.Input(id='num-sections', type='number', value=1, min=1, max=10),
+                            dbc.Button("Generate", id='generate-sections-btn', color="secondary"),
+                        ], size="sm", className="mb-3"),
+                        
+                        html.Div(id='section-input-container'),
+                        dbc.Button("Apply Ranges", id='submit-sections-btn', color='info', className='w-100 mt-2 fw-bold text-white'),
+                    ], id="manual-section-container"),
+
+                    # --- UPLOAD MODE ---
+                    html.Div([
+                        html.Label("Upload per Section", className="small fw-bold mb-1"),
+                        dbc.InputGroup([
+                            dbc.Input(id='num-upload-sections', type='number', value=1, min=1, max=10),
+                            dbc.Button("Generate", id='generate-upload-sections-btn', color="secondary"),
+                        ], size="sm", className="mb-3"),
+                        
+                        html.Div(id='upload-sections-container'),
+                    ], id="upload-section-container", style={"display": "none"}),
+
+                    html.Div(id='usn-upload-status', className="small text-muted mt-2 fw-bold"),
                 ], style={"overflow": "visible", "position": "relative"}),
             ], className="border-0 shadow-sm", style={"overflow": "visible"})
         ], lg=4, md=5, style={"overflow": "visible"}),
@@ -235,52 +255,81 @@ layout = dbc.Container([
 # ---------- CALLBACKS ----------
 
 @callback(
+    [Output("manual-section-container", "style"),
+     Output("upload-section-container", "style")],
+    Input("config-mode-selector", "value")
+)
+def toggle_config_mode(mode):
+    if mode == "upload":
+        return {"display": "none"}, {"display": "block"}
+    # Default manual
+    return {"display": "block"}, {"display": "none"}
+
+@callback(
     Output('subject-selector', 'options'),
     Output('subject-selector', 'value'),
     Output('stored-data', 'data'),
     Output('overview-selected-subjects', 'data'),
     Output('subject-options-store', 'data'),
     Input('upload-data', 'contents'),
-    State('stored-data', 'data'),
-    State('subject-options-store', 'data'),
-    State('overview-selected-subjects', 'data'),
+    Input('stored-data', 'data'),
     Input('url', 'pathname'),
+    State('overview-selected-subjects', 'data'),
     prevent_initial_call=False
 )
-def manage_subjects(upload_contents, current_stored_data, stored_options, stored_subjects, pathname):
+def manage_subjects(upload_contents, stored_data, pathname, stored_subjects):
+    if pathname != "/" and pathname is not None:
+        return no_update, no_update, no_update, no_update, no_update
+
     ctx_id = ctx.triggered_id
 
-    # NEW UPLOAD - process fresh data (trigger: upload contents)
+    # 1️⃣ If new file uploaded (Explicit User Action)
     if ctx_id == 'upload-data' and upload_contents:
         df = process_uploaded_excel(upload_contents)
         if df.empty:
             return [], [], None, None, None
+
         subjects = get_subject_codes(df)
         options = [{'label': s, 'value': s} for s in subjects]
         json_data = df.to_json(date_format='iso', orient='split')
+
         return options, subjects, json_data, subjects, options
-    
-    # RESTORE FROM STORAGE - (trigger: url/nav)
-    # Check if we have stored data
-    if stored_options and stored_subjects:
-        return stored_options, stored_subjects, no_update, no_update, no_update
-    
-    # DEFAULT - empty state
+
+    # 2️⃣ If data already exists in session (Navigation / Restore)
+    if stored_data:
+        try:
+            df = pd.read_json(stored_data, orient='split')
+            subjects = get_subject_codes(df)
+            options = [{'label': s, 'value': s} for s in subjects]
+
+            selected = stored_subjects if stored_subjects else subjects
+
+            return options, selected, no_update, selected, options
+        except:
+            pass
+
+    # 3️⃣ Default empty state
     return [], [], no_update, no_update, no_update
+
+@callback(
+    Output('overview-selected-subjects', 'data', allow_duplicate=True),
+    Input('subject-selector', 'value'),
+    prevent_initial_call=True
+)
+def update_selected_subjects_store(selected_values):
+    return selected_values
 
 @callback(
     Output('section-input-container', 'children'),
     Input('generate-sections-btn', 'n_clicks'),
     Input('section-data', 'data'), # Listen to store changes or initial load
-    Input('url', 'pathname'), # Force trigger on navigation
     State('num-sections', 'value'),
     prevent_initial_call=False
 )
-def render_section_fields(n_clicks, stored_sections, pathname, num_sections):
+def render_section_fields(n_clicks, stored_sections, num_sections):
     ctx_id = ctx.triggered_id
     
-    # improved logic:
-    # 1. If button clicked, generate new empty fields based on num_sections
+    # 1. Button Click - Generate New Empty Fields
     if ctx_id == 'generate-sections-btn' and n_clicks:
         count = num_sections if num_sections else 1
         return [
@@ -291,7 +340,7 @@ def render_section_fields(n_clicks, stored_sections, pathname, num_sections):
             ], className="g-2 mb-2") for i in range(1, count + 1)
         ]
 
-    # 2. If load/restore (or store update), recreate fields from stored data
+    # 2. Restore from Store (Initial Load or Store Update)
     if stored_sections and isinstance(stored_sections, dict):
         rows = []
         for i, (name, (start, end)) in enumerate(stored_sections.items()):
