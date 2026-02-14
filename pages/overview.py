@@ -57,15 +57,60 @@ def extract_numeric(roll):
     digits = re.findall(r'\d+', str(roll))
     return int(digits[-1]) if digits else 0
 
-def assign_section(roll_no, section_ranges):
-    """Assigns sections based on numeric roll number ranges."""
+def assign_section(roll_no, section_ranges, usn_mapping=None):
+    """Assigns sections based on either specific mapping or numeric roll number ranges."""
+    roll_no_str = str(roll_no).strip().upper()
+    
+    # Check direct mapping first
+    if usn_mapping:
+         # Ensure usn_mapping keys are all upper/stripped just in case
+         # (Though we do this at upload time, safe to cover bases)
+         if roll_no_str in usn_mapping:
+             return usn_mapping[roll_no_str]
+    
+    # Then check ranges if mapping not found
     roll_num = extract_numeric(roll_no)
-    for sec_name, (start, end) in section_ranges.items():
-        start_num = extract_numeric(start)
-        end_num = extract_numeric(end)
-        if start_num <= roll_num <= end_num:
-            return sec_name
+    if section_ranges:
+        for sec_name, (start, end) in section_ranges.items():
+            start_num = extract_numeric(start)
+            end_num = extract_numeric(end)
+            if start_num <= roll_num <= end_num:
+                return sec_name
     return "Unassigned"
+
+def process_usn_mapping_file(contents, filename, section_name=None):
+    content_type, content_string = contents.split(',')
+    decoded = base64.b64decode(content_string)
+    try:
+        if 'csv' in filename:
+            df = pd.read_csv(io.StringIO(decoded.decode('utf-8')))
+        else:
+            df = pd.read_excel(io.BytesIO(decoded))
+        
+        # Clean column names
+        df.columns = df.columns.astype(str).str.strip().str.lower()
+        
+        # Scenario 1: Section name provided (Single section upload)
+        if section_name:
+            # Look for USN column only
+            usn_col = next((c for c in df.columns if 'usn' in c), None)
+            if usn_col:
+                 # Map all USNs in this file to the provided section_name
+                 return {usn: section_name for usn in df[usn_col].astype(str).str.strip().str.upper()}
+            return {}
+
+        # Scenario 2: No section name (Global mapping file)
+        # Find USN and Section columns
+        usn_col = next((c for c in df.columns if 'usn' in c), None)
+        section_col = next((c for c in df.columns if 'section' in c or 'sec' in c), None)
+        
+        if usn_col and section_col:
+            # Create mapping: USN -> Section
+            return dict(zip(df[usn_col].astype(str).str.strip().str.upper(), df[section_col].astype(str).str.strip()))
+        return {}
+    except Exception as e:
+        print(f"Error processing USN file: {e}")
+        return {}
 
 # ---------- UI COMPONENTS ----------
 
@@ -133,14 +178,44 @@ layout = dbc.Container([
                     ], style={"overflow": "visible", "position": "relative", "zIndex": "1000"}),
                     html.Div(style={"height": "10px"}),
                     
-                    html.Label("Manage Sections", className="small fw-bold mb-1"),
-                    dbc.InputGroup([
-                        dbc.Input(id='num-sections', type='number', value=1, min=1, max=10),
-                        dbc.Button("Generate", id='generate-sections-btn', color="secondary"),
-                    ], size="sm", className="mb-3"),
-                    
-                    html.Div(id='section-input-container'),
-                    dbc.Button("Apply Config & Refresh", id='submit-sections-btn', color='info', className='w-100 mt-3 fw-bold text-white'),
+                    html.Label("Section Config Mode", className="small fw-bold mb-2"),
+                    dbc.RadioItems(
+                        id="config-mode-selector",
+                        options=[
+                            {"label": "Manual Ranges", "value": "manual"},
+                            {"label": "Upload Files", "value": "upload"},
+                        ],
+                        value="manual",
+                        inline=True,
+                        className="mb-3 small",
+                        inputClassName="me-1",
+                        labelClassName="me-3"
+                    ),
+
+                    # --- MANUAL MODE ---
+                    html.Div([
+                        html.Label("Define Ranges", className="small fw-bold mb-1"),
+                        dbc.InputGroup([
+                            dbc.Input(id='num-sections', type='number', value=1, min=1, max=10),
+                            dbc.Button("Generate", id='generate-sections-btn', color="secondary"),
+                        ], size="sm", className="mb-3"),
+                        
+                        html.Div(id='section-input-container'),
+                        dbc.Button("Apply Ranges", id='submit-sections-btn', color='info', className='w-100 mt-2 fw-bold text-white'),
+                    ], id="manual-section-container"),
+
+                    # --- UPLOAD MODE ---
+                    html.Div([
+                        html.Label("Upload per Section", className="small fw-bold mb-1"),
+                        dbc.InputGroup([
+                            dbc.Input(id='num-upload-sections', type='number', value=1, min=1, max=10),
+                            dbc.Button("Generate", id='generate-upload-sections-btn', color="secondary"),
+                        ], size="sm", className="mb-3"),
+                        
+                        html.Div(id='upload-sections-container'),
+                    ], id="upload-section-container", style={"display": "none"}),
+
+                    html.Div(id='usn-upload-status', className="small text-muted mt-2 fw-bold"),
                 ], style={"overflow": "visible", "position": "relative"}),
             ], className="border-0 shadow-sm", style={"overflow": "visible"})
         ], lg=4, md=5, style={"overflow": "visible"}),
@@ -173,14 +248,22 @@ layout = dbc.Container([
         ], lg=8, md=7)
     ], style={"overflow": "visible"}),
 
-    # Session stores for persistence across pages
-    dcc.Store(id='stored-data', storage_type='session'),
-    dcc.Store(id='section-data', storage_type='session'),
-    dcc.Store(id='overview-selected-subjects', storage_type='session'),
-    dcc.Store(id='subject-options-store', storage_type='session')
+    # STORES REMOVED FROM HERE TO APP.PY TO ENSURE PERSISTENCE
+    
 ], fluid=True, className="pb-5 bg-light", style={"minHeight": "100vh"})
 
 # ---------- CALLBACKS ----------
+
+@callback(
+    [Output("manual-section-container", "style"),
+     Output("upload-section-container", "style")],
+    Input("config-mode-selector", "value")
+)
+def toggle_config_mode(mode):
+    if mode == "upload":
+        return {"display": "none"}, {"display": "block"}
+    # Default manual
+    return {"display": "block"}, {"display": "none"}
 
 @callback(
     Output('subject-selector', 'options'),
@@ -190,42 +273,108 @@ layout = dbc.Container([
     Output('subject-options-store', 'data'),
     Input('upload-data', 'contents'),
     Input('subject-options-store', 'data'),
-    Input('overview-selected-subjects', 'data'),
+    Input('url', 'pathname'),
+    State('overview-selected-subjects', 'data'),
     prevent_initial_call=False
 )
-def manage_subjects(upload_contents, stored_options, stored_subjects):
-    # NEW UPLOAD - process fresh data
-    if upload_contents:
+def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
+    if pathname != "/" and pathname is not None:
+        return no_update, no_update, no_update, no_update, no_update
+
+    ctx_id = ctx.triggered_id
+
+    # 1️⃣ If new file uploaded (Explicit User Action)
+    if ctx_id == 'upload-data' and upload_contents:
         df = process_uploaded_excel(upload_contents)
         if df.empty:
             return [], [], None, None, None
+
         subjects = get_subject_codes(df)
         options = [{'label': s, 'value': s} for s in subjects]
         json_data = df.to_json(date_format='iso', orient='split')
+
         return options, subjects, json_data, subjects, options
-    
-    # RESTORE FROM STORAGE - when page reloads without new upload
-    if stored_options and stored_subjects:
-        return stored_options, stored_subjects, no_update, no_update, no_update
-    
-    # DEFAULT - empty state
-    return [], [], None, None, None
+
+    # 2️⃣ If data already exists in session (Navigation / Restore)
+    if stored_options:
+        safe_subjects = stored_subjects if isinstance(stored_subjects, list) else []
+        return stored_options, safe_subjects, no_update, no_update, no_update
+
+    # 3️⃣ Default empty state
+    return [], [], no_update, no_update, no_update
+
+@callback(
+    Output('overview-selected-subjects', 'data', allow_duplicate=True),
+    Input('subject-selector', 'value'),
+    prevent_initial_call=True
+)
+def update_selected_subjects_store(selected_values):
+    return selected_values
 
 @callback(
     Output('section-input-container', 'children'),
     Input('generate-sections-btn', 'n_clicks'),
+    Input('section-data', 'data'), # Listen to store changes or initial load
     State('num-sections', 'value'),
+    prevent_initial_call=False
+)
+def render_section_fields(n_clicks, stored_sections, num_sections):
+    ctx_id = ctx.triggered_id
+    
+    # 1. Button Click - Generate New Empty Fields
+    if ctx_id == 'generate-sections-btn' and n_clicks:
+        count = num_sections if num_sections else 1
+        return [
+            dbc.Row([
+                dbc.Col(dbc.Input(id={'type': 'sec-n', 'index': i}, placeholder="Name", size="sm"), width=3),
+                dbc.Col(dbc.Input(id={'type': 'sec-s', 'index': i}, placeholder="Start USN", size="sm"), width=4),
+                dbc.Col(dbc.Input(id={'type': 'sec-e', 'index': i}, placeholder="End USN", size="sm"), width=4),
+            ], className="g-2 mb-2") for i in range(1, count + 1)
+        ]
+
+    # 2. Restore from Store (Initial Load or Store Update)
+    if stored_sections and isinstance(stored_sections, dict):
+        rows = []
+        for i, (name, (start, end)) in enumerate(stored_sections.items()):
+            rows.append(dbc.Row([
+                dbc.Col(dbc.Input(id={'type': 'sec-n', 'index': i+1}, value=name, placeholder="Name", size="sm"), width=3),
+                dbc.Col(dbc.Input(id={'type': 'sec-s', 'index': i+1}, value=start, placeholder="Start USN", size="sm"), width=4),
+                dbc.Col(dbc.Input(id={'type': 'sec-e', 'index': i+1}, value=end, placeholder="End USN", size="sm"), width=4),
+            ], className="g-2 mb-2"))
+        if rows:
+            return rows
+
+    # Default empty
+    return []
+
+
+@callback(
+    Output('upload-sections-container', 'children'),
+    Input('generate-upload-sections-btn', 'n_clicks'),
+    State('num-upload-sections', 'value'),
     prevent_initial_call=True
 )
-def render_section_fields(n, num):
+def render_upload_section_fields(n, num):
     if not n or not num: return no_update
     return [
         dbc.Row([
-            dbc.Col(dbc.Input(id={'type': 'sec-n', 'index': i}, placeholder="Name", size="sm"), width=3),
-            dbc.Col(dbc.Input(id={'type': 'sec-s', 'index': i}, placeholder="Start USN", size="sm"), width=4),
-            dbc.Col(dbc.Input(id={'type': 'sec-e', 'index': i}, placeholder="End USN", size="sm"), width=4),
-        ], className="g-2 mb-2") for i in range(1, num + 1)
+            dbc.Col(dbc.Input(id={'type': 'usec-n', 'index': i}, placeholder=f"Sec {chr(65 + i)} Name", size="sm"), width=4),
+            dbc.Col(
+                dcc.Upload(
+                    id={'type': 'usec-u', 'index': i},
+                    children=html.Div(['📂 Upload USN List'], style={'fontSize': '0.8rem', 'fontWeight': 'bold'}),
+                    style={
+                        'width': '100%', 'height': '31px', 'lineHeight': '31px', 
+                        'borderWidth': '1px', 'borderStyle': 'dashed', 'borderRadius': '4px',
+                        'textAlign': 'center', 'backgroundColor': '#f0f2f5', 'cursor': 'pointer',
+                        'color': '#495057'
+                    },
+                    multiple=False
+                ), width=8
+            ),
+        ], className="g-2 mb-2 align-items-center") for i in range(0, num)
     ]
+
 
 @callback(
     Output('section-data', 'data'),
@@ -233,13 +382,62 @@ def render_section_fields(n, num):
     Input('submit-sections-btn', 'n_clicks'),
     [State({'type': 'sec-n', 'index': ALL}, 'value'),
      State({'type': 'sec-s', 'index': ALL}, 'value'),
-     State({'type': 'sec-e', 'index': ALL}, 'value')],
+     State({'type': 'sec-e', 'index': ALL}, 'value'),
+     State('section-data', 'data')],
     prevent_initial_call=True
 )
-def save_sections(n, names, starts, ends):
+def save_sections(n, names, starts, ends, current_data):
     if not n: return no_update, "Apply Config & Refresh"
-    section_dict = {str(n).strip(): (str(s).strip(), str(e).strip()) for n, s, e in zip(names, starts, ends) if n and s and e}
-    return section_dict, "✅ Config Applied"
+    
+    # Create new dict from inputs
+    new_section_dict = {str(n).strip(): (str(s).strip(), str(e).strip()) for n, s, e in zip(names, starts, ends) if n and s and e}
+    
+    # If inputs are empty (user cleared them), we should probably clear the store too?
+    # Or keep the old store? Given "Apply" button intent, if you see empty fields and click Apply, you expect clear.
+    # However, since fields might not have rendered yet (if manage_subjects is slow?), we should be careful.
+    # But save_sections is triggered by CLICK, so fields must exist.
+    
+    return new_section_dict, "✅ Config Applied"
+
+@callback(
+    Output('usn-mapping-store', 'data'),
+    Output('usn-upload-status', 'children'),
+    [Input({'type': 'usec-u', 'index': ALL}, 'contents')],
+    [State({'type': 'usec-u', 'index': ALL}, 'filename'),
+     State({'type': 'usec-n', 'index': ALL}, 'value'),
+     State('usn-mapping-store', 'data')],
+    prevent_initial_call=True
+)
+def process_multi_usn_upload(all_contents, all_filenames, all_names, current_mapping):
+    # Ensure all_contents is a list, otherwise return
+    if not isinstance(all_contents, list) or not any(all_contents):
+        return no_update, ""
+    
+    # Initialize or copy existing mapping
+    mapping = current_mapping.copy() if current_mapping else {}
+    new_entries_count = 0
+    
+    # Iterate through all upload components
+    for i, content in enumerate(all_contents):
+        if content: # If this specific upload has content
+             name = all_names[i] if i < len(all_names) else None
+             filename = all_filenames[i] if i < len(all_filenames) else ""
+             
+             # Determine section name (User input > Default A, B, C...)
+             sec_name = name.strip() if name and name.strip() else f"Section {chr(65+i)}"
+             
+             # Process the file for this specific section mapping
+             file_mapping = process_usn_mapping_file(content, filename, sec_name)
+             
+             if file_mapping:
+                 mapping.update(file_mapping)
+                 new_entries_count += len(file_mapping)
+    
+    total_entries = len(mapping)
+    if total_entries > 0:
+        return mapping, f"✅ Total {total_entries} USNs mapped"
+    
+    return no_update, "ℹ️ No valid USNs found in uploaded files"
 
 @callback(
     [Output('total-students', 'children'),
@@ -249,9 +447,10 @@ def save_sections(n, names, starts, ends):
      Output('data-preview', 'children')],
     [Input('stored-data', 'data'),
      Input('subject-selector', 'value'),
-     Input('section-data', 'data')]
+     Input('section-data', 'data'),
+     Input('usn-mapping-store', 'data')]
 )
-def update_dashboard(data, selected_subjects, section_ranges):
+def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
     if not data or not selected_subjects:
         return "0", "0", "0", "0%", html.Div("Upload data and select subjects to view analytics.", className="p-4 text-center text-muted")
     
@@ -286,8 +485,8 @@ def update_dashboard(data, selected_subjects, section_ranges):
     rate = f"{round((passed_count/total)*100, 2)}%" if total > 0 else "0%"
 
     # 5. Section Assignment
-    if section_ranges:
-        df_filtered['Section'] = df_filtered[meta_col].apply(lambda x: assign_section(x, section_ranges))
+    if section_ranges or usn_mapping:
+        df_filtered['Section'] = df_filtered[meta_col].apply(lambda x: assign_section(x, section_ranges, usn_mapping))
 
     # 6. Generate Table UI
     table = dbc.Table.from_dataframe(

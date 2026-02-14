@@ -443,9 +443,6 @@ layout = dbc.Container([
     dcc.Download(id="sa-download-xlsx"),
 
     # Use session stores to match global app.py stores
-    dcc.Store(id='stored-data', storage_type='session'),
-    dcc.Store(id='overview-selected-subjects', storage_type='session'),
-    dcc.Store(id='section-data', storage_type='session')
 ], fluid=True, className="pb-4")
 
 # ==================== CALLBACKS ====================
