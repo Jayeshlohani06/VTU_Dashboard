@@ -87,9 +87,38 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
         df[valid_subject_cols] = df[valid_subject_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
         df['Total_Marks'] = df[valid_subject_cols].sum(axis=1)
         df['__Num_Subjects_Calc'] = len(valid_subject_cols)
+        
+        # --- NEW: Calculate Total Internal and External ---
+        internal_cols = []
+        external_cols = []
+        for c in valid_subject_cols:
+            base_name = c.rsplit(' Total', 1)[0].strip()
+            i_col = f"{base_name} Internal"
+            e_col = f"{base_name} External"
+            
+            if i_col in df.columns:
+                internal_cols.append(i_col)
+            if e_col in df.columns:
+                external_cols.append(e_col)
+                
+        if internal_cols:
+             df[internal_cols] = df[internal_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+             df['Total_Internal'] = df[internal_cols].sum(axis=1)
+        else:
+             df['Total_Internal'] = 0
+             
+        if external_cols:
+             df[external_cols] = df[external_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+             df['Total_External'] = df[external_cols].sum(axis=1)
+        else:
+             df['Total_External'] = 0
+        # ----------------------------------------------------
+
         print(f"DEBUG: Calculated Subjects ({len(valid_subject_cols)}): {valid_subject_cols}")
     else:
         df['Total_Marks'] = 0
+        df['Total_Internal'] = 0
+        df['Total_External'] = 0
         df['__Num_Subjects_Calc'] = 0
     # ======================================
 
@@ -326,11 +355,29 @@ layout = dbc.Container([
                 dbc.Col(dbc.Checklist(
                     id="theme-toggle", options=[{"label": "🌙 Dark Mode", "value": "dark"}], value=[], switch=True,
                 ), width="auto", className="d-flex align-items-center"),
-                dbc.Col(dcc.RadioItems(
-                    id='ranking-type',
-                    options=[{'label': 'Marks Based', 'value': 'marks'}, {'label': 'SGPA Based', 'value': 'sgpa'}],
-                    value='marks', inline=True, labelClassName='px-3 py-1 border rounded-pill me-2 cursor-pointer', inputClassName="me-2"
-                ), className='text-end')
+                dbc.Col(html.Div([
+                    # New Metric Selector
+                    html.Div([
+                        html.Span("Metric:", className="me-2 text-muted small fw-bold"),
+                        dcc.RadioItems(
+                            id='marks-metric-selector',
+                            options=[
+                                {'label': 'Total', 'value': 'total'},
+                                {'label': 'Internal', 'value': 'internal'},
+                                {'label': 'External', 'value': 'external'}
+                            ],
+                            value='total', inline=True,
+                            labelClassName='px-2 py-1 border rounded-pill me-1 cursor-pointer small',
+                            inputClassName="me-1"
+                        )
+                    ], id="metric-selector-container", className="d-inline-flex align-items-center me-3", style={"display": "none"}),
+                    
+                    dcc.RadioItems(
+                        id='ranking-type',
+                        options=[{'label': 'Marks Based', 'value': 'marks'}, {'label': 'SGPA Based', 'value': 'sgpa'}],
+                        value='marks', inline=True, labelClassName='px-3 py-1 border rounded-pill me-2 cursor-pointer', inputClassName="me-2"
+                    )
+                ], className='d-flex justify-content-end align-items-center'), className='text-end')
             ])
         ]), className="rnk-card", style={"overflow": "visible"}), className="rnk-controls-wrap mb-4", style={"overflow": "visible", "zIndex": 1000, "position": "relative"}
     ),
@@ -481,6 +528,15 @@ def update_section_options(json_data, section_ranges, usn_mapping):
 @callback([Output('filter-dropdown', 'value'), Output('section-dropdown', 'value'), Output('search-input', 'value')], Input('reset-btn', 'n_clicks'), prevent_initial_call=True)
 def reset_filters(n): return "ALL", "ALL", ""
 
+@callback(
+    Output("metric-selector-container", "style"),
+    Input("ranking-type", "value")
+)
+def toggle_metric_selector(rank_type):
+    if rank_type == 'marks':
+        return {"display": "inline-flex", "alignItems": "center", "marginRight": "1rem"}
+    return {"display": "none"}
+
 # ========== Grid UI for SGPA Panel ==========
 @callback(
     Output('sgpa-credit-panel', 'children'),
@@ -623,12 +679,13 @@ def calculate_sgpa_all(n_clicks, json_data, section_ranges, usn_mapping, credit_
     Input('section-dropdown', 'value'),
     Input('search-input', 'value'),
     Input('ranking-type', 'value'),
+    Input('marks-metric-selector', 'value'),
     Input('sgpa-store', 'data'),
     State('stored-data', 'data'),
     State('section-data', 'data'),
     State('usn-mapping-store', 'data')
 )
-def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data, section_ranges, usn_mapping):
+def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_json, json_data, section_ranges, usn_mapping):
     if not json_data: return html.P("Upload data first.", className="text-center text-muted"), html.Div(), html.Div(), html.Div(), [], [], html.Div()
 
     mapping_str = str(usn_mapping) if usn_mapping else "None"
@@ -645,14 +702,24 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
 
     scope = base_full.copy()
 
-    # Dynamic Filtering
+    # Determine Sort Column and Target Result Column
     target_res_col = "Overall_Result"
+    sort_col = "Total_Marks"
+    
+    if rank_type == 'sgpa':
+        if 'Result_Selected' in scope.columns: target_res_col = "Result_Selected"
+        if 'SGPA' in scope.columns: sort_col = "SGPA"
+    elif rank_type == 'marks':
+        if metric_val == 'internal': sort_col = 'Total_Internal'
+        elif metric_val == 'external': sort_col = 'Total_External'
+        else: sort_col = 'Total_Marks'
+
+    # Dynamic Filtering
     pass_val = ["P", "PASS"]
     fail_val = ["F", "FAIL"]
     absent_val = ["A", "ABSENT"]
 
     if rank_type == 'sgpa' and 'Result_Selected' in scope.columns:
-        target_res_col = "Result_Selected"
         pass_val = ["PASS", "Pass"]
         fail_val = ["FAIL", "Fail"]
         absent_val = ["ABSENT", "Absent"]
@@ -669,21 +736,25 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     
     if sec_val != "ALL" and 'Section' in scope.columns: scope = scope[scope["Section"] == sec_val]
 
-    if 'Total_Marks' in scope.columns:
+    # Calculate Ranks based on Sort Column
+    if sort_col in scope.columns:
         scope['Class_Rank'] = pd.NA
-        pass_mask = scope['Overall_Result'] == 'P'
+        # Rank only passing students
+        pass_mask = scope[target_res_col].apply(lambda x: str(x).upper() in [p.upper() for p in pass_val])
+        
         scope.loc[pass_mask, 'Class_Rank'] = (
-            scope.loc[pass_mask, 'Total_Marks']
+            scope.loc[pass_mask, sort_col]
             .rank(method='min', ascending=False)
             .astype('Int64')
         )
 
-    if 'Section' in scope.columns and 'Total_Marks' in scope.columns:
+    if 'Section' in scope.columns and sort_col in scope.columns:
         scope['Section_Rank'] = pd.NA
         for sec in scope['Section'].unique():
-            sec_mask = (scope['Section'] == sec) & (scope['Overall_Result'] == 'P')
+            # Check for pass in this section
+            sec_mask = (scope['Section'] == sec) & (scope[target_res_col].apply(lambda x: str(x).upper() in [p.upper() for p in pass_val]))
             scope.loc[sec_mask, 'Section_Rank'] = (
-                scope.loc[sec_mask, 'Total_Marks']
+                scope.loc[sec_mask, sort_col]
                 .rank(method='min', ascending=False)
                 .astype('Int64')
             )
@@ -820,7 +891,10 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
             ], className="d-flex align-items-center mb-2 small"))
         return html.Ul(items, className="list-unstyled mb-0")
 
-    sort_col = 'SGPA' if (rank_type == 'sgpa' and 'SGPA' in scope.columns) else 'Total_Marks'
+    # Ensure sort_col exists (fallback)
+    if sort_col not in scope.columns:
+         sort_col = 'Total_Marks' if 'Total_Marks' in scope.columns else (scope.columns[0] if len(scope.columns)>0 else "")
+
     top5_html = make_list(scope, sort_col, False)
     bot_html = make_list(scope, sort_col, True)
 
@@ -828,6 +902,9 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
     if 'Section' in scope.columns:
         for sec, g in sorted(scope.groupby('Section')):
             if g.empty: continue
+            # Handle cases where sort_col might be all NaN
+            if g[sort_col].isna().all(): continue
+            
             ridx = g[sort_col].idxmax()
             r = g.loc[ridx]
             
@@ -838,11 +915,17 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
             else:
                 rank_display = "-"
             
+            val_label = 'Score'
+            if rank_type == 'sgpa': val_label = 'SGPA'
+            elif metric_val == 'internal': val_label = 'Internal'
+            elif metric_val == 'external': val_label = 'External'
+            else: val_label = 'Total'
+
             card = html.Div([
                 html.H6([html.I(className="bi bi-trophy-fill me-2", style={"color":"#8b5cf6"}), f"Section {sec} Topper"], className="fw-bold mb-2", style={"color": "#4338ca", "fontSize": "0.95rem"}),
                 html.Div([
                     html.Div(f"Student ID: {r.get('Student_ID')}", className="mb-1 text-muted small"),
-                    html.Div([html.Span(f"{'SGPA' if rank_type=='sgpa' else 'Total'}: ", className="text-muted small"), html.Span(f"{r.get(sort_col)}", className="fw-bold text-dark")], className="mb-1"),
+                    html.Div([html.Span(f"{val_label}: ", className="text-muted small"), html.Span(f"{r.get(sort_col)}", className="fw-bold text-dark")], className="mb-1"),
                     html.Div([html.Span("Class Rank: ", className="text-muted small"), html.Span(rank_display, className="fw-bold text-dark")])
                 ])
             ], className="p-3 mb-3 bg-white rounded shadow-sm border-start border-4 border-primary")
@@ -861,8 +944,8 @@ def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data
         cols = ['SGPA_Class_Rank', 'SGPA_Section_Rank', 'Student_ID', 'Name', 'Section', 'SGPA', 'Total_Marks_Selected', 'Result_Selected']
     else:
         tdf['__sort'] = tdf['Class_Rank'].fillna(9999)
-        tdf = tdf.sort_values(['__sort', 'Total_Marks'], ascending=[True, False])
-        cols = ['Class_Rank', 'Section_Rank', 'Student_ID', 'Name', 'Section', 'Total_Marks', 'Overall_Result']
+        tdf = tdf.sort_values(['__sort', sort_col], ascending=[True, False])
+        cols = ['Class_Rank', 'Section_Rank', 'Student_ID', 'Name', 'Section', sort_col, 'Overall_Result']
     
     tcols = [{"name": c.replace("_", " "), "id": c} for c in cols if c in tdf.columns]
     # FIX: Send only relevant columns to table data
@@ -1091,32 +1174,42 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
         r_val = row.get(f"{code} Result")
 
         # STRICT VALIDATION: Filter out subjects the student didn't take
-        # 1. Internal and External are NaN (missing)
-        # 2. Total is NaN or 0 (0 is often auto-filled for missing cols)
-        # 3. Result is NaN or empty
+        # We treat a subject as "not mapped" if:
+        # 1. Total, Internal, and External are all 0 (or missing/NaN)
+        # 2. AND Result is empty or missing
         
-        is_marks_missing = pd.isna(i_val) and pd.isna(e_val)
+        i_num = pd.to_numeric(i_val, errors='coerce') or 0
+        e_num = pd.to_numeric(e_val, errors='coerce') or 0
+        t_num = pd.to_numeric(t_val, errors='coerce') or 0
+        
+        has_marks = (i_num > 0) or (e_num > 0) or (t_num > 0)
+        
+        # Check if result is meaningful (not NaN, None, empty string)
+        has_result = False
+        if pd.notna(r_val):
+            r_str = str(r_val).strip()
+            if r_str and r_str.upper() not in ['NAN', 'NONE']:
+                has_result = True
 
-        
-        try: t_num = float(t_val)
-        except (ValueError, TypeError): t_num = 0
-        
-        is_total_invalid = pd.isna(t_val) or (t_num == 0)
-        is_result_missing = pd.isna(r_val) or str(r_val).strip() == ""
-
-        if is_marks_missing and is_total_invalid and is_result_missing:
+        if not has_marks and not has_result:
             continue
 
         # Helper for display
-        def fmt(v): return v if pd.notna(v) else "-"
-        
-        res_disp = fmt(r_val)
+        def fmt(v): return v if pd.notna(v) and v != 0 else ("0" if v == 0 else "-")
+        # Note: We want to show 0 if it exists, but usually data has 0.
+        # Let's stick to original fmt or similar.
+        # Original: def fmt(v): return v if pd.notna(v) else "-"
+        # Better: keep 0 as 0.
+        def fmt_disp(v): 
+             return v if pd.notna(v) else "-"
+
+        res_disp = fmt_disp(r_val)    
 
         rows.append(html.Tr([
             html.Td(code, className="fw-bold"),
-            html.Td(fmt(i_val)),
-            html.Td(fmt(e_val)),
-            html.Td(fmt(t_val), className="fw-bold"),
+            html.Td(fmt_disp(i_val)),
+            html.Td(fmt_disp(e_val)),
+            html.Td(fmt_disp(t_val), className="fw-bold"),
             html.Td(res_disp, className="text-danger fw-bold" if str(res_disp).upper() in ['F', 'FAIL'] else "text-success fw-bold")
         ]))
 
