@@ -167,9 +167,6 @@ layout = dbc.Container([
         ], width=12)
     ]),
     
-    dcc.Store(id='stored-data', storage_type='session'),
-    dcc.Store(id='overview-selected-subjects', storage_type='session'),
-    dcc.Store(id='section-data', storage_type='session')
 ], fluid=True, className="py-4", style={"background": "#f8f9fa", "minHeight": "100vh"})
 
 # ---------- Populate Subject Dropdown ----------

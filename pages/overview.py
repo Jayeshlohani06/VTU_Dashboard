@@ -272,12 +272,12 @@ def toggle_config_mode(mode):
     Output('overview-selected-subjects', 'data'),
     Output('subject-options-store', 'data'),
     Input('upload-data', 'contents'),
-    Input('stored-data', 'data'),
+    Input('subject-options-store', 'data'),
     Input('url', 'pathname'),
     State('overview-selected-subjects', 'data'),
     prevent_initial_call=False
 )
-def manage_subjects(upload_contents, stored_data, pathname, stored_subjects):
+def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
     if pathname != "/" and pathname is not None:
         return no_update, no_update, no_update, no_update, no_update
 
@@ -296,17 +296,9 @@ def manage_subjects(upload_contents, stored_data, pathname, stored_subjects):
         return options, subjects, json_data, subjects, options
 
     # 2️⃣ If data already exists in session (Navigation / Restore)
-    if stored_data:
-        try:
-            df = pd.read_json(stored_data, orient='split')
-            subjects = get_subject_codes(df)
-            options = [{'label': s, 'value': s} for s in subjects]
-
-            selected = stored_subjects if stored_subjects else subjects
-
-            return options, selected, no_update, selected, options
-        except:
-            pass
+    if stored_options:
+        safe_subjects = stored_subjects if isinstance(stored_subjects, list) else []
+        return stored_options, safe_subjects, no_update, no_update, no_update
 
     # 3️⃣ Default empty state
     return [], [], no_update, no_update, no_update

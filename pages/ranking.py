@@ -448,8 +448,6 @@ layout = dbc.Container([
     dcc.Download(id="download-csv"),
     dcc.Download(id="download-xlsx"),
     dcc.Download(id="download-category-report"),
-    dcc.Store(id='stored-data', storage_type='session'),
-    dcc.Store(id='section-data', storage_type='session'),
     dcc.Store(id='sgpa-store', storage_type='session'),
 ], fluid=True, className="pb-5")
 
