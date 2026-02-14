@@ -24,7 +24,11 @@ def extract_numeric(roll):
     digits = re.findall(r'\d+', str(roll))
     return int(digits[-1]) if digits else 0
 
-def assign_section(roll_no, section_ranges=None):
+def assign_section(roll_no, section_ranges=None, usn_mapping=None):
+    roll_str = str(roll_no).strip().upper()
+    if usn_mapping and roll_str in usn_mapping:
+         return usn_mapping[roll_str]
+
     roll_num = extract_numeric(roll_no)
     if section_ranges:
         for sec_name, (start, end) in section_ranges.items():
@@ -294,13 +298,14 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
         State('student-search', 'value'),
         State('stored-data', 'data'),
         State('section-data', 'data'),
+        State('usn-mapping-store', 'data'),
         State('analysis-type-radio', 'value'),
         State({'type': 'credit-input-student', 'index': ALL}, 'id'),
         State({'type': 'credit-input-student', 'index': ALL}, 'value'),
     ],
     prevent_initial_call=True
 )
-def display_full_report(n_clicks, search_value, json_data, section_ranges, analysis_type, credit_ids, credit_vals):
+def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_mapping, analysis_type, credit_ids, credit_vals):
     if not all([json_data, search_value]):
         return ""
 
@@ -315,7 +320,7 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, analy
         df.rename(columns={first_col: 'Student ID'}, inplace=True)
 
     # ---------- ✅ SECTION ASSIGNMENT ----------
-    df['Section'] = df['Student ID'].apply(lambda x: assign_section(x, section_ranges))
+    df['Section'] = df['Student ID'].apply(lambda x: assign_section(x, section_ranges, usn_mapping))
 
     # ---------- ✅ RANKS (EXACTLY LIKE RANKING PAGE) ----------
     # 1) Total_Marks = sum of columns containing 'Total' or 'Marks' or 'Score'

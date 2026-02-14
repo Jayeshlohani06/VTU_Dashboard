@@ -16,7 +16,11 @@ def extract_numeric(roll):
     digits = re.findall(r'\d+', str(roll))
     return int(digits[-1]) if digits else 0
 
-def assign_section(roll_no, section_ranges):
+def assign_section(roll_no, section_ranges, usn_mapping=None):
+    roll_no_str = str(roll_no).strip().upper()
+    if usn_mapping and roll_no_str in usn_mapping:
+         return usn_mapping[roll_no_str]
+         
     roll_num = extract_numeric(roll_no)
     if section_ranges:
         for sec_name, (start, end) in section_ranges.items():
@@ -39,10 +43,10 @@ def get_grade_point(percentage_score):
     elif 40 <= score < 50: return 4
     else: return 0
 
-def _normalize_df(df, section_ranges):
+def _normalize_df(df, section_ranges, usn_mapping=None):
     if df.columns[0] != 'Student_ID':
         df = df.rename(columns={df.columns[0]: 'Student_ID'})
-    df['Section'] = df['Student_ID'].apply(lambda x: assign_section(str(x), section_ranges))
+    df['Section'] = df['Student_ID'].apply(lambda x: assign_section(str(x), section_ranges, usn_mapping))
     
     # === ROBUST TOTAL MARKS CALCULATION ===
     # 1. Identify valid subject columns (ending in ' Total')
@@ -138,13 +142,19 @@ def _normalize_df(df, section_ranges):
     return df
 
 @lru_cache(maxsize=32)
-def _prepare_base(json_str, section_key):
+def _prepare_base(json_str, section_key, usn_mapping_str=None):
     df = pd.read_json(StringIO(json_str), orient='split')
     section_ranges = None
     if section_key not in (None, "None"):
         try: section_ranges = ast.literal_eval(section_key)
         except: section_ranges = None
-    df = _normalize_df(df, section_ranges)
+        
+    usn_mapping = None
+    if usn_mapping_str not in (None, "None"):
+        try: usn_mapping = ast.literal_eval(usn_mapping_str)
+        except: usn_mapping = None
+        
+    df = _normalize_df(df, section_ranges, usn_mapping)
     return df
 
 def _section_key(section_ranges):
@@ -460,12 +470,13 @@ def apply_theme(v): return themed_style_block("dark" if "dark" in (v or []) else
 @callback(
     Output('section-dropdown', 'options'), 
     Input('stored-data', 'data'), 
-    Input('section-data', 'data')
+    Input('section-data', 'data'),
+    Input('usn-mapping-store', 'data')
 )
-def update_section_options(json_data, section_ranges):
+def update_section_options(json_data, section_ranges, usn_mapping):
     if not json_data: return [{"label": "All Sections", "value": "ALL"}]
     df = pd.read_json(StringIO(json_data), orient='split') 
-    df = _normalize_df(df, section_ranges)
+    df = _normalize_df(df, section_ranges, usn_mapping)
     sections = sorted(df['Section'].dropna().unique())
     return [{"label": "All Sections", "value": "ALL"}] + [{"label": s, "value": s} for s in sections]
 
@@ -524,14 +535,17 @@ def generate_credit_panel(json_data, ranking_type, section_ranges):
     Input('calculate-sgpa-all', 'n_clicks'),
     State('stored-data', 'data'),
     State('section-data', 'data'),
+    State('usn-mapping-store', 'data'),
     State({'type': 'credit-input', 'index': ALL}, 'id'),
     State({'type': 'credit-input', 'index': ALL}, 'value'),
     prevent_initial_call=True
 )
-def calculate_sgpa_all(n_clicks, json_data, section_ranges, credit_ids, credit_vals):
+def calculate_sgpa_all(n_clicks, json_data, section_ranges, usn_mapping, credit_ids, credit_vals):
     if not n_clicks: return no_update, no_update
     if not json_data: return no_update, no_update
-    base = _prepare_base(json_data, _section_key(section_ranges)).copy()
+    
+    mapping_str = str(usn_mapping) if usn_mapping else "None"
+    base = _prepare_base(json_data, _section_key(section_ranges), mapping_str).copy()
     credit_dict = {}
     for cid, val in zip(credit_ids, credit_vals):
         if val is not None:
@@ -613,12 +627,14 @@ def calculate_sgpa_all(n_clicks, json_data, section_ranges, credit_ids, credit_v
     Input('ranking-type', 'value'),
     Input('sgpa-store', 'data'),
     State('stored-data', 'data'),
-    State('section-data', 'data')
+    State('section-data', 'data'),
+    State('usn-mapping-store', 'data')
 )
-def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data, section_ranges):
+def build_views(filter_val, sec_val, search_val, rank_type, sgpa_json, json_data, section_ranges, usn_mapping):
     if not json_data: return html.P("Upload data first.", className="text-center text-muted"), html.Div(), html.Div(), html.Div(), [], [], html.Div()
 
-    base_full = _prepare_base(json_data, _section_key(section_ranges)).copy()
+    mapping_str = str(usn_mapping) if usn_mapping else "None"
+    base_full = _prepare_base(json_data, _section_key(section_ranges), mapping_str).copy()
     base_pre = base_full.copy()
     if sgpa_json:
         try:
@@ -1139,13 +1155,15 @@ def exp_xlsx(n, d): return dcc.send_data_frame(pd.DataFrame(d).to_excel, "rank.x
     Input("download-category-report-btn", "n_clicks"),
     State("stored-data", "data"),
     State("section-data", "data"),
+    State("usn-mapping-store", "data"),
     prevent_initial_call=True
 )
-def download_category_report(n_clicks, json_data, section_data):
+def download_category_report(n_clicks, json_data, section_data, usn_mapping):
     if not json_data: return no_update
     
+    mapping_str = str(usn_mapping) if usn_mapping else "None"
     # Load Full Data (All Sections) - Use copy to avoid modifying cached data
-    df = _prepare_base(json_data, _section_key(section_data)).copy()
+    df = _prepare_base(json_data, _section_key(section_data), mapping_str).copy()
     
     # Apply Metrics (Percentage)
     df = calculate_student_metrics(df)
