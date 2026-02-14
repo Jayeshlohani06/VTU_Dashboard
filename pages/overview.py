@@ -131,10 +131,11 @@ layout = dbc.Container([
     # Hero Header
     html.Div([
         html.H2("Student Performance Dashboard", className="fw-bold text-white mb-1"),
-        html.P("Analyze university results with custom section filtering", className="text-white-50 mb-0")
+        html.P("Analyze university results with custom section filtering", className="text-white-50 mb-0"),
+        dbc.Button("ℹ️ Logic & Legends", id="open-legend-overview", color="light", size="sm", className="mt-3 fw-bold", outline=True)
     ], style={
         "background": "linear-gradient(135deg, #2c3e50 0%, #4ca1af 100%)", 
-        "padding": "2.5rem 1rem", 
+        "padding": "2.0rem 1rem", 
         "borderRadius": "0 0 15px 15px", 
         "textAlign": "center", 
         "marginBottom": "2rem"
@@ -248,11 +249,51 @@ layout = dbc.Container([
         ], lg=8, md=7)
     ], style={"overflow": "visible"}),
 
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("📊 Dashboard Usage Guide")),
+        dbc.ModalBody(
+            html.Div([
+                html.H6("📥 1. data Extraction", className="text-primary fw-bold"),
+                html.P("Upload the raw VTU result Excel file to initialize the dashboard.", className="text-muted small mb-2"),
+                html.Ul([
+                    html.Li([html.Strong("File Format:"), " .xlsx or .xls file."]),
+                    html.Li([html.Strong("Structure:"), " Multi-row header format (standard VTU result sheet)."]),
+                    html.Li("Must contain 'USN' (or 'Student ID') and 'Name' columns."),
+                    html.Li("Subject columns should clearly indicate 'Internal', 'External', and 'Total'."),
+                ]),
+                html.Hr(),
+                html.H6("⚙️ 2. Section Configuration", className="text-primary fw-bold"),
+                html.P("Map students to their respective classrooms/sections:", className="text-muted small mb-2"),
+                html.Ul([
+                     html.Li([html.Strong("Manual Ranges:"), " Use for sequential USNs. Define start/end numbers (e.g., 001-060 = Section A)."]),
+                     html.Li([html.Strong("Upload Mapping:"), " Use for non-sequential lists. Upload a CSV/Excel with 'USN' and 'Section' columns."]),
+                ]),
+                html.Hr(),
+                html.H6("📊 3. Analytics & Outputs", className="text-primary fw-bold"),
+                html.Ul([
+                    html.Li("Real-time extraction of unique subjects found in the file."),
+                    html.Li("Instant calculation of Pass Rate, Total Count, and Attendance."),
+                    html.Li("Preview of the processed data table with filtering options."),
+                    html.Li("Data persists across pages (Ranking, Analysis) once loaded."),
+                ], className="mb-0")
+            ])
+        ),
+        dbc.ModalFooter(dbc.Button("Got it!", id="close-legend-overview", className="ms-auto", color="primary"))
+    ], id="legend-modal-overview", is_open=False, size="lg", style={"zIndex": 10500}),
+
     # STORES REMOVED FROM HERE TO APP.PY TO ENSURE PERSISTENCE
     
 ], fluid=True, className="pb-5 bg-light", style={"minHeight": "100vh"})
 
 # ---------- CALLBACKS ----------
+
+@callback(
+    Output("legend-modal-overview", "is_open"),
+    [Input("open-legend-overview", "n_clicks"), Input("close-legend-overview", "n_clicks")],
+    [State("legend-modal-overview", "is_open")],
+    prevent_initial_call=True
+)
+def toggle_legend_overview(n1, n2, is_open): return not is_open if n1 or n2 else is_open
 
 @callback(
     [Output("manual-section-container", "style"),
