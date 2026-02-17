@@ -118,13 +118,21 @@ def normalize_branch_data(df, branch_name):
 
     # Percentage & Category Logic
     # Assume Max Marks = 100 per subject
-    num_subjects = len(subject_total_cols) if subject_total_cols else 0
-    max_possible = num_subjects * 100 if num_subjects > 0 else 100
+    
+    def calculate_student_percentage(row):
+        subjects_attempted = 0
+        for col in subject_total_cols:
+            val = pd.to_numeric(row.get(col), errors='coerce')
+            if pd.notna(val) and val > 0:
+                subjects_attempted += 1
+        
+        if subjects_attempted == 0:
+            return 0.0
+            
+        max_marks = subjects_attempted * 100
+        return round((row.get('Total_Marks', 0) / max_marks) * 100, 2)
 
-    if num_subjects > 0:
-        df['Percentage'] = (df['Total_Marks'] / max_possible * 100).round(2)
-    else:
-        df['Percentage'] = 0.0
+    df['Percentage'] = df.apply(calculate_student_percentage, axis=1)
 
     def get_category(row):
         if row['Overall_Result'] != 'P':
