@@ -531,7 +531,7 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
     
     # Initialize or copy existing mapping
     mapping = current_mapping.copy() if current_mapping else {}
-    new_entries_count = 0
+    duplicates = []
     
     # Iterate through all upload components
     for i, content in enumerate(all_contents):
@@ -546,12 +546,23 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
              file_mapping = process_usn_mapping_file(content, filename, sec_name)
              
              if file_mapping:
+                 # Check for conflicts
+                 for usn, section in file_mapping.items():
+                     if usn in mapping and mapping[usn] != section:
+                         duplicates.append(f"{usn} (in {mapping[usn]} & {section})")
+                 
                  mapping.update(file_mapping)
-                 new_entries_count += len(file_mapping)
     
     total_entries = len(mapping)
+    status_msg = f"✅ Total {total_entries} USNs mapped"
+    
+    if duplicates:
+        count = len(duplicates)
+        examples = ", ".join(duplicates[:2])
+        status_msg = f"⚠️ {count} Duplicates found: {examples}..."
+    
     if total_entries > 0:
-        return mapping, f"✅ Total {total_entries} USNs mapped"
+        return mapping, status_msg
     
     return no_update, "ℹ️ No valid USNs found in uploaded files"
 
@@ -613,14 +624,33 @@ def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
         
         if missing_usns:
             count = len(missing_usns)
-            examples = ", ".join(list(missing_usns)[:3])
-            more_txt = f", ... and {count-3} others" if count > 3 else ""
+            sorted_missing = sorted(list(missing_usns))
+            
+            if count <= 5:
+                # Show all if few
+                display_content = html.Div(f"Missing: {', '.join(sorted_missing)}", className="small mt-1")
+            else:
+                # Show summary + expander for many
+                display_content = html.Div([
+                    html.Div(f"Missing first 5: {', '.join(sorted_missing[:5])}...", className="small mt-1"),
+                    html.Details([
+                        html.Summary(f"Click to see all {count} missing USNs", style={"cursor": "pointer"}, className="small fw-bold text-muted mt-1"),
+                        html.Div(
+                            ", ".join(sorted_missing), 
+                            className="small p-2 bg-light text-dark border rounded mt-1 text-break", 
+                            style={"maxHeight": "150px", "overflowY": "auto"}
+                        )
+                    ])
+                ])
+
             alert_msg = dbc.Alert(
                 [
-                    html.I(className="bi bi-exclamation-triangle-fill me-2"),
-                    html.Strong(f"Warning: {count} USN(s) in the Section Mapping are NOT found in the Result Data."),
-                    html.Div(f"Missing: {examples}{more_txt}", className="small mt-1"),
-                    html.Div("These students will simply be ignored.", className="small text-muted")
+                    html.Div([
+                        html.I(className="bi bi-exclamation-triangle-fill me-2"),
+                        html.Strong(f"Warning: {count} USN(s) in Section Mapping NOT found in Result Data."),
+                    ]),
+                    display_content,
+                    html.Div("These students will simply be ignored assigned to 'Unassigned'.", className="small text-muted mt-1")
                 ],
                 color="warning",
                 className="mb-3 border-warning"
