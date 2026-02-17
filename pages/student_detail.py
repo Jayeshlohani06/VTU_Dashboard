@@ -209,9 +209,11 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
         df['Name'] = ""
     # robust search (avoid AttributeError by ensuring Series)
     meta_col = df.columns[0]
+    norm_search = str(search_value).strip().lower()
     mask = (
-        df[meta_col].astype(str).str.contains(search_value, case=False, na=False) |
-        df['Name'].astype(str).str.contains(search_value, case=False, na=False)
+        df[meta_col].astype(str).str.strip().str.lower() == norm_search
+    ) | (
+        df['Name'].astype(str).str.strip().str.lower() == norm_search
     )
     student_df = df[mask]
     if student_df.empty:
@@ -427,9 +429,11 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_m
         df['Result_Selected'] = pass_results
 
     # ---------- Pick the selected student ----------
+    norm_search = str(search_value).strip().lower()
     student_mask = (
-        df['Student ID'].astype(str).str.contains(search_value, case=False, na=False) |
-        df['Name'].astype(str).str.contains(search_value, case=False, na=False)
+        df['Student ID'].astype(str).str.strip().str.lower() == norm_search
+    ) | (
+        df['Name'].astype(str).str.strip().str.lower() == norm_search
     )
     if df[student_mask].empty:
         return dbc.Alert("No student found with this ID or Name.", color="warning", className="text-center mt-3")

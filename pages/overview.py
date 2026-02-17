@@ -145,7 +145,10 @@ layout = dbc.Container([
         # Left Sidebar: Inputs
         dbc.Col([
             dbc.Card([
-                dbc.CardHeader("1. Data Intake", className="fw-bold bg-light"),
+                dbc.CardHeader([
+                    html.Span("1. Data Intake", className="fw-bold"),
+                    dbc.Button("View Sample", id="btn-sample-format", color="link", size="sm", className="float-end p-0 text-decoration-none")
+                ], className="bg-light d-flex justify-content-between align-items-center"),
                 dbc.CardBody([
                     dcc.Upload(
                         id='upload-data',
@@ -207,7 +210,11 @@ layout = dbc.Container([
 
                     # --- UPLOAD MODE ---
                     html.Div([
-                        html.Label("Upload per Section", className="small fw-bold mb-1"),
+                        html.Div([
+                            html.Label("Upload per Section", className="small fw-bold mb-1"),
+                            dbc.Button("View Format", id="open-section-format", size="sm", color="link", className="text-decoration-none p-0 small")
+                        ], className="d-flex justify-content-between align-items-center"),
+
                         dbc.InputGroup([
                             dbc.Input(id='num-upload-sections', type='number', value=1, min=1, max=10),
                             dbc.Button("Generate", id='generate-upload-sections-btn', color="secondary"),
@@ -281,6 +288,56 @@ layout = dbc.Container([
         dbc.ModalFooter(dbc.Button("Got it!", id="close-legend-overview", className="ms-auto", color="primary"))
     ], id="legend-modal-overview", is_open=False, size="lg", style={"zIndex": 10500}),
 
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("📅 Sample Excel Format")),
+        dbc.ModalBody([
+            html.P("Your uploaded Excel file must follow this structure:", className="text-muted small"),
+            dbc.Table([
+                html.Thead([
+                    html.Tr([
+                        html.Th("University Seat Number"), html.Th("Name"), 
+                        html.Th("BAIL504", colSpan=4, className="text-center border-start border-dark"), 
+                        html.Th("BCS501", colSpan=4, className="text-center border-start border-dark")
+                    ]),
+                    html.Tr([
+                        html.Th(""), html.Th(""), 
+                        html.Th("Internal", className="border-start border-dark"), html.Th("External"), html.Th("Total"), html.Th("Result"),
+                        html.Th("Internal", className="border-start border-dark"), html.Th("External"), html.Th("Total"), html.Th("Result")
+                    ], className="small text-muted")
+                ]),
+                html.Tbody([
+                    html.Tr([
+                        html.Td("1XX23CSXXX"), html.Td("Bob"), 
+                        html.Td("46", className="border-start border-dark"), html.Td("49"), html.Td("95"), html.Td("P", className="text-success fw-bold"),
+                        html.Td("44", className="border-start border-dark"), html.Td("37"), html.Td("81"), html.Td("P", className="text-success fw-bold")
+                    ]),
+                    html.Tr([
+                        html.Td("1XX23CSXXX"), html.Td("Alice"), 
+                        html.Td("47", className="border-start border-dark"), html.Td("49"), html.Td("96"), html.Td("P", className="text-success fw-bold"),
+                        html.Td("37", className="border-start border-dark"), html.Td("20"), html.Td("57"), html.Td("P", className="text-success fw-bold")
+                    ]),
+                ])
+            ], bordered=True, responsive=True, className="mb-0")
+        ]),
+    ], id="modal-sample-format", size="lg", is_open=False),
+
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("📅 Sample Section File Format")),
+        dbc.ModalBody([
+            html.P("For each section, upload a file containing a list of USNs belonging to that section.", className="text-muted small"),
+            html.P("The file should have a column header named 'USN' or 'Student ID'.", className="fw-bold small"),
+            dbc.Table([
+                html.Thead(html.Tr(html.Th("USN"))),
+                html.Tbody([
+                    html.Tr(html.Td("1XX20CS001")),
+                    html.Tr(html.Td("1XX20CS005")),
+                    html.Tr(html.Td("1XX20CS012")),
+                    html.Tr(html.Td("...")),
+                ])
+            ], bordered=True, striped=True, className="mb-0", style={"maxWidth": "200px"})
+        ]),
+    ], id="modal-section-format", size="sm", is_open=False),
+
     # STORES REMOVED FROM HERE TO APP.PY TO ENSURE PERSISTENCE
     
 ], fluid=True, className="pb-5 bg-light", style={"minHeight": "100vh"})
@@ -294,6 +351,24 @@ layout = dbc.Container([
     prevent_initial_call=True
 )
 def toggle_legend_overview(n1, n2, is_open): return not is_open if n1 or n2 else is_open
+
+@callback(
+    Output("modal-sample-format", "is_open"),
+    [Input("btn-sample-format", "n_clicks")],
+    [State("modal-sample-format", "is_open")],
+    prevent_initial_call=True
+)
+def toggle_sample_format(n, is_open):
+    return not is_open if n else is_open
+
+@callback(
+    Output("modal-section-format", "is_open"),
+    [Input("open-section-format", "n_clicks")],
+    [State("modal-section-format", "is_open")],
+    prevent_initial_call=True
+)
+def toggle_section_format(n, is_open):
+    return not is_open if n else is_open
 
 @callback(
     [Output("manual-section-container", "style"),
@@ -529,12 +604,36 @@ def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
     if section_ranges or usn_mapping:
         df_filtered['Section'] = df_filtered[meta_col].apply(lambda x: assign_section(x, section_ranges, usn_mapping))
 
-    # 6. Generate Table UI
+    # 6. USN Validation (Check for Mismatched USNs)
+    alert_msg = None
+    if usn_mapping:
+        result_usns = set(df_filtered[meta_col].astype(str).str.strip().str.upper())
+        mapping_usns = set(k.strip().upper() for k in usn_mapping.keys())
+        missing_usns = mapping_usns - result_usns
+        
+        if missing_usns:
+            count = len(missing_usns)
+            examples = ", ".join(list(missing_usns)[:3])
+            more_txt = f", ... and {count-3} others" if count > 3 else ""
+            alert_msg = dbc.Alert(
+                [
+                    html.I(className="bi bi-exclamation-triangle-fill me-2"),
+                    html.Strong(f"Warning: {count} USN(s) in the Section Mapping are NOT found in the Result Data."),
+                    html.Div(f"Missing: {examples}{more_txt}", className="small mt-1"),
+                    html.Div("These students will simply be ignored.", className="small text-muted")
+                ],
+                color="warning",
+                className="mb-3 border-warning"
+            )
+
+    # 7. Generate Table UI
     table = dbc.Table.from_dataframe(
         df_filtered.head(10), 
         striped=True, borderless=True, hover=True, responsive=True, 
         className="mb-0 align-middle",
         style={"fontSize": "0.85rem"}
     )
+    
+    final_output = html.Div([alert_msg, table]) if alert_msg else table
 
-    return str(total), str(total), str(passed_count), rate, table
+    return str(total), str(total), str(passed_count), rate, final_output

@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Input, Output, State, callback, ALL, dash_table, no_update
+from dash import html, dcc, Input, Output, State, callback, ALL, MATCH, dash_table, no_update
 import dash_bootstrap_components as dbc
 import base64
 import io
@@ -234,7 +234,28 @@ def generate_inputs(n, count):
     
     return inputs, {"display": "block"}
 
-# 2. Main Analysis Logic
+# 2. Upload Feedback (Immediate)
+@callback(
+    Output({'type': 'ba-file-upload', 'index': MATCH}, 'children'),
+    Output({'type': 'ba-file-upload', 'index': MATCH}, 'style'),
+    Input({'type': 'ba-file-upload', 'index': MATCH}, 'contents'),
+    State({'type': 'ba-file-upload', 'index': MATCH}, 'filename'),
+    prevent_initial_call=True
+)
+def update_upload_status(contents, filename):
+    if contents:
+        return html.Div([
+            html.I(className="bi bi-check-circle-fill text-success me-2"),
+            str(filename)
+        ], className="text-success fw-bold small"), {
+            'width': '100%', 'height': '38px', 'lineHeight': '38px',
+            'borderWidth': '1px', 'borderStyle': 'solid',
+            'borderRadius': '5px', 'textAlign': 'center', 
+            'borderColor': '#22c55e', 'backgroundColor': '#f0fdf4'
+        }
+    return no_update, no_update
+
+# 3. Main Analysis Logic
 @callback(
     Output("ba-dashboard-view", "children"),
     Input("ba-analyze-btn", "n_clicks"),
