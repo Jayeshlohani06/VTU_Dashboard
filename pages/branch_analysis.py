@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Input, Output, State, callback, ALL, dash_table, no_update
+from dash import html, dcc, Input, Output, State, callback, ALL, MATCH, dash_table, no_update
 import dash_bootstrap_components as dbc
 import base64
 import io
@@ -118,13 +118,21 @@ def normalize_branch_data(df, branch_name):
 
     # Percentage & Category Logic
     # Assume Max Marks = 100 per subject
-    num_subjects = len(subject_total_cols) if subject_total_cols else 0
-    max_possible = num_subjects * 100 if num_subjects > 0 else 100
+    
+    def calculate_student_percentage(row):
+        subjects_attempted = 0
+        for col in subject_total_cols:
+            val = pd.to_numeric(row.get(col), errors='coerce')
+            if pd.notna(val) and val > 0:
+                subjects_attempted += 1
+        
+        if subjects_attempted == 0:
+            return 0.0
+            
+        max_marks = subjects_attempted * 100
+        return round((row.get('Total_Marks', 0) / max_marks) * 100, 2)
 
-    if num_subjects > 0:
-        df['Percentage'] = (df['Total_Marks'] / max_possible * 100).round(2)
-    else:
-        df['Percentage'] = 0.0
+    df['Percentage'] = df.apply(calculate_student_percentage, axis=1)
 
     def get_category(row):
         if row['Overall_Result'] != 'P':
@@ -234,7 +242,28 @@ def generate_inputs(n, count):
     
     return inputs, {"display": "block"}
 
-# 2. Main Analysis Logic
+# 2. Upload Feedback (Immediate)
+@callback(
+    Output({'type': 'ba-file-upload', 'index': MATCH}, 'children'),
+    Output({'type': 'ba-file-upload', 'index': MATCH}, 'style'),
+    Input({'type': 'ba-file-upload', 'index': MATCH}, 'contents'),
+    State({'type': 'ba-file-upload', 'index': MATCH}, 'filename'),
+    prevent_initial_call=True
+)
+def update_upload_status(contents, filename):
+    if contents:
+        return html.Div([
+            html.I(className="bi bi-check-circle-fill text-success me-2"),
+            str(filename)
+        ], className="text-success fw-bold small"), {
+            'width': '100%', 'height': '38px', 'lineHeight': '38px',
+            'borderWidth': '1px', 'borderStyle': 'solid',
+            'borderRadius': '5px', 'textAlign': 'center', 
+            'borderColor': '#22c55e', 'backgroundColor': '#f0fdf4'
+        }
+    return no_update, no_update
+
+# 3. Main Analysis Logic
 @callback(
     Output("ba-dashboard-view", "children"),
     Input("ba-analyze-btn", "n_clicks"),
@@ -294,6 +323,7 @@ def analyze_branches(n, file_contents, branch_names):
             "Branch": branch,
             "Total Students": total,
             "Appeared": appeared,
+            "Absent": absent,
             "Passed": passed,
             "Failed": failed,
             "Pass %": pass_pct,
@@ -306,8 +336,90 @@ def analyze_branches(n, file_contents, branch_names):
         })
 
     stats_df = pd.DataFrame(branch_stats).sort_values("Pass %", ascending=False)
-    
     best_branch = stats_df.iloc[0]['Branch'] if not stats_df.empty else "-"
+
+    # --- SUBJECT PERFORMANCE ANALYSIS (BRANCH WISE) ---
+    subject_stats_list = []
+    
+    # Identify Result columns to find subjects
+    result_cols = [c for c in university_df.columns if 'Result' in c and c != 'Overall_Result']
+    
+    for r_col in result_cols:
+        subject = r_col.replace(' Result', '').strip()
+        if not subject: continue
+        if subject.endswith('Total'): subject = subject.replace('Total', '').strip()
+
+        sub_df = university_df[university_df[r_col].notna()]
+        if sub_df.empty: continue
+        
+        # Group by Branch
+        for branch_name, grp in sub_df.groupby('Branch'):
+            results = grp[r_col].astype(str).str.strip().str.upper()
+            total_students = len(results)
+            absent_count = results.isin(['A', 'ABSENT', 'AB']).sum()
+            fail_count = results.isin(['F', 'FAIL']).sum()
+            pass_count = results.isin(['P', 'PASS']).sum()
+            appeared = total_students - absent_count
+            pass_pct = round((pass_count / appeared) * 100, 2) if appeared > 0 else 0.0
+            
+            subject_stats_list.append({
+                "BRANCH": branch_name,
+                "SUBJECT": subject,
+                "TOTAL": total_students,
+                "APPEARED": appeared,
+                "ABSENT": absent_count,
+                "PASSED": pass_count,
+                "FAILED": fail_count,
+                "PASS %": pass_pct
+            })
+
+    subject_df = pd.DataFrame(subject_stats_list)
+    if not subject_df.empty:
+        subject_df = subject_df.sort_values("SUBJECT")
+    
+    subject_table = dash_table.DataTable(
+        data=subject_df.to_dict('records') if not subject_df.empty else [],
+        columns=[
+            {"name": i, "id": i} for i in ["SUBJECT", "BRANCH", "TOTAL", "APPEARED", "ABSENT", "PASSED", "FAILED", "PASS %"]
+        ],
+        style_header={
+            'backgroundColor': '#1e293b', 
+            'color': 'white', 
+            'fontWeight': 'bold',
+            'textAlign': 'center',
+            'textTransform': 'uppercase',
+            'fontSize': '13px'
+        },
+        style_cell={
+            'padding': '12px', 
+            'textAlign': 'center', 
+            'fontFamily': 'Inter, sans-serif',
+            'fontSize': '14px',
+            'color': '#334155'
+        },
+        style_data_conditional=[
+            {'if': {'row_index': 'odd'}, 'backgroundColor': '#f8fafc'},
+            {'if': {'row_index': 'even'}, 'backgroundColor': '#ffffff'},
+            # Highlight Branch Column
+            {'if': {'column_id': 'BRANCH'}, 'fontWeight': 'bold', 'color': '#3b82f6'},
+            # Color logic for PASS %
+            {
+                'if': {'filter_query': '{PASS %} >= 95', 'column_id': 'PASS %'},
+                'color': '#16a34a', 'fontWeight': 'bold'
+            },
+            {
+                'if': {'filter_query': '{PASS %} >= 80 && {PASS %} < 95', 'column_id': 'PASS %'},
+                'color': '#059669', 'fontWeight': 'bold'
+            },
+            {
+                'if': {'filter_query': '{PASS %} < 50', 'column_id': 'PASS %'},
+                'color': '#dc2626', 'fontWeight': 'bold'
+            },
+        ],
+        sort_action="native",
+        page_size=20,
+        style_table={'borderRadius': '10px', 'overflow': 'hidden', 'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.1)'}
+    )
 
     # --- BUILD VISUALS ---
 
@@ -316,7 +428,7 @@ def analyze_branches(n, file_contents, branch_names):
         {"label": "Total Students", "val": uni_total, "color": "#3b82f6"},
         {"label": "Overall Pass %", "val": f"{uni_pass_pct}%", "color": "#10b981"},
         {"label": "Best Branch", "val": best_branch, "color": "#8b5cf6"},
-        {"label": "University Topper", "val": uni_topper_row['Name'] if uni_topper_row is not None else "-", "color": "#f59e0b", "sub": f"{uni_topper_row['Percentage']}% ({uni_topper_row['Branch']})" if uni_topper_row is not None else ""}
+        {"label": "University Topper", "val": uni_topper_row['Name'] if uni_topper_row is not None else "-", "color": "#f59e0b", "sub": f"{uni_topper_row['Percentage']}%" if uni_topper_row is not None else ""}
     ]
 
     kpi_section = dbc.Row([
@@ -324,23 +436,48 @@ def analyze_branches(n, file_contents, branch_names):
             html.Div(k['label'], className="ba-label"),
             html.Div(k['val'], className="ba-value", style={"color": k['color']}),
             html.Div(k.get('sub', ''), className="text-muted small fw-bold")
-        ], className="ba-stat-card"), md=3, className="mb-4") for k in kpis
+        ], className="ba-stat-card"), md=3, sm=6, className="mb-4") for k in kpis
     ])
 
-    # 2. Charts
+    # 2. Detailed Branch KPI Table
+    branch_grid = dash_table.DataTable(
+        data=stats_df.to_dict('records'),
+        columns=[
+            {"name": "Branch", "id": "Branch"},
+            {"name": "Total", "id": "Total Students"},
+            {"name": "Appeared", "id": "Appeared"},
+            {"name": "Absent", "id": "Absent"},
+            {"name": "Passed", "id": "Passed"},
+            {"name": "Failed", "id": "Failed"},
+            {"name": "Pass %", "id": "Pass %"},
+            {"name": "Avg %", "id": "Avg %"},
+            {"name": "FCD", "id": "FCD"},
+            {"name": "Topper", "id": "Topper"},
+            {"name": "%", "id": "Topper %"}
+        ],
+        style_header={'backgroundColor': '#0f172a', 'color': 'white', 'fontWeight': 'bold', 'textTransform': 'uppercase'},
+        style_cell={'padding': '12px', 'textAlign': 'center', 'fontFamily': 'Inter'},
+        style_data_conditional=[
+            {'if': {'row_index': 'odd'}, 'backgroundColor': '#f8fafc'},
+            {'if': {'column_id': 'Pass %'}, 'fontWeight': 'bold', 'color': '#059669', 'backgroundColor': '#f0fdf4'},
+            {'if': {'column_id': 'Failed', 'filter_query': '{Failed} > 0'}, 'color': '#ef4444', 'fontWeight': 'bold'},
+        ],
+        style_table={'borderRadius': '10px', 'overflow': 'hidden', 'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.1)'}
+    )
+
+    # 3. Charts
     # Pass % Bar Chart
     fig_pass = px.bar(
         stats_df, x="Branch", y="Pass %", text="Pass %",
         title="Pass Percentage by Branch",
-        color="Pass %", color_continuous_scale="Greens"
+        color="Pass %", color_continuous_scale="Viridis"
     )
-    fig_pass.update_layout(template="plotly_white", coloraxis_showscale=False)
+    fig_pass.update_layout(template="plotly_white", coloraxis_showscale=False, title_x=0.5)
     fig_pass.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
 
     # Category Stacked Bar
     fig_dist = go.Figure()
     for cat, color in [('FCD', '#059669'), ('FC', '#3b82f6'), ('SC', '#f59e0b'), ('F', '#ef4444')]:
-        # Map F to Failed count for visualization context
         if cat == 'F':
             y_vals = stats_df['Failed']
             name = "Fail"
@@ -350,194 +487,59 @@ def analyze_branches(n, file_contents, branch_names):
             
         fig_dist.add_trace(go.Bar(name=name, x=stats_df['Branch'], y=y_vals, marker_color=color))
 
-    fig_dist.update_layout(barmode='stack', title="Grade Distribution Analysis", template="plotly_white")
+    fig_dist.update_layout(barmode='stack', title="Grade Distribution Analysis", template="plotly_white", title_x=0.5)
 
-    # 3. Main Data Table
-    table = dash_table.DataTable(
-        data=stats_df.to_dict('records'),
-        columns=[{"name": i, "id": i} for i in ["Branch", "Total Students", "Passed", "Failed", "Pass %", "Avg %", "Topper", "Topper %"]],
-        style_table={'borderRadius': '10px', 'overflow': 'hidden', 'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.1)'},
-        style_header={'backgroundColor': '#1e293b', 'color': 'white', 'fontWeight': 'bold'},
-        style_cell={'padding': '12px', 'textAlign': 'center', 'fontFamily': 'Inter'},
-        style_data_conditional=[
-            {'if': {'row_index': 'odd'}, 'backgroundColor': '#f8fafc'},
-            {'if': {'column_id': 'Pass %'}, 'fontWeight': 'bold', 'color': '#059669'}
-        ]
-    )
-
-    # --- ASSEMBLE VIEW ---
-    
-    # 1. Top 10 University Rankers
+    # 4. Top Rankers Table
     top_10_df = university_df[university_df['Overall_Result'] == 'P'].sort_values('Percentage', ascending=False).head(10)
     top_10_df = top_10_df[['Student_ID', 'Name', 'Branch', 'Total_Marks', 'Percentage']]
-    
+    top_10_df.insert(0, 'Rank', range(1, 1 + len(top_10_df)))
+
     rank_table = dash_table.DataTable(
         data=top_10_df.to_dict('records'),
-        columns=[
-            {"name": "Rank", "id": "rank"},
-            {"name": "Student ID", "id": "Student_ID"},
-            {"name": "Name", "id": "Name"},
-            {"name": "Branch", "id": "Branch"},
-            {"name": "Total", "id": "Total_Marks"},
-            {"name": "Percentage", "id": "Percentage"}
-        ],
+        columns=[{"name": i, "id": i} for i in top_10_df.columns],
         style_header={'backgroundColor': '#f59e0b', 'color': 'white', 'fontWeight': 'bold'},
         style_cell={'padding': '10px', 'textAlign': 'center'},
-        data_previous=[{**row, "rank": i+1} for i, row in enumerate(top_10_df.to_dict('records'))] # Hack to add rank? No, better to add col
-    )
-    # Add rank column explicitly
-    top_10_df.insert(0, 'Rank', range(1, 1 + len(top_10_df)))
-    rank_table.data = top_10_df.to_dict('records')
-    rank_table.columns = [{"name": i, "id": i} for i in top_10_df.columns]
-
-    # 2. Score Distribution (Histogram)
-    fig_hist = px.histogram(
-        university_df, x="Percentage", color="Branch", 
-        nbins=20, marginal="box", opacity=0.7,
-        title="University Score Distribution (Bell Curve Analysis)",
-        color_discrete_sequence=px.colors.qualitative.G10
-    )
-    fig_hist.update_layout(template="plotly_white", xaxis_title="Percentage Scored", yaxis_title="Number of Students")
-
-    # 3. Toughest Subjects Analysis (Data Mining)
-    # Scan all columns in the merged dataframe for 'Result'
-    subject_failure_data = []
-    
-    # We iterate over the original processed chunks to avoid sparse matrix issues if needed, 
-    # but university_df has all columns. 
-    # Let's verify failure counts per subject column.
-    
-    all_cols = university_df.columns
-    result_cols = [c for c in all_cols if c.endswith('Result') and c != 'Overall_Result']
-    
-    for r_col in result_cols:
-        # Extract Subject Name (Remove ' Result')
-        subj_name = r_col.replace(' Result', '').strip()
-        
-        # Count Fails (F, FAIL)
-        # We must filter only rows where this column is NOT NaN (meaning the student took the subject)
-        subset = university_df[university_df[r_col].notna()]
-        if subset.empty: continue
-            
-        # Normalize to find fails
-        fails = subset[subset[r_col].astype(str).str.upper().isin(['F', 'FAIL'])]
-        fail_count = len(fails)
-        total_attempts = len(subset)
-        
-        if fail_count > 0:
-            # Find which branch this subject belongs to mostly (mode of branch for these students)
-            # A subject might be common, but usually specific to a branch in higher sems
-            main_branch = subset['Branch'].mode()[0] if not subset['Branch'].empty else "Mix"
-            
-            subject_failure_data.append({
-                "Subject": subj_name,
-                "Failures": fail_count,
-                "Appeared": total_attempts,
-                "Failure Rate %": round((fail_count/total_attempts)*100, 1),
-                "Primary Branch": main_branch
-            })
-            
-    # Top 5 Toughest Subjects
-    tough_df = pd.DataFrame(subject_failure_data).sort_values("Failures", ascending=False).head(5)
-    
-    tough_table = dash_table.DataTable(
-        data=tough_df.to_dict('records'),
-        columns=[{"name": i, "id": i} for i in ["Subject", "Failures", "Failure Rate %", "Primary Branch"]],
-        style_header={'backgroundColor': '#ef4444', 'color': 'white', 'fontWeight': 'bold'},
-        style_cell={'padding': '10px', 'textAlign': 'center'},
-        style_data_conditional=[{'if': {'column_id': 'Failures'}, 'fontWeight': 'bold', 'color': '#dc2626'}]
-    ) if not tough_df.empty else html.P("No failures detected in specific subjects.", className="text-muted")
-
-    # 4. Consistency Analysis (Box Plot)
-    fig_box = px.box(
-        university_df, x="Branch", y="Percentage", color="Branch",
-        title="Consistency Analysis (Score Spread)",
-        points="outliers", # show only outliers to keep it clean, or "all"
-        color_discrete_sequence=px.colors.qualitative.Bold
-    )
-    fig_box.update_layout(template="plotly_white", showlegend=False)
-
-    # 5. Strategic Performance Matrix (Scatter)
-    fig_scatter = px.scatter(
-        stats_df, x="Pass %", y="Avg %", 
-        size="Total Students", color="Branch",
-        text="Branch", size_max=60,
-        title="Strategic Performance Matrix",
-        labels={"Pass %": "Pass Percentage", "Avg %": "Average Score %"}
-    )
-    fig_scatter.update_traces(textposition='top center')
-    fig_scatter.update_layout(
-        template="plotly_white",
-        shapes=[
-            # Add quadrant lines (approximate means)
-            dict(type="line", x0=50, y0=0, x1=50, y1=100, line=dict(color="Gray", width=1, dash="dot")),
-            dict(type="line", x0=0, y0=50, x1=100, y1=50, line=dict(color="Gray", width=1, dash="dot")),
-        ]
+        style_table={'borderRadius': '10px', 'overflow': 'hidden', 'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.1)'}
     )
 
-
-    # --- TABS LAYOUT ---
+    # --- ASSEMBLE VIEW (Clean Single Page) ---
     return html.Div([
+        # KPIs
         kpi_section,
         
-        dcc.Tabs([
-            dcc.Tab(label="📊 Overview & Graphs", children=[
-                html.Br(),
-                dbc.Row([
-                    dbc.Col(dcc.Graph(figure=fig_pass), md=6, className="mb-4"),
-                    dbc.Col(dcc.Graph(figure=fig_dist), md=6, className="mb-4")
-                ]),
-                dbc.Row([
-                    dbc.Col(dcc.Graph(figure=fig_hist), md=12, className="mb-4")
-                ])
-            ]),
-            
-            dcc.Tab(label="🧠 Deep Insights", children=[
-                html.Br(),
-                dbc.Row([
-                    dbc.Col(dbc.Card([
-                        dbc.CardHeader("📉 Consistency Analysis (Box Plot)", className="fw-bold"),
-                        dbc.CardBody([
-                            html.Small("Wider box = Inconsistent Batch. Narrow box = Consistent Performance.", className="text-muted"),
-                            dcc.Graph(figure=fig_box)
-                        ])
-                    ], className="shadow-sm border-0 h-100"), md=6),
-                    
-                    dbc.Col(dbc.Card([
-                        dbc.CardHeader("🎯 Strategic Performance Matrix", className="fw-bold"),
-                        dbc.CardBody([
-                            html.Small("Top Right = High Performance. Bottom Left = Critical Attention Needed.", className="text-muted"),
-                            dcc.Graph(figure=fig_scatter)
-                        ])
-                    ], className="shadow-sm border-0 h-100"), md=6)
-                ], className="mb-4")
-            ]),
+        # Branch-wise KPIs (Priority Request)
+        dbc.Card([
+            dbc.CardHeader([
+                 html.I(className="bi bi-grid-3x3-gap me-2"),
+                 "Branch-wise KPI Summary"
+            ], className="fw-bold bg-white", style={"fontSize": "1.1rem", "borderBottom": "2px solid #f1f5f9"}),
+            dbc.CardBody(branch_grid, className="p-0")
+        ], className="shadow-sm border-0 mb-4", style={"overflow": "hidden", "borderRadius": "12px"}),
+        
+        # Graphs
+        dbc.Row([
+            dbc.Col(dbc.Card([
+                dbc.CardBody(dcc.Graph(figure=fig_pass))
+            ], className="shadow-sm border-0 h-100"), md=6, className="mb-4"),
+            dbc.Col(dbc.Card([
+                dbc.CardBody(dcc.Graph(figure=fig_dist))
+            ], className="shadow-sm border-0 h-100"), md=6, className="mb-4")
+        ]),
 
-            dcc.Tab(label="🏆 University Rankings", children=[
-                html.Br(),
-                dbc.Row([
-                    dbc.Col([
-                        dbc.Card([
-                            dbc.CardHeader("👑 Top 10 University Rankers", className="bg-warning text-white fw-bold"),
-                            dbc.CardBody(rank_table)
-                        ], className="shadow-sm border-0 h-100")
-                    ], md=7),
-                    
-                    dbc.Col([
-                        dbc.Card([
-                            dbc.CardHeader("⚠️ Toughest Subjects (Most Failures)", className="bg-danger text-white fw-bold"),
-                            dbc.CardBody(tough_table)
-                        ], className="shadow-sm border-0 h-100")
-                    ], md=5)
-                ])
-            ]),
-            
-            dcc.Tab(label="📋 Detailed Reports", children=[
-                html.Br(),
-                dbc.Card([
-                    dbc.CardHeader("Branch-wise Performance Grid", className="fw-bold bg-light"),
-                    dbc.CardBody(table)
-                ], className="shadow-sm border-0")
-            ])
+        # Subject Performance
+        dbc.Card([
+            dbc.CardHeader([
+                 html.I(className="bi bi-table me-2"),
+                 "Subject Level Performance (Branch/Section Wise)"
+            ], className="fw-bold bg-white", style={"fontSize": "1.1rem", "borderBottom": "2px solid #f1f5f9"}),
+            dbc.CardBody(subject_table, className="p-0")
+        ], className="shadow-sm border-0 mb-5", style={"overflow": "hidden", "borderRadius": "12px"}),
+
+        # Top Rankers
+        dbc.Row([
+            dbc.Col([
+                html.H5("👑 University Top Rankers", className="fw-bold mb-3 text-dark text-center"),
+                rank_table
+            ], width=12, className="mb-5")
         ])
     ])

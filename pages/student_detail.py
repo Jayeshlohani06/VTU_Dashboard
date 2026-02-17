@@ -209,9 +209,11 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
         df['Name'] = ""
     # robust search (avoid AttributeError by ensuring Series)
     meta_col = df.columns[0]
+    norm_search = str(search_value).strip().lower()
     mask = (
-        df[meta_col].astype(str).str.contains(search_value, case=False, na=False) |
-        df['Name'].astype(str).str.contains(search_value, case=False, na=False)
+        df[meta_col].astype(str).str.strip().str.lower() == norm_search
+    ) | (
+        df['Name'].astype(str).str.strip().str.lower() == norm_search
     )
     student_df = df[mask]
     if student_df.empty:
@@ -427,9 +429,11 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_m
         df['Result_Selected'] = pass_results
 
     # ---------- Pick the selected student ----------
+    norm_search = str(search_value).strip().lower()
     student_mask = (
-        df['Student ID'].astype(str).str.contains(search_value, case=False, na=False) |
-        df['Name'].astype(str).str.contains(search_value, case=False, na=False)
+        df['Student ID'].astype(str).str.strip().str.lower() == norm_search
+    ) | (
+        df['Name'].astype(str).str.strip().str.lower() == norm_search
     )
     if df[student_mask].empty:
         return dbc.Alert("No student found with this ID or Name.", color="warning", className="text-center mt-3")
@@ -565,23 +569,33 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_m
     )
 
     class_averages = df[kpi_cols_all].replace(0, pd.NA).mean()
+    class_max = df[kpi_cols_all].replace(0, pd.NA).max()
+    
     comp_fig = go.Figure(data=[
         go.Bar(x=scores_above_zero.index, y=scores_above_zero.values, name="Student", 
-               marker_color='#667eea', text=[f"{v:.0f}" for v in scores_above_zero.values], textposition='auto'),
+               marker_color='#440154', text=[f"{v:.0f}" for v in scores_above_zero.values], textposition='auto'),
         go.Bar(x=scores_above_zero.index, y=class_averages.reindex(scores_above_zero.index).fillna(0).values, 
-               name="Class Avg", marker_color='#f59e0b', text=[f"{v:.0f}" for v in class_averages.reindex(scores_above_zero.index).fillna(0).values], textposition='auto')
+               name="Class Avg", marker_color='#21918c', text=[f"{v:.0f}" for v in class_averages.reindex(scores_above_zero.index).fillna(0).values], textposition='auto'),
+        go.Bar(x=scores_above_zero.index, y=class_max.reindex(scores_above_zero.index).fillna(0).values, 
+               name="Highest Marks", marker_color='#fde725', text=[f"{v:.0f}" for v in class_max.reindex(scores_above_zero.index).fillna(0).values], textposition='auto')
     ])
     comp_fig.update_layout(
-        title_text="📈 Student vs Class Average",
+        title_text="📈 Student vs Class Avg vs Highest",
         title_x=0.5,
         title_font=dict(size=16, color='#2c3e50', family='Arial, sans-serif'),
         barmode='group',
         plot_bgcolor='rgba(248,249,250,0.5)',
         paper_bgcolor='white',
-        margin=dict(t=50, b=40, l=40, r=40),
+        margin=dict(t=60, b=100, l=40, r=40),
         xaxis=dict(title="Subjects", titlefont=dict(size=13, color='#667eea')),
         yaxis=dict(title="Marks", titlefont=dict(size=13, color='#667eea'), gridcolor='#e0e0e0'),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.3,
+            xanchor="center",
+            x=0.5
+        )
     )
 
     pie_fig = go.Figure(data=[

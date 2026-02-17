@@ -935,8 +935,12 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
 
     tdf = scope.copy()
     if search_val:
-        s = str(search_val).strip()
-        mask = tdf['Student_ID'].astype(str).str.contains(s, case=False) | tdf['Name'].astype(str).str.contains(s, case=False)
+        s = str(search_val).strip().lower()
+        mask = (
+            tdf['Student_ID'].astype(str).str.strip().str.lower() == s
+        ) | (
+            tdf['Name'].astype(str).str.strip().str.lower() == s
+        )
         tdf = tdf[mask]
     
     if rank_type == 'sgpa' and 'SGPA' in tdf.columns:
