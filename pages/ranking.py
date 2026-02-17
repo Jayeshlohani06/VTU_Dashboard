@@ -126,6 +126,7 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
     if result_cols:
         def calc_overall(row):
             subject_status = []
+            failed_list = []
             for res_col in result_cols:
                 base_name = res_col.replace(' Result', '').replace('Result', '').strip()
                 
@@ -139,13 +140,24 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
 
                 r = str(row.get(res_col, "")).strip().upper()
 
-                # 🔥 ABSENT RULE
-                if (e == 0) and (r == 'A'):
+                # 🔥 ABSENT RULE (Enhanced)
+                # If External is 0 and Result is Absent OR Empty -> Treat as Absent for that subject
+                if (e == 0) and (r in ['A', 'ABSENT', '']):
                     subject_status.append('A')
-                elif r == 'F':
+                elif r in ['F', 'FAIL']:
                     subject_status.append('F')
+                    failed_list.append(base_name)
                 else:
-                    subject_status.append('P')
+                    # If Result is missing but Marks exist, check for pass/fail by marks
+                    # Assuming 35% is passing threshold (standard)
+                    # But Total_Total logic uses sum. Here we check individual component?
+                    # Let's rely on 'P' default only if score > 0
+                    total_s = i + e
+                    if r == '' and total_s < 35:
+                         subject_status.append('F')
+                         failed_list.append(base_name)
+                    else:
+                         subject_status.append('P')
 
             absent_count = subject_status.count('A')
             fail_count = subject_status.count('F')
@@ -156,9 +168,9 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
             elif fail_count > 0 or absent_count > 0: res = 'F'
             else: res = 'P'
             
-            return pd.Series([res, absent_count, fail_count])
+            return pd.Series([res, absent_count, fail_count, ", ".join(failed_list)], index=['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Examples'])
 
-        df[['Overall_Result', 'Absent_Subjects', 'Failed_Subjects']] = df.apply(calc_overall, axis=1)
+        df[['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Examples']] = df.apply(calc_overall, axis=1)
     else:
         pass_mark = 18
         if total_cols:
@@ -167,6 +179,7 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
             df['Overall_Result'] = 'P'
         df['Absent_Subjects'] = 0
         df['Failed_Subjects'] = 0
+        df['Failed_Examples'] = ""
     if 'Name' not in df.columns: df['Name'] = ""
     return df
 
@@ -630,7 +643,7 @@ def calculate_sgpa_all(n_clicks, json_data, section_ranges, usn_mapping, credit_
             res_val = str(row.get(f"{code} Result", "")).strip().upper()
             
             if res_val == 'P':
-                fail_flag = False
+                pass # Do not reset fail_flag if already True
             elif res_val == 'F':
                 fail_flag = True
             elif res_val == 'A':
@@ -638,9 +651,9 @@ def calculate_sgpa_all(n_clicks, json_data, section_ranges, usn_mapping, credit_
                  fail_flag = True
             else:
                 # Fallback when Result column is empty/unknown
-                # Fail if Total Score is < 18 (matching the normalize logic)
-                # OR if External is 0 (likely absent) AND Internal is present
-                if score < 18:
+                # Only fail if score is explicitly low (< 35 standard passing)
+                # Do NOT fail based on Grade Point being 0 (as 35-39 might be passing but 0 GP)
+                if score < 35: 
                     fail_flag = True
             # -----------------------------
 
@@ -650,10 +663,30 @@ def calculate_sgpa_all(n_clicks, json_data, section_ranges, usn_mapping, credit_
             
         sgpa = (total_cp / total_cre) if total_cre > 0 else 0.0
         
-        if row.get('Overall_Result') == 'A':
+        ovr = str(row.get('Overall_Result', '')).strip().upper()
+
+        if ovr in ['A', 'ABSENT']:
             res = 'Absent'
+        elif ovr in ['F', 'FAIL']:
+             # If the student failed overall (in the raw data), they should fail in SGPA mode too.
+             # This aligns the two views and prevents "Pass" in SGPA for a failed student.
+             res = 'Fail'
+        elif ovr in ['P', 'PASS']:
+             # If marked PASS in Marks Mode, FORCE PASS here.
+             # We assume Marks Mode correctly identified passing status.
+             # This resolves the discrepancy where SGPA fails students (27) while Marks fails fewer (25).
+             res = 'Pass'
         else:
-            res = 'Pass' if (not fail_flag and total_cre > 0) else 'Fail'
+             # Fallback
+             res = 'Pass' if (not fail_flag and total_cre > 0) else 'Fail'
+        
+        # Override: ONLY if fail_flag is True AND we don't have a definitive Overall Pass AND not Absent
+        if fail_flag and res != 'Pass' and res != 'Absent':
+            res = 'Fail'
+        
+        # Double Check: If Overall is Fail, SGPA must be Fail.
+        if ovr in ['F', 'FAIL']:
+            res = 'Fail'
             
         sgpa_rows.append({'Student_ID': row['Student_ID'], 'SGPA': round(sgpa, 2), 'Total_Marks_Selected': round(total_marks, 2), 'Result_Selected': res})
 
@@ -1271,6 +1304,10 @@ def download_category_report(n_clicks, json_data, section_data, usn_mapping):
     desired_cols = ['Student_ID', 'Name', 'Section', 'Total_Marks', 'percentage', 'Overall_Result', 'Failed_Subjects', 'Absent_Subjects']
     export_cols = [c for c in desired_cols if c in df.columns]
     
+    # Define Export Columns for Failed Sheet
+    failed_desired_cols = desired_cols + ['Failed_Examples']
+    failed_export_cols = [c for c in failed_desired_cols if c in df.columns]
+    
     # Filter Pass/Fail/Absent
     pass_complete = df[df['Overall_Result'] == 'P'].copy()
     fail_students = df[df['Overall_Result'] == 'F'].copy()
@@ -1294,7 +1331,7 @@ def download_category_report(n_clicks, json_data, section_data, usn_mapping):
     
     # 5. Failed
     if not fail_students.empty: 
-        fail_students[export_cols].to_excel(writer, sheet_name='Failed', index=False)
+        fail_students[failed_export_cols].to_excel(writer, sheet_name='Failed', index=False)
         
     # 6. Absent
     if not absent_students.empty:

@@ -232,10 +232,11 @@ layout = dbc.Container([
         dbc.Col([
             # KPI Cards
             dbc.Row([
-                dbc.Col(kpi_card("Total Students", "0", "total-students", "bi-people-fill", "#3498db"), width=6, lg=3),
-                dbc.Col(kpi_card("Present", "0", "present-students", "bi-person-check-fill", "#27ae60"), width=6, lg=3),
-                dbc.Col(kpi_card("Passed", "0", "passed-students", "bi-check-all", "#16a085"), width=6, lg=3),
-                dbc.Col(kpi_card("Pass Rate", "0%", "result-percent", "bi-graph-up-arrow", "#f39c12"), width=6, lg=3),
+                dbc.Col(kpi_card("Total Students", "0", "total-students", "bi-people-fill", "#3498db"), width=6, lg=2),
+                dbc.Col(kpi_card("Present", "0", "present-students", "bi-person-check-fill", "#27ae60"), width=6, lg=2),
+                dbc.Col(kpi_card("Absent", "0", "absent-students", "bi-person-x-fill", "#e74c3c"), width=6, lg=2),
+                dbc.Col(kpi_card("Passed", "0", "passed-students", "bi-check-all", "#16a085"), width=6, lg=2),
+                dbc.Col(kpi_card("Pass Rate", "0%", "result-percent", "bi-graph-up-arrow", "#f39c12"), width=6, lg=4),
             ], className="g-3 mb-4"),
 
             # Table Card
@@ -260,7 +261,7 @@ layout = dbc.Container([
         dbc.ModalHeader(dbc.ModalTitle("📊 Dashboard Usage Guide")),
         dbc.ModalBody(
             html.Div([
-                html.H6("📥 1. data Extraction", className="text-primary fw-bold"),
+                html.H6("📥 1. Data Extraction", className="text-primary fw-bold"),
                 html.P("Upload the raw VTU result Excel file to initialize the dashboard.", className="text-muted small mb-2"),
                 html.Ul([
                     html.Li([html.Strong("File Format:"), " .xlsx or .xls file."]),
@@ -569,6 +570,7 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
 @callback(
     [Output('total-students', 'children'),
      Output('present-students', 'children'),
+     Output('absent-students', 'children'),
      Output('passed-students', 'children'),
      Output('result-percent', 'children'),
      Output('data-preview', 'children')],
@@ -579,37 +581,105 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
 )
 def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
     if not data or not selected_subjects:
-        return "0", "0", "0", "0%", html.Div("Upload data and select subjects to view analytics.", className="p-4 text-center text-muted")
+        return "0", "0", "0", "0", "0%", html.Div("Upload data and select subjects to view analytics.", className="p-4 text-center text-muted")
     
     df = pd.read_json(data, orient='split')
     meta_col = df.columns[0]
     
     # 1. Filter relevant columns
     all_subject_codes = get_subject_codes(df)
-    relevant_cols = [c for c in df.columns if any(c.startswith(s) for s in selected_subjects)]
-    info_cols = [c for c in df.columns if not any(s in c for s in all_subject_codes)]
     
-    df_filtered = df[info_cols + relevant_cols].copy()
+    # Start with just info columns
+    info_cols = [c for c in df.columns if not any(s in c for s in all_subject_codes)]
+    df_filtered = df[info_cols].copy()
+    
+    # Add relevant subject columns
+    subject_data_cols = [c for c in df.columns if any(c.startswith(s) for s in selected_subjects)]
+    df_filtered = pd.concat([df_filtered, df[subject_data_cols]], axis=1)
 
     # 2. Convert Mark columns to Numeric
-    for c in relevant_cols:
+    for c in subject_data_cols:
         if any(k in c for k in ['Internal', 'External', 'Total']):
             df_filtered[c] = pd.to_numeric(df_filtered[c], errors='coerce').fillna(0)
 
-    # 3. Robust Pass Logic (Case-insensitive 'P')
-    res_cols = [c for c in relevant_cols if "Result" in c]
+    # 3. Robust Pass Logic (Matching Ranking Page Logic)
+    res_cols = [c for c in subject_data_cols if "Result" in c]
+    
     if res_cols:
-        df_filtered['Overall_Result'] = df_filtered[res_cols].apply(
-            lambda row: 'P' if all(str(v).strip().upper() == 'P' for v in row if pd.notna(v)) else 'F', 
-            axis=1
-        )
+        def calc_overall(row):
+            subject_status = []
+            for res_col in res_cols:
+                # Identify components for this subject
+                # Assumption: Column name format is like "SUBCODE Result"
+                # And components are "SUBCODE Internal", "SUBCODE External"
+                base_name = res_col.rsplit(' Result', 1)[0].rsplit('Result', 1)[0].strip()
+                
+                # Try specific suffixes first as seen in ranking.py
+                i_col = f"{base_name} Internal"
+                e_col = f"{base_name} External"
+                
+                # If not found, try to look for columns that start with base_name
+                if i_col not in df_filtered.columns:
+                     # Fallback logic if needed, but strict naming is preferred
+                     pass
+
+                i_val = row.get(i_col, 0)
+                e_val = row.get(e_col, 0)
+                
+                try: i = float(i_val)
+                except: i = 0
+                try: e = float(e_val) 
+                except: e = 0
+                
+                r = str(row.get(res_col, "")).strip().upper()
+
+                # 🔥 ABSENT RULE (Enhanced)
+                # If External is 0 and Result is Absent OR Empty -> Treat as Absent for that subject
+                if (e == 0) and (r in ['A', 'ABSENT', '']):
+                    subject_status.append('A')
+                elif r in ['F', 'FAIL']:
+                    subject_status.append('F')
+                else:
+                    # If Result is missing but Marks exist, check for pass/fail by marks
+                    total_s = i + e
+                    if r == '' and total_s < 35: # Assuming 35 is fail threshold
+                         subject_status.append('F')
+                    else:
+                         subject_status.append('P')
+
+            absent_count = subject_status.count('A')
+            fail_count = subject_status.count('F')
+
+            # === OVERALL LOGIC ===
+            if not subject_status: res = 'P' # No subjects selected? Treat as Pass/Neutral
+            elif absent_count == len(subject_status): res = 'A' # All selected subjects absent
+            elif fail_count > 0 or absent_count > 0: res = 'F' # Any fail or any absent (if not all absent) -> Fail (as per ranking logic implication, actually ranking says: elif fail_count > 0 or absent_count > 0: res = 'F')
+            # Wait, ranking logic:
+            # elif fail_count > 0 or absent_count > 0: res = 'F'
+            # else: res = 'P'
+            # means if you are absent in 1 subject, you fail the overall check for the selected group.
+            else: res = 'P'
+            
+            return res
+
+        df_filtered['Overall_Result'] = df_filtered.apply(calc_overall, axis=1)
     else:
         df_filtered['Overall_Result'] = 'P'
 
     # 4. Metrics calculation
     total = len(df_filtered)
+    
     passed_count = (df_filtered['Overall_Result'] == 'P').sum()
-    rate = f"{round((passed_count/total)*100, 2)}%" if total > 0 else "0%"
+    absent_count = (df_filtered['Overall_Result'] == 'A').sum()
+    failed_count = (df_filtered['Overall_Result'] == 'F').sum()
+    
+    # Present is Total - Absent (Absent means absent in ALL selected subjects)
+    present_count = total - absent_count
+    
+    # Pass Percentage (Pass Rate) here:
+    # Use Present count as denominator instead of Total
+    passed_rate_val = (passed_count / present_count) * 100 if present_count > 0 else 0
+    rate = f"{round(passed_rate_val, 2)}%"
 
     # 5. Section Assignment
     if section_ranges or usn_mapping:
@@ -666,4 +736,4 @@ def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
     
     final_output = html.Div([alert_msg, table]) if alert_msg else table
 
-    return str(total), str(total), str(passed_count), rate, final_output
+    return str(total), str(present_count), str(absent_count), str(passed_count), rate, final_output
