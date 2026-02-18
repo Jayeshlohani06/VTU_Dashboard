@@ -1,0 +1,91 @@
+
+/* --- Global Variables --- */
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* --- Metric Cards (KPIs) --- */
+.kpi-card {
+  background: var(--card);
+  border: 0 !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.kpi-card-body {
+  padding: 1.25rem !important;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+/* The left colored border strip */
+.kpi-border-strip {
+  position: absolute;
+  left: 0;
+  top: 15%;
+  bottom: 15%;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+}
+
+/* Check content wrapper */
+.kpi-content {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.kpi-icon-box {
+  min-width: 48px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 1rem;
+}
+
+.kpi-text-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.15rem;
+}
+
+.kpi-value {
+  font-weight: 800;
+  font-size: 1.8rem;
+  line-height: 1.1;
+  color: #1f2937; /* Default dark text for numbers */
+}
+
+/* --- General Card Styling --- */
+.overview-card {
+  background: var(--card);
+  border: 0 !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow);
+}

@@ -6,7 +6,78 @@ import base64
 import io
 import re
 
+
 dash.register_page(__name__, path='/', name="Overview")
+
+# ==================== Styles ====================
+
+PAGE_CSS_LIGHT = r"""
+:root{
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted:#6b7280;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --k1:#fffbeb; --k2:#eff6ff; --k3:#fff7ed; --k45:#f8fafc;
+  --pass-bg:#ecfdf5; --pass-text:#065f46;
+  --fail-bg:#fef2f2; --fail-text:#991b1b;
+}
+.rnk-wrap{ background: var(--bg); padding: 20px; border-radius: 16px; }
+.rnk-card{
+  background: var(--card); border: 0 !important; border-radius: 12px !important;
+  box-shadow: var(--shadow); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.rnk-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.kpi-card{ border-left: 4px solid transparent; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+.kpi-label{ color: var(--muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value{ font-weight: 800; font-size: 2.2rem; line-height: 1.2; }
+.rank-chip{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; font-weight:700; font-size:0.9rem; margin-right:8px; }
+.rank-1{ background:var(--k1); color:#b45309; border:1px solid #fcd34d; }
+.rank-2{ background:var(--k2); color:#1e40af; border:1px solid #93c5fd; }
+.rank-3{ background:var(--k3); color:#9a3412; border:1px solid #fdba74; }
+.rank-4,.rank-5{ background:var(--k45); color:#475569; border:1px solid #e2e8f0; }
+.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
+.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td{ border-bottom: 1px solid #f1f5f9 !important; }
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{ border-bottom: 2px solid #e2e8f0 !important; font-weight: 700 !important; }
+.accordion-button:not(.collapsed){ background-color: #eff6ff; color: #1e40af; }
+.accordion-button{ color: #1f2937; }
+.table { margin-bottom: 0; }
+.table tbody tr { border-bottom: 1px solid #e9ecef; }
+.table tbody tr:hover { background-color: #f8f9fa; }
+.table thead { border-top: 2px solid #dee2e6; }
+"""
+
+PAGE_CSS_DARK = r"""
+:root{
+  --bg: #0f172a;
+  --card: #1e293b;
+  --text: #f8fafc;
+  --muted:#94a3b8;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+  --k1:#451a03; --k2:#172554; --k3:#431407; --k45:#334155;
+  --pass-bg:#064e3b; --pass-text:#a7f3d0;
+  --fail-bg:#7f1d1d; --fail-text:#fecaca;
+}
+.rnk-wrap{ background: var(--bg); padding: 20px; border-radius: 16px; }
+.rnk-card{
+  background: var(--card); border: 0 !important; border-radius: 12px !important;
+  box-shadow: var(--shadow); transition: all 0.3s ease; color: var(--text);
+}
+.rnk-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.kpi-card{ border-left: 4px solid transparent; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+.kpi-label{ color: var(--muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value{ font-weight: 800; font-size: 2.2rem; line-height: 1.2; }
+.rank-chip{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; font-weight:700; font-size:0.9rem; margin-right:8px; }
+.rank-1{ background:var(--k1); color:#fbbf24; border:1px solid #78350f; }
+.rank-2{ background:var(--k2); color:#60a5fa; border:1px solid #1e3a8a; }
+.rank-3{ background:var(--k3); color:#fb923c; border:1px solid #7c2d12; }
+.rank-4,.rank-5{ background:var(--k45); color:#cbd5e1; border:1px solid #475569; }
+.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+"""
 
 # ---------- HELPER FUNCTIONS ----------
 
@@ -114,25 +185,36 @@ def process_usn_mapping_file(contents, filename, section_name=None):
 
 # ---------- UI COMPONENTS ----------
 
-def kpi_card(title, value, id_val, icon, color):
-    return dbc.Card([
+def kpi_card(title, value, id_val, icon, color, bg_color):
+    return dbc.Card(
         dbc.CardBody([
             html.Div([
+                # Icon Box
                 html.Div(
-                    html.I(className=f"bi {icon}", style={"color": color, "fontSize": "1.5rem"}),
-                    style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": f"{color}15", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                    html.I(className=f"bi {icon}", style={"color": color, "fontSize": "1.4rem"}),
+                    className="d-flex align-items-center justify-content-center",
+                    style={
+                        "minWidth": "44px", "width": "44px", "height": "44px", 
+                        "borderRadius": "10px", "backgroundColor": bg_color
+                    }
                 ),
+                # Text Content
                 html.Div([
-                    html.H6(title, className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                    html.H6(title, className="text-muted text-uppercase fw-bold mb-0 text-truncate", style={"fontSize": "0.7rem", "letterSpacing": "0.5px", "maxWidth": "100px"}),
                     html.H3(children=value, id=id_val, className="fw-bold mb-0", style={"color": color, "fontSize": "1.6rem"})
-                ], className="ms-3")
+                ], className="ms-2")
             ], className="d-flex align-items-center h-100")
-        ], className="p-3")
-    ], className="kpi-card shadow-sm h-100 border-0", style={"borderLeft": f"4px solid {color}", "transition": "transform 0.2s ease-in-out"})
+        ], className="p-2"),
+        className="kpi-card shadow-sm h-100 border-0 overflow-hidden",
+        style={"borderLeft": f"4px solid {color} !important", "transition": "transform 0.2s ease-in-out"}
+    )
 
 # ---------- LAYOUT ----------
 
 layout = dbc.Container([
+    # Add Bootstrap Icons stylesheet
+    html.Link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"),
+    dcc.Markdown(f"<style>{PAGE_CSS_LIGHT}</style>", dangerously_allow_html=True),
     # Hero Header
     html.Div([
         html.H2("Student Performance Dashboard", className="fw-bold text-white mb-1"),
@@ -237,12 +319,13 @@ layout = dbc.Container([
         dbc.Col([
             # KPI Cards
             dbc.Row([
-                dbc.Col(kpi_card("Total Students", "0", "total-students", "bi-people-fill", "#3498db"), width=6, lg=2),
-                dbc.Col(kpi_card("Present", "0", "present-students", "bi-person-check-fill", "#27ae60"), width=6, lg=2),
-                dbc.Col(kpi_card("Absent", "0", "absent-students", "bi-person-x-fill", "#e74c3c"), width=6, lg=2),
-                dbc.Col(kpi_card("Passed", "0", "passed-students", "bi-check-all", "#16a085"), width=6, lg=2),
-                dbc.Col(kpi_card("Pass Rate", "0%", "result-percent", "bi-graph-up-arrow", "#f39c12"), width=6, lg=4),
-            ], className="g-3 mb-4"),
+                dbc.Col(kpi_card("Total", "0", "total-students", "bi-people-fill", "#3b82f6", "#eff6ff"), className="d-flex"),
+                dbc.Col(kpi_card("Appeared", "0", "present-students", "bi-person-circle", "#10b981", "#ecfdf5"), className="d-flex"),
+                dbc.Col(kpi_card("Passed", "0", "passed-students", "bi-check-circle-fill", "#0ea5e9", "#f0f9ff"), className="d-flex"),
+                dbc.Col(kpi_card("Failed", "0", "failed-students", "bi-x-circle-fill", "#ef4444", "#fef2f2"), className="d-flex"),
+                dbc.Col(kpi_card("Absent", "0", "absent-students", "bi-person-x-fill", "#f59e0b", "#fffbeb"), className="d-flex"),
+                dbc.Col(kpi_card("Pass %", "0%", "result-percent", "bi-percent", "#8b5cf6", "#f5f3ff"), className="d-flex"),
+            ], className="row-cols-2 row-cols-md-3 row-cols-lg-6 g-2 mb-4"),
 
             # Table Card
             dbc.Card([
@@ -575,8 +658,9 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
 @callback(
     [Output('total-students', 'children'),
      Output('present-students', 'children'),
-     Output('absent-students', 'children'),
      Output('passed-students', 'children'),
+     Output('failed-students', 'children'),
+     Output('absent-students', 'children'),
      Output('result-percent', 'children'),
      Output('data-preview', 'children')],
     [Input('stored-data', 'data'),
@@ -586,7 +670,7 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
 )
 def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
     if not data or not selected_subjects:
-        return "0", "0", "0", "0", "0%", html.Div("Upload data and select subjects to view analytics.", className="p-4 text-center text-muted")
+        return "0", "0", "0", "0", "0", "0%", html.Div("Upload data and select subjects to view analytics.", className="p-4 text-center text-muted")
     
     df = pd.read_json(data, orient='split')
     meta_col = df.columns[0]
@@ -741,4 +825,4 @@ def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
     
     final_output = html.Div([alert_msg, table]) if alert_msg else table
 
-    return str(total), str(present_count), str(absent_count), str(passed_count), rate, final_output
+    return str(total), str(present_count), str(passed_count), str(failed_count), str(absent_count), rate, final_output

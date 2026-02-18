@@ -1,0 +1,60 @@
+/* KPI Card Styles for Subject Analysis */
+.subject-kpi-card {
+    background: #ffffff;
+    border: 0;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease;
+    height: 100%;
+    overflow: hidden;
+}
+
+.subject-kpi-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.subject-kpi-body {
+    padding: 1.25rem;
+}
+
+.subject-kpi-content {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+.subject-kpi-icon-wrapper {
+    min-width: 48px;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 1rem;
+}
+
+.subject-kpi-icon {
+    font-size: 1.5rem;
+}
+
+.subject-kpi-text {
+    flex: 1;
+}
+
+.subject-kpi-label {
+    color: #6b7280;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    letter-spacing: 0.05em;
+}
+
+.subject-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 0;
+}

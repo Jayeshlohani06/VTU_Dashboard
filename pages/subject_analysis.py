@@ -581,32 +581,32 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
     # Dynamically build KPI list based on filter
     if result_filter == "ALL":
         kpis = [
-            {"label": "Total Students", "icon": "bi-people-fill", "value": total, "color": "#3b82f6"},
-            {"label": "Appeared", "icon": "bi-person-check-fill", "value": appeared, "color": "#10b981"},
-            {"label": "Absent", "icon": "bi-person-x-fill", "value": absent, "color": "#f59e0b"},
-            {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed, "color": "#06b6d4"},
-            {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed, "color": "#ef4444"},
-            {"label": "Pass % (Appeared)", "icon": "bi-graph-up", "value": f"{pass_pct_appeared}%", "color": "#8b5cf6"},
+            {"id": "total", "label": "Total Students", "value": total, "color": "#3b82f6", "bg": "#eff6ff", "icon": "bi-people-fill"},
+            {"id": "appeared", "label": "Appeared", "value": appeared, "color": "#10b981", "bg": "#ecfdf5", "icon": "bi-person-circle"},
+            {"id": "absent", "label": "Absent", "value": absent, "color": "#f59e0b", "bg": "#fffbeb", "icon": "bi-person-slash"},
+            {"id": "pass", "label": "Passed", "value": passed, "color": "#0ea5e9", "bg": "#f0f9ff", "icon": "bi-check-lg"},
+            {"id": "fail", "label": "Failed", "value": failed, "color": "#ef4444", "bg": "#fef2f2", "icon": "bi-x-lg"},
+            {"id": "rate", "label": "Pass % (Appeared)", "value": f"{pass_pct_appeared}%", "color": "#8b5cf6", "bg": "#f5f3ff", "icon": "bi-percent"},
         ]
-        col_md = 2  # 6 cards
+        col_class = "row-cols-2 row-cols-md-3 row-cols-lg-6 g-3"
     elif result_filter == "PASS":
         kpis = [
-            {"label": "Total (in view)", "icon": "bi-people-fill", "value": total, "color": "#3b82f6"},
-            {"label": "Passed", "icon": "bi-patch-check-fill", "value": passed_filtered, "color": "#10b981"},
+            {"id": "total", "label": "Total (in view)", "value": total, "color": "#3b82f6", "bg": "#eff6ff", "icon": "bi-people-fill"},
+            {"id": "pass", "label": "Passed", "value": passed_filtered, "color": "#10b981", "bg": "#ecfdf5", "icon": "bi-check-lg"},
         ]
-        col_md = 6  # 2 cards
+        col_class = "row-cols-2 row-cols-md-6 g-3"
     elif result_filter == "FAIL":
         kpis = [
-            {"label": "Total (in view)", "icon": "bi-people-fill", "value": total, "color": "#3b82f6"},
-            {"label": "Failed", "icon": "bi-x-octagon-fill", "value": failed_filtered, "color": "#ef4444"},
+            {"id": "total", "label": "Total (in view)", "value": total, "color": "#3b82f6", "bg": "#eff6ff", "icon": "bi-people-fill"},
+            {"id": "fail", "label": "Failed", "value": failed_filtered, "color": "#ef4444", "bg": "#fef2f2", "icon": "bi-x-lg"},
         ]
-        col_md = 6  # 2 cards
-    else:  # result_filter == "ABSENT"
+        col_class = "row-cols-2 row-cols-md-6 g-3"
+    else:  # ABSENT
         kpis = [
-            {"label": "Total (in view)", "icon": "bi-people-fill", "value": total, "color": "#3b82f6"},
-            {"label": "Absent", "icon": "bi-person-x-fill", "value": absent_filtered, "color": "#f59e0b"},
+            {"id": "total", "label": "Total (in view)", "value": total, "color": "#3b82f6", "bg": "#eff6ff", "icon": "bi-people-fill"},
+            {"id": "absent", "label": "Absent", "value": absent_filtered, "color": "#f59e0b", "bg": "#fffbeb", "icon": "bi-person-slash"},
         ]
-        col_md = 6  # 2 cards
+        col_class = "row-cols-2 row-cols-md-6 g-3"
 
     # =========================================================================
     # SUBJECT-WISE BREAKDOWN (Handle Absent Logic Correctly)
@@ -769,20 +769,22 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
                     dbc.CardBody([
                         html.Div([
                             html.Div(
-                                html.I(className=f"bi {k['icon']}", style={"color": k["color"], "fontSize": "1.5rem"}),
-                                style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": f"{k['color']}15", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                                html.I(className=f"bi {k['icon']}", style={"color": k["color"], "fontSize": "1.4rem"}),
+                                className="d-flex align-items-center justify-content-center",
+                                style={"minWidth": "42px", "width": "42px", "height": "42px", "borderRadius": "10px", "backgroundColor": k["bg"]}
                             ),
                             html.Div([
-                                html.H6(k["label"], className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                                html.H6(k["label"], className="text-muted text-uppercase fw-bold mb-0", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
                                 html.H3(str(k["value"]), className="fw-bold mb-0", style={"color": k["color"], "fontSize": "1.6rem"})
                             ], className="ms-3")
                         ], className="d-flex align-items-center h-100")
                     ], className="p-3"),
                     className="kpi-card shadow-sm h-100 border-0",
                     style={"borderLeft": f"4px solid {k['color']}", "transition": "transform 0.2s ease-in-out"}
-                ), md=col_md, xs=6)
+                )
+            )
             for k in kpis
-        ], className="g-3 mb-4"),
+        ], className=col_class),
         
         # INSERT SUMMARY CARD HERE
         summary_card
