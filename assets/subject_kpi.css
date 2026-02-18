@@ -1,12 +1,24 @@
-/* KPI Card Styles for Subject Analysis */
+/* KPI Card Styles for Subject Analysis - Modern Look */
 .subject-kpi-card {
     background: #ffffff;
     border: 0;
     border-radius: 12px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease;
+    transition: all 0.25s cubic-bezier(.4,0,.2,1);
     height: 100%;
+    position: relative;
     overflow: hidden;
+}
+
+.subject-kpi-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 4px;
+    background: var(--kpi-color);
+    border-radius: 12px 0 0 12px;
 }
 
 .subject-kpi-card:hover {
@@ -15,46 +27,77 @@
 }
 
 .subject-kpi-body {
-    padding: 1.25rem;
-}
-
-.subject-kpi-content {
+    padding: 0.5rem;
+    height: 100%;
     display: flex;
     align-items: center;
-    height: 100%;
 }
 
-.subject-kpi-icon-wrapper {
-    min-width: 48px;
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
+.subject-kpi-content-wrapper {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.subject-kpi-icon-box {
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-right: 1rem;
+    min-width: 52px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    margin-right: 14px;
+    flex-shrink: 0;
+    /* Background color set inline dynamically in Python */
 }
 
 .subject-kpi-icon {
-    font-size: 1.5rem;
+    font-size: 1.4rem;
+    /* Color set inline dynamically in Python */
 }
 
-.subject-kpi-text {
+.subject-kpi-text-box {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
     flex: 1;
 }
 
 .subject-kpi-label {
-    color: #6b7280;
-    font-size: 0.75rem;
-    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+    max-width: 100%;
+    margin-bottom: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-weight: 700;
-    margin-bottom: 0.25rem;
-    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #6b7280;
 }
 
 .subject-kpi-value {
-    font-size: 1.5rem;
-    font-weight: 800;
-    line-height: 1.2;
+    font-size: 1.9rem;
+    font-weight: 700;
     margin-bottom: 0;
+    line-height: 1.1;
+    /* Color set inline dynamically in Python */
+}
+
+@media (max-width: 768px) {
+    .subject-kpi-body {
+        padding: 0.6rem;
+    }
+
+    .subject-kpi-icon-box {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+    }
+
+    .subject-kpi-value {
+        font-size: 1.4rem;
+    }
 }

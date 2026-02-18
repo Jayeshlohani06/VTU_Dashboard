@@ -6,7 +6,10 @@ import dash_bootstrap_components as dbc
 app = dash.Dash(
     __name__,
     use_pages=True,
-    external_stylesheets=[dbc.themes.FLATLY],
+    external_stylesheets=[
+        dbc.themes.FLATLY,
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+    ],
     suppress_callback_exceptions=True,
     prevent_initial_callbacks='initial_duplicate'
 )
