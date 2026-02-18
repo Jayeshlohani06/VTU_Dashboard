@@ -47,49 +47,161 @@ layout = dbc.Container([
 
     # ---------- BASIC KPIs ----------
     dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Total Students"),
-            html.H3(id="bi-total-students")
-        ]), className="shadow-sm text-center"), md=3),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className="bi bi-people-fill", style={"color": "#3b82f6", "fontSize": "1.5rem"}),
+                            style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": "#3b82f615", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6("Total Students", className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H3(id="bi-total-students", className="fw-bold mb-0", style={"color": "#3b82f6", "fontSize": "1.6rem"})
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": "4px solid #3b82f6", "transition": "transform 0.2s ease-in-out"}
+            ), md=3
+        ),
 
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Branches Loaded"),
-            html.H3(id="bi-total-branches")
-        ]), className="shadow-sm text-center"), md=3),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className="bi bi-diagram-3-fill", style={"color": "#8b5cf6", "fontSize": "1.5rem"}),
+                            style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": "#8b5cf615", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6("Branches Loaded", className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H3(id="bi-total-branches", className="fw-bold mb-0", style={"color": "#8b5cf6", "fontSize": "1.6rem"})
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": "4px solid #8b5cf6", "transition": "transform 0.2s ease-in-out"}
+            ), md=3
+        ),
 
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Subjects Detected"),
-            html.H3(id="bi-total-subjects")
-        ]), className="shadow-sm text-center"), md=3),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className="bi bi-book-half", style={"color": "#f59e0b", "fontSize": "1.5rem"}),
+                            style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": "#f59e0b15", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6("Subjects Detected", className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H3(id="bi-total-subjects", className="fw-bold mb-0", style={"color": "#f59e0b", "fontSize": "1.6rem"})
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": "4px solid #f59e0b", "transition": "transform 0.2s ease-in-out"}
+            ), md=3
+        ),
 
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Overall Pass %"),
-            html.H3(id="bi-pass-percent")
-        ]), className="shadow-sm text-center"), md=3),
-    ], className="mb-3"),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className="bi bi-activity", style={"color": "#10b981", "fontSize": "1.5rem"}),
+                            style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": "#10b98115", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6("Overall Pass %", className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H3(id="bi-pass-percent", className="fw-bold mb-0", style={"color": "#10b981", "fontSize": "1.6rem"})
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": "4px solid #10b981", "transition": "transform 0.2s ease-in-out"}
+            ), md=3
+        ),
+    ], className="mb-4 g-3"),
 
     # ---------- INTELLIGENCE KPIs ----------
     dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Best Performing Branch"),
-            html.H3(id="bi-best-branch")
-        ]), className="shadow-sm text-center"), md=3),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className="bi bi-trophy-fill", style={"color": "#f59e0b", "fontSize": "1.5rem"}),
+                            style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": "#f59e0b15", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6("Best Performing Branch", className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H5(id="bi-best-branch", className="fw-bold mb-0", style={"color": "#f59e0b", "fontSize": "1.2rem"})
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": "4px solid #f59e0b", "transition": "transform 0.2s ease-in-out"}
+            ), md=3
+        ),
 
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Weak Branch"),
-            html.H3(id="bi-weak-branch")
-        ]), className="shadow-sm text-center"), md=3),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className="bi bi-exclamation-triangle-fill", style={"color": "#ef4444", "fontSize": "1.5rem"}),
+                            style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": "#ef444415", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6("Weak Branch", className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H5(id="bi-weak-branch", className="fw-bold mb-0", style={"color": "#ef4444", "fontSize": "1.2rem"})
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": "4px solid #ef4444", "transition": "transform 0.2s ease-in-out"}
+            ), md=3
+        ),
 
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Hardest Subject"),
-            html.H3(id="bi-hardest-subject")
-        ]), className="shadow-sm text-center"), md=3),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className="bi bi-emoji-dizzy-fill", style={"color": "#ef4444", "fontSize": "1.5rem"}),
+                            style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": "#ef444415", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6("Hardest Subject", className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H5(id="bi-hardest-subject", className="fw-bold mb-0", style={"color": "#ef4444", "fontSize": "1.2rem"})
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": "4px solid #ef4444", "transition": "transform 0.2s ease-in-out"}
+            ), md=3
+        ),
 
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.H6("Easiest Subject"),
-            html.H3(id="bi-easiest-subject")
-        ]), className="shadow-sm text-center"), md=3),
-    ], className="mb-4"),
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className="bi bi-emoji-smile-fill", style={"color": "#10b981", "fontSize": "1.5rem"}),
+                            style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": "#10b98115", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6("Easiest Subject", className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H5(id="bi-easiest-subject", className="fw-bold mb-0", style={"color": "#10b981", "fontSize": "1.2rem"})
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": "4px solid #10b981", "transition": "transform 0.2s ease-in-out"}
+            ), md=3
+        ),
+    ], className="mb-4 g-3"),
 
     # ---------- FILTERS ----------
     dbc.Card([

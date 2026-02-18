@@ -764,12 +764,23 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
 
     cards = html.Div([
         dbc.Row([
-            dbc.Col(dbc.Card(dbc.CardBody([
-                html.I(className=f"bi {k['icon']} me-2", style={"color": k["color"], "fontSize": "1.4rem"}),
-                html.Span(k["label"], className="kpi-label"),
-                html.Div(str(k["value"]), className="kpi-value text-center", style={"color": k["color"]})
-            ]), className="kpi-card", style={"borderLeftColor": k["color"], "backgroundColor": "#fff"}), 
-            md=col_md, xs=6)
+            dbc.Col(
+                dbc.Card(
+                    dbc.CardBody([
+                        html.Div([
+                            html.Div(
+                                html.I(className=f"bi {k['icon']}", style={"color": k["color"], "fontSize": "1.5rem"}),
+                                style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": f"{k['color']}15", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                            ),
+                            html.Div([
+                                html.H6(k["label"], className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                                html.H3(str(k["value"]), className="fw-bold mb-0", style={"color": k["color"], "fontSize": "1.6rem"})
+                            ], className="ms-3")
+                        ], className="d-flex align-items-center h-100")
+                    ], className="p-3"),
+                    className="kpi-card shadow-sm h-100 border-0",
+                    style={"borderLeft": f"4px solid {k['color']}", "transition": "transform 0.2s ease-in-out"}
+                ), md=col_md, xs=6)
             for k in kpis
         ], className="g-3 mb-4"),
         

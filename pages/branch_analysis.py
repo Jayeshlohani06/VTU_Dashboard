@@ -425,18 +425,33 @@ def analyze_branches(n, file_contents, branch_names):
 
     # 1. KPI Cards
     kpis = [
-        {"label": "Total Students", "val": uni_total, "color": "#3b82f6"},
-        {"label": "Overall Pass %", "val": f"{uni_pass_pct}%", "color": "#10b981"},
-        {"label": "Best Branch", "val": best_branch, "color": "#8b5cf6"},
-        {"label": "University Topper", "val": uni_topper_row['Name'] if uni_topper_row is not None else "-", "color": "#f59e0b", "sub": f"{uni_topper_row['Percentage']}%" if uni_topper_row is not None else ""}
+        {"label": "Total Students", "val": uni_total, "color": "#3b82f6", "icon": "bi-people-fill"},
+        {"label": "Overall Pass %", "val": f"{uni_pass_pct}%", "color": "#10b981", "icon": "bi-graph-up-arrow"},
+        {"label": "Best Branch", "val": best_branch, "color": "#8b5cf6", "icon": "bi-trophy-fill"},
+        {"label": "University Topper", "val": uni_topper_row['Name'] if uni_topper_row is not None else "-", "color": "#f59e0b", "icon": "bi-award-fill", "sub": f"{uni_topper_row['Percentage']}%" if uni_topper_row is not None else ""}
     ]
 
     kpi_section = dbc.Row([
-        dbc.Col(html.Div([
-            html.Div(k['label'], className="ba-label"),
-            html.Div(k['val'], className="ba-value", style={"color": k['color']}),
-            html.Div(k.get('sub', ''), className="text-muted small fw-bold")
-        ], className="ba-stat-card"), md=3, sm=6, className="mb-4") for k in kpis
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className=f"bi {k['icon']}", style={"color": k["color"], "fontSize": "1.5rem"}),
+                            style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": f"{k['color']}15", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6(k["label"], className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H3(str(k["val"]), className="fw-bold mb-0", style={"color": k["color"], "fontSize": "1.6rem"}),
+                            # Subtitle for topper percentage
+                            html.Small(k.get('sub', ''), className="text-success fw-bold d-block mt-1") if k.get('sub') else None
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": f"4px solid {k['color']}", "transition": "transform 0.2s ease-in-out"}
+            ), md=3, sm=6, className="mb-4"
+        ) for k in kpis
     ])
 
     # 2. Detailed Branch KPI Table

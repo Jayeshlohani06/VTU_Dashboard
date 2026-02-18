@@ -118,12 +118,17 @@ def kpi_card(title, value, id_val, icon, color):
     return dbc.Card([
         dbc.CardBody([
             html.Div([
-                html.I(className=f"bi {icon} mb-2", style={"fontSize": "1.8rem", "color": color}),
-                html.H3(children=value, id=id_val, className="fw-bold mb-0", style={"color": color}),
-                html.Small(title, className="text-muted fw-bold text-uppercase", style={"letterSpacing": "0.5px", "fontSize": "0.75rem"})
-            ], className="text-center")
-        ])
-    ], className="border-0 shadow-sm h-100", style={"borderRadius": "12px"})
+                html.Div(
+                    html.I(className=f"bi {icon}", style={"color": color, "fontSize": "1.5rem"}),
+                    style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": f"{color}15", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                ),
+                html.Div([
+                    html.H6(title, className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                    html.H3(children=value, id=id_val, className="fw-bold mb-0", style={"color": color, "fontSize": "1.6rem"})
+                ], className="ms-3")
+            ], className="d-flex align-items-center h-100")
+        ], className="p-3")
+    ], className="kpi-card shadow-sm h-100 border-0", style={"borderLeft": f"4px solid {color}", "transition": "transform 0.2s ease-in-out"})
 
 # ---------- LAYOUT ----------
 

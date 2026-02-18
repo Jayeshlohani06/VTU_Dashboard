@@ -889,11 +889,31 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
     # Force 6 cards row for ALL view 
     row_cls = "row-cols-2 row-cols-md-3 row-cols-lg-6 g-3" if count >= 6 else f"row-cols-2 row-cols-md-{min(count, 4)} row-cols-lg-{min(count, 4)} g-3"
 
+    # Dynamic column width based on count
+    count = len(kpi_objs)
+    # Force 6 cards row for ALL view 
+    row_cls = "row-cols-2 row-cols-md-3 row-cols-lg-6 g-3" if count >= 6 else f"row-cols-2 row-cols-md-{min(count, 4)} row-cols-lg-{min(count, 4)} g-3"
+
     kpi_cards = dbc.Row([
-        dbc.Col(dbc.Card(dbc.CardBody([
-            html.Div(x["label"], className="kpi-label mb-2", style={"fontSize": "0.75rem"}),
-            html.Div(str(x["value"]), className="kpi-value", style={"color": x["color"], "fontSize": "1.8rem"})
-        ]), className="kpi-card shadow-sm h-100", style={"backgroundColor": x["bg"], "borderLeftColor": x["color"]}))
+        dbc.Col(
+            dbc.Card(
+                dbc.CardBody([
+                    html.Div([
+                        html.Div(
+                            html.I(className="bi bi-graph-up-arrow", style={"color": x["color"], "fontSize": "1.4rem"}),
+                             style={"minWidth": "42px", "width": "42px", "height": "42px", "borderRadius": "10px", "backgroundColor": x["bg"], "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                        ),
+                        html.Div([
+                            html.H6(x["label"], className="text-muted text-uppercase fw-bold mb-0", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                            html.H3(str(x["value"]), className="fw-bold mb-0", style={"color": x["color"], "fontSize": "1.6rem"})
+                        ], className="ms-3")
+                    ], className="d-flex align-items-center h-100")
+                ], className="p-3"),
+                className="kpi-card shadow-sm h-100 border-0",
+                style={"borderLeft": f"4px solid {x['color']}", "transition": "transform 0.2s ease-in-out"},
+                id=f"kpi-{x['id']}" # Giving unique ID for potential CSS targeting
+            )
+        )
         for x in kpi_objs
     ], className=row_cls)
 
