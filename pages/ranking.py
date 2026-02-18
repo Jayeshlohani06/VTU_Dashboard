@@ -894,14 +894,32 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
     # Force 6 cards row for ALL view 
     row_cls = "row-cols-2 row-cols-md-3 row-cols-lg-6 g-3" if count >= 6 else f"row-cols-2 row-cols-md-{min(count, 4)} row-cols-lg-{min(count, 4)} g-3"
 
+    # Assign icons based on ID
+    icon_map = {
+        "total": "bi-people-fill",
+        "appeared": "bi-person-circle",
+        "absent": "bi-person-x-fill",
+        "pass": "bi-check-circle-fill",
+        "fail": "bi-x-circle-fill",
+        "rate": "bi-percent",
+        "bk1": "bi-1-circle-fill",
+        "bk2": "bi-2-circle-fill",
+        "bk3": "bi-3-circle-fill",
+        "fcd": "bi-trophy-fill",
+        "fc": "bi-award-fill",
+        "sc": "bi-patch-check-fill",
+        "avg": "bi-calculator-fill"
+    }
+
     kpi_cards = dbc.Row([
         dbc.Col(
             dbc.Card(
                 dbc.CardBody([
                     html.Div([
                         html.Div(
-                            html.I(className="bi bi-graph-up-arrow", style={"color": x["color"], "fontSize": "1.4rem"}),
-                             style={"minWidth": "42px", "width": "42px", "height": "42px", "borderRadius": "10px", "backgroundColor": x["bg"], "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                            html.I(className=f"bi {icon_map.get(x['id'], 'bi-graph-up-arrow')}", style={"color": x["color"], "fontSize": "1.4rem"}),
+                             className="d-flex align-items-center justify-content-center",
+                             style={"minWidth": "42px", "width": "42px", "height": "42px", "borderRadius": "10px", "backgroundColor": x["bg"]}
                         ),
                         html.Div([
                             html.H6(x["label"], className="text-muted text-uppercase fw-bold mb-0", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
