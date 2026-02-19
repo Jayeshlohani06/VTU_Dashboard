@@ -471,18 +471,18 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_m
         card = dbc.Card(
             dbc.CardBody([
                 html.Div([
-                    html.I(className=f"{item['icon']} me-2", style={"color": item['color'], "fontSize": "1.5rem"}),
-                    html.Small(item["label"], className="text-muted fw-semibold d-block", style={"fontSize": "0.8rem"}),
-                ], className="mb-2"),
-                html.H4(item["value"], className="fw-bold mb-0", style={"color": item["color"]}),
-            ]),
-            style={
-                "backgroundColor": item["bg"], 
-                "border": f"2px solid {item['color']}20", 
-                "borderRadius": "15px",
-                "transition": "all 0.3s ease"
-            },
-            className="text-center shadow-custom p-3 kpi-card"
+                    html.Div(
+                        html.I(className=f"{item['icon']}", style={"color": item['color'], "fontSize": "1.5rem"}),
+                        style={"minWidth": "48px", "width": "48px", "height": "48px", "borderRadius": "12px", "backgroundColor": f"{item['color']}15", "display": "flex", "alignItems": "center", "justifyContent": "center"}
+                    ),
+                    html.Div([
+                        html.H6(item["label"], className="text-muted text-uppercase fw-bold mb-1", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                        html.H4(item["value"], className="fw-bold mb-0", style={"color": item["color"]})
+                    ], className="ms-3 text-start")
+                ], className="d-flex align-items-center h-100")
+            ], className="p-3"),
+            className="kpi-card shadow-sm h-100 border-0",
+            style={"borderLeft": f"4px solid {item['color']}", "transition": "transform 0.2s ease-in-out"}
         )
         kpi_cards.append(dbc.Col(card, md=2, sm=4, xs=6, className="mb-3"))
 
