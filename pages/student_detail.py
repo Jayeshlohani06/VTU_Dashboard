@@ -187,7 +187,18 @@ def populate_subject_dropdown(json_data):
         if c not in exclude_cols and 'Rank' not in c and 'Result' not in c and 'Total_Marks' not in c
     ]
     filtered_components = [c for c in subject_components if 'Result' not in c]
-    subject_codes = sorted(list(set([c.split(' ')[0] for c in filtered_components])))
+    
+    # Robust extraction of subject identifiers (supporting "Code - Name" format)
+    subject_identifiers = set()
+    for c in filtered_components:
+        # We need the part BEFORE " Internal", " External", " Total"
+        # Since we filtered out 'Result', we look for other suffixes
+        for suffix in [' Internal', ' External', ' Total']:
+            if c.endswith(suffix):
+                subject_identifiers.add(c[:-len(suffix)])
+                break
+    
+    subject_codes = sorted(list(subject_identifiers))
     options = [{'label': 'Select All', 'value': 'ALL'}] + [{'label': s, 'value': s} for s in subject_codes]
     return options, ['ALL']
 
@@ -220,9 +231,19 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
         return dbc.Alert("No student found with this ID or Name.", color="warning", className="text-center mt-3")
     student_series = student_df.iloc[0]
 
-    all_subject_components = [col for col in df.columns if ' ' in col and 'Result' not in col]
+    # Identify available subject identifier strings (e.g. "18Cs51" OR "18CS51 - MATHS")
+    subject_identifiers = set()
+    for col in df.columns:
+        if 'Result' not in col:
+            for suffix in [' Internal', ' External', ' Total']:
+                if col.endswith(suffix):
+                    subject_identifiers.add(col[:-len(suffix)])
+                    break
+    
+    available_subjects = sorted(list(subject_identifiers))
+
     if not selected_subject_codes or 'ALL' in selected_subject_codes:
-        codes_selected = sorted(list(set([c.split(' ')[0] for c in all_subject_components])))
+        codes_selected = available_subjects
     else:
         codes_selected = [s for s in selected_subject_codes if s != 'ALL']
 
@@ -230,15 +251,29 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
         code for code in codes_selected
         if pd.to_numeric(student_series.get(f"{code} {analysis_type}"), errors='coerce') > 0
     ])
+
     if not subject_codes_for_credits:
         return dbc.Alert(
-            "This student has no scores recorded for the selected subjects.",
+            "This student has no score data for the selected subjects.",
             color="info",
             className="text-center mt-3"
         )
 
     credit_inputs = []
-    for idx, code in enumerate(subject_codes_for_credits):
+    for idx, raw_code in enumerate(subject_codes_for_credits):
+        # Clean display: Extract just the code if name is present
+        # Format: "Code - Name" -> display "Code (Name truncated?)" or full
+        if " - " in raw_code:
+            parts = raw_code.split(" - ", 1)
+            display_text = html.Div([
+                html.Span(parts[0], className="fw-bold d-block"),
+                html.Small(parts[1], className="text-muted d-block text-truncate", style={"maxWidth": "250px"})
+            ])
+            code_val = raw_code # keep full key for ID
+        else:
+            display_text = html.Span(raw_code, className="fw-bold")
+            code_val = raw_code
+
         z_index = 1000 - (idx * 5)  # Decreasing z-index for each card
         credit_inputs.append(
             dbc.Card([
@@ -247,19 +282,19 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
                         dbc.Col([
                             html.Div([
                                 html.I(className="bi bi-journal-code me-2", style={"color": "#667eea", "fontSize": "1.2rem"}),
-                                html.Span(code, className="fw-bold", style={"fontSize": "1.1rem", "color": "#2c3e50"})
+                                display_text
                             ])
-                        ], width=6, className="text-start align-self-center"),
+                        ], width=8, className="text-start align-self-center"),
                         dbc.Col([
                             dcc.Dropdown(
-                                id={'type': 'credit-input-student', 'index': code},
+                                id={'type': 'credit-input-student', 'index': code_val},
                                 options=[{'label': f'{i} Credit{"s" if i != 1 else ""}', 'value': i} for i in range(0, 5)],
                                 value=3,
                                 clearable=False,
                                 className="custom-dropdown",
                                 style={"zIndex": str(z_index + 1)}
                             )
-                        ], width=6, style={"position": "relative", "zIndex": str(z_index + 1)})
+                        ], width=4, style={"position": "relative", "zIndex": str(z_index + 1)})
                     ], align="center")
                 ], className="py-2 px-3", style={"overflow": "visible"})
             ], className="shadow-sm mb-2", style={"border": "1px solid #e0e0e0", "borderRadius": "10px", "overflow": "visible", "position": "relative", "zIndex": str(z_index)})
@@ -543,12 +578,21 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_m
             className="mt-3 shadow"
         )
 
+    class_averages = df[kpi_cols_all].replace(0, pd.NA).mean()
+    class_max = df[kpi_cols_all].replace(0, pd.NA).max()
+    
+    # Create full labels (Code - Name) and short labels (Code only)
+    clean_labels = [idx.replace(f" {analysis_type}", "") for idx in scores_above_zero.index]
+    short_labels = [label.split(' - ')[0] if ' - ' in label else label.split()[0] for label in clean_labels]
+
     bar_fig = go.Figure(data=[
         go.Bar(
-            x=scores_above_zero.index,
+            x=short_labels,
             y=scores_above_zero.values,
             text=[f"{v:.0f}" for v in scores_above_zero.values],
             textposition='auto',
+            customdata=clean_labels,
+            hovertemplate='<b>%{customdata}</b><br>Marks: %{y}<extra></extra>',
             marker=dict(
                 color=scores_above_zero.values,
                 colorscale='Viridis',
@@ -563,21 +607,28 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_m
         title_font=dict(size=16, color='#2c3e50', family='Arial, sans-serif'),
         plot_bgcolor='rgba(248,249,250,0.5)',
         paper_bgcolor='white',
-        margin=dict(t=50, b=40, l=40, r=40),
-        xaxis=dict(title="Subjects", titlefont=dict(size=13, color='#667eea')),
+        margin=dict(t=50, b=100, l=40, r=40), # Increased bottom margin
+        xaxis=dict(
+            title="Subjects", 
+            titlefont=dict(size=13, color='#667eea'),
+            tickangle=-45 # Rotate for long names
+        ),
         yaxis=dict(title="Marks", titlefont=dict(size=13, color='#667eea'), gridcolor='#e0e0e0')
     )
 
-    class_averages = df[kpi_cols_all].replace(0, pd.NA).mean()
-    class_max = df[kpi_cols_all].replace(0, pd.NA).max()
-    
     comp_fig = go.Figure(data=[
-        go.Bar(x=scores_above_zero.index, y=scores_above_zero.values, name="Student", 
-               marker_color='#440154', text=[f"{v:.0f}" for v in scores_above_zero.values], textposition='auto'),
-        go.Bar(x=scores_above_zero.index, y=class_averages.reindex(scores_above_zero.index).fillna(0).values, 
-               name="Class Avg", marker_color='#21918c', text=[f"{v:.0f}" for v in class_averages.reindex(scores_above_zero.index).fillna(0).values], textposition='auto'),
-        go.Bar(x=scores_above_zero.index, y=class_max.reindex(scores_above_zero.index).fillna(0).values, 
-               name="Highest Marks", marker_color='#fde725', text=[f"{v:.0f}" for v in class_max.reindex(scores_above_zero.index).fillna(0).values], textposition='auto')
+        go.Bar(x=short_labels, y=scores_above_zero.values, name="Student", 
+               marker_color='#440154', text=[f"{v:.0f}" for v in scores_above_zero.values], textposition='auto',
+               customdata=clean_labels,
+               hovertemplate='<b>%{customdata}</b><br>Marks: %{y:.0f}<extra></extra>'),
+        go.Bar(x=short_labels, y=class_averages.reindex(scores_above_zero.index).fillna(0).values, 
+               name="Class Avg", marker_color='#21918c', text=[f"{v:.0f}" for v in class_averages.reindex(scores_above_zero.index).fillna(0).values], textposition='auto',
+               customdata=clean_labels,
+               hovertemplate='<b>%{customdata}</b><br>Avg: %{y:.0f}<extra></extra>'),
+        go.Bar(x=short_labels, y=class_max.reindex(scores_above_zero.index).fillna(0).values, 
+               name="Highest Marks", marker_color='#fde725', text=[f"{v:.0f}" for v in class_max.reindex(scores_above_zero.index).fillna(0).values], textposition='auto',
+               customdata=clean_labels,
+               hovertemplate='<b>%{customdata}</b><br>Max: %{y:.0f}<extra></extra>')
     ])
     comp_fig.update_layout(
         title_text="📈 Student vs Class Avg vs Highest",
@@ -586,8 +637,12 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_m
         barmode='group',
         plot_bgcolor='rgba(248,249,250,0.5)',
         paper_bgcolor='white',
-        margin=dict(t=60, b=100, l=40, r=40),
-        xaxis=dict(title="Subjects", titlefont=dict(size=13, color='#667eea')),
+        margin=dict(t=60, b=100, l=40, r=40), # Increased bottom margin
+        xaxis=dict(
+            title="Subjects", 
+            titlefont=dict(size=13, color='#667eea'),
+            tickangle=-45
+        ),
         yaxis=dict(title="Marks", titlefont=dict(size=13, color='#667eea'), gridcolor='#e0e0e0'),
         legend=dict(
             orientation="h",
@@ -665,14 +720,23 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_m
         """
         Uses EXACT SAME LOGIC as Result_Selected / Ranking page
         """
-
         if mark == 0:
             return "N/A"
 
-        parts = str(subject_col_name).split()
-        code = parts[0] if parts else ""
+        # Extract the base subject code (key for credit_dict_all)
+        # The col name is "Code Name AnalysisType" or "Code AnalysisType"
+        # We need to strip the " AnalysisType" suffix to get the key used in credit dict
+        suffix = f" {analysis_type}"
+        code = subject_col_name[:-len(suffix)] if subject_col_name.endswith(suffix) else subject_col_name
 
         credit = credit_dict_all.get(code, 0)
+        
+        # If not found directly, try fuzzy match or fallback (e.g. if code was split by space before)
+        if credit == 0 and ' ' in code:
+             # Try first part as fallback (old behavior compatibility)
+             short_code = code.split(' ')[0]
+             credit = credit_dict_all.get(short_code, 0)
+
         if credit == 0:
             return "N/A"
 
@@ -686,10 +750,15 @@ def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_m
                 student_series.get(f"{code} External", 0),
                 errors='coerce'
             ) or 0
-
-            result_val = str(
-                student_series.get(f"{code} Result", "")
-            ).strip().upper()
+            
+            # Use short code fallback for internal/external lookups if needed
+            if internal == 0 and external == 0 and ' ' in code:
+                 short_code = code.split(' ')[0]
+                 internal = pd.to_numeric(student_series.get(f"{short_code} Internal", 0), errors='coerce') or 0
+                 external = pd.to_numeric(student_series.get(f"{short_code} External", 0), errors='coerce') or 0
+                 result_val = str(student_series.get(f"{short_code} Result", "")).strip().upper()
+            else:
+                 result_val = str(student_series.get(f"{code} Result", "")).strip().upper()
 
             # 🔑 SAME LOGIC AS RANKING PAGE
             if (internal < 18) or (external < 18):

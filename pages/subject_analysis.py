@@ -904,22 +904,68 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
         if df_for_avg.empty:
             chart = html.P("No students with marks to display. All selected students are absent.", className="text-muted text-center")
         else:
-            avg_marks = {subj: df_for_avg[[c for c in selected_cols if subj in c and "Total" in c]].mean(axis=1).mean()
-                         for subj in selected_subjects}
-            bar_fig = px.bar(x=list(avg_marks.keys()), y=list(avg_marks.values()),
-                             text=[f"{v:.1f}" for v in avg_marks.values()],
-                             color=list(avg_marks.keys()), color_discrete_sequence=px.colors.qualitative.Plotly)
+            # Build data for the bar chart with Full Names
+            avg_marks_data = []
             
-            # --- CUSTOM TOOLTIP (clean style) ---
-            bar_fig.update_traces(
-                textposition="outside",
-                hovertemplate="<b>Subject:</b> %{x}<br><b>Avg Marks:</b> %{y:.2f}<extra></extra>"
-            )
-            # -----------------------------------
-            
-            bar_fig.update_layout(title="Average Total Marks per Subject", title_x=0.5, template="plotly_white",
-                                  yaxis_title="Average Marks", xaxis_title="Subject")
-            chart = dcc.Graph(figure=bar_fig)
+            for subj in selected_subjects:
+                # 1. Identify Full Name (Same logic as tables)
+                display_name = subj
+                subj_cols = [c for c in df_sel.columns if c.startswith(subj)]
+                for col in subj_cols:
+                    if " - " in col:
+                        try:
+                            rest = col.split(" - ", 1)[1]
+                            for suffix in ["Result", "Total", "Internal", "External"]:
+                                if rest.strip().endswith(suffix):
+                                    possible_name = rest.rsplit(suffix, 1)[0].strip()
+                                    if possible_name:
+                                        display_name = f"{subj} - {possible_name}"
+                                    break
+                            if display_name != subj: break
+                        except: continue
+
+                # 2. Calculate Average
+                # Filter related Total columns
+                total_cols = [c for c in selected_cols if subj in c and "Total" in c]
+                if not total_cols:
+                    continue
+                
+                # Calculate mean of totals for this subject across all students
+                # Note: This averages the student's average if multiple totals exist (rare), or just the single total
+                val = df_for_avg[total_cols].mean(axis=1).mean()
+                
+                avg_marks_data.append({"Subject_Code": subj, "Full_Name": display_name, "Average": val})
+
+            if not avg_marks_data:
+                 chart = html.P("No data available for chart.", className="text-muted text-center")
+            else:
+                df_chart = pd.DataFrame(avg_marks_data)
+                
+                bar_fig = px.bar(
+                    df_chart, 
+                    x="Subject_Code", 
+                    y="Average",
+                    text=df_chart["Average"].apply(lambda x: f"{x:.1f}"),
+                    color="Subject_Code", 
+                    color_discrete_sequence=px.colors.qualitative.Plotly,
+                    custom_data=["Full_Name"] # Store full name for tooltip
+                )
+                
+                # --- CUSTOM TOOLTIP & LAYOUT FIXES ---
+                bar_fig.update_traces(
+                    textposition="outside",
+                    hovertemplate="<b>%{customdata[0]}</b><br>Avg Marks: %{y:.2f}<extra></extra>"
+                )
+                
+                bar_fig.update_layout(
+                    title="Average Total Marks per Subject", 
+                    title_x=0.5, 
+                    template="plotly_white",
+                    yaxis_title="Average Marks", 
+                    xaxis_title="Subject Code",
+                    showlegend=False      # Hide legend as x-axis shows codes
+                )
+                chart = dcc.Graph(figure=bar_fig)
 
     return f"{len(selected_subjects)} subjects selected", cards, columns_for_table, data, chart
 
