@@ -1,11 +1,13 @@
 import dash
-from dash import html, dcc, Input, Output, State, callback, ALL, no_update, ctx
+from dash import html, dcc, Input, Output, State, callback, ALL, no_update, ctx, dash_table
 import dash_bootstrap_components as dbc
 import pandas as pd
 import base64
 import io
 import re
-
+import uuid
+from cache_config import cache
+from dash.exceptions import PreventUpdate
 
 dash.register_page(__name__, path='/', name="Overview")
 
@@ -86,28 +88,86 @@ def process_uploaded_excel(contents):
     try:
         content_type, content_string = contents.split(',')
         decoded = base64.b64decode(content_string)
-        # Handles the University/Subject structure
-        df_raw = pd.read_excel(io.BytesIO(decoded), header=[0, 1])
+        
+        # Determine header depth
+        # Read first few rows as generic
+        df_preview = pd.read_excel(io.BytesIO(decoded), header=None, nrows=10)
+        
+        header_row_count = 2 # Default
+        for i, row in df_preview.iterrows():
+            row_str = row.astype(str).str.lower().tolist()
+            if any("internal" in x for x in row_str) and any("external" in x for x in row_str):
+                # Detected the component row. Its index + 1 is the header count.
+                # e.g. if internal is at index 1 -> header rows are 0,1 (count 2)
+                # e.g. if internal is at index 2 -> header rows are 0,1,2 (count 3)
+                header_row_count = i + 1
+                break
+        
+        header_indices = list(range(header_row_count))
+        df_raw = pd.read_excel(io.BytesIO(decoded), header=header_indices)
 
         fixed_cols = []
-        for h1, h2 in df_raw.columns:
-            h1 = str(h1).strip() if str(h1).lower() != "nan" else ""
-            h2 = str(h2).strip() if str(h2).lower() != "nan" else ""
+        last_valid_code = None
 
-            # Preserve Name/Identity columns, merge others
-            if h1.lower() == "name" or any(x in h1.lower() for x in ["seat", "usn", "sl"]):
-                fixed_cols.append("Name" if h1.lower() == "name" else h1)
-            elif h2:
-                fixed_cols.append(f"{h1} {h2}")
+        def is_empty(h): return str(h).lower() == "nan" or str(h).startswith("Unnamed:")
+        
+        # Normalize to tuple access regardless of depth
+        cols = df_raw.columns
+        for col_tuple in cols:
+            # Pad with empty strings if not 3 items (unlikely if header=list)
+            # Actually pandas MultiIndex will have tuples of length == len(header_indices)
+            
+            # Map to H1 (Code), H2 (Name or Component), H3 (Component or Empty)
+            if header_row_count == 3:
+                h1 = str(col_tuple[0]).strip() # Code
+                h2 = str(col_tuple[1]).strip() # Name
+                h3 = str(col_tuple[2]).strip() # Component
+                component = h3
             else:
-                fixed_cols.append(h1)
+                h1 = str(col_tuple[0]).strip() # Code
+                h2 = str(col_tuple[1]).strip() # Component
+                component = h2
+            
+            # Forward Fill Subject Code (from H1)
+            # Only fill if we're in a subject block (where component is present)
+            if not is_empty(h1):
+                last_valid_code = h1
+            elif last_valid_code:
+                # If h1 is empty, use the last valid code
+                h1 = last_valid_code
+
+            # Determine Column Name
+            if is_empty(component):
+                # Identity Column (Name, USN)
+                # It might have been preserved in H1 or H2 in the merged cells
+                val = h1
+                if is_empty(val) and header_row_count == 3: val = h2
+                
+                # Normalize common names
+                v_lower = val.lower()
+                if "name" in v_lower and "code" not in v_lower:
+                    fixed_cols.append("Name")
+                elif any(x in v_lower for x in ["seat", "usn", "number"]):
+                    fixed_cols.append("University Seat Number")
+                else:
+                    fixed_cols.append(val)
+            else:
+                # Subject Column: "Code Name Component" or "Code Component"
+                if header_row_count == 3 and not is_empty(h2):
+                     # Clean up name to avoid very long headers?
+                     # For now, append it. Format: "Code - Name Component"
+                     # We use " - " as separator to easily split later if needed
+                     fixed_cols.append(f"{h1} - {h2} {component}")
+                else:
+                     fixed_cols.append(f"{h1} {component}")
 
         df_raw.columns = fixed_cols
         # Remove empty columns
-        df = df_raw.loc[:, df_raw.columns.str.strip() != ""]
+        df = df_raw.loc[:, ~df_raw.columns.str.contains('^Unnamed')]
+        df = df.loc[:, df.columns.str.strip() != ""]
         return df
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error processing excel: {e}")
         return pd.DataFrame()
 
 def get_subject_codes(df):
@@ -115,8 +175,22 @@ def get_subject_codes(df):
     subject_codes = set()
     for col in df.columns:
         col = col.strip()
+
+        # Handle "Code - Name Component" format
+        if " - " in col:
+            # We assume format: "Code - Name Component"
+            parts = col.split(" - ", 1)
+            code = parts[0].strip()
+            # Verify code format
+            if re.fullmatch(r"[A-Z]{2,}\d{3}[A-Z]?", code):
+                # Verify component at the end
+                if any(col.endswith(f" {s}") for s in ["Internal", "External", "Total", "Result"]):
+                    subject_codes.add(code)
+            continue
+            
         if " " not in col:
             continue
+            
         prefix, suffix = col.rsplit(" ", 1)
         if suffix in ["Internal", "External", "Total", "Result"]:
             if re.fullmatch(r"[A-Z]{2,}\d{3}[A-Z]?", prefix):
@@ -383,13 +457,20 @@ layout = dbc.Container([
             html.P("Your uploaded Excel file must follow this structure:", className="text-muted small"),
             dbc.Table([
                 html.Thead([
+                    # Row 1: Subject Codes
                     html.Tr([
-                        html.Th("University Seat Number"), html.Th("Name"), 
-                        html.Th("BAIL504", colSpan=4, className="text-center border-start border-dark"), 
-                        html.Th("BCS501", colSpan=4, className="text-center border-start border-dark")
+                        html.Th("University Seat Number", rowSpan=3, className="align-middle border-bottom"), 
+                        html.Th("Name", rowSpan=3, className="align-middle border-bottom"), 
+                        html.Th("BAIL504", colSpan=4, className="text-center border-start border-dark bg-light"), 
+                        html.Th("BCS501", colSpan=4, className="text-center border-start border-dark bg-light")
                     ]),
+                    # Row 2: Subject Names (Optional/New Format)
                     html.Tr([
-                        html.Th(""), html.Th(""), 
+                        html.Th("Artificial Intelligence Lab", colSpan=4, className="text-center border-start border-dark text-muted small"),
+                        html.Th("Computer Networks", colSpan=4, className="text-center border-start border-dark text-muted small")
+                    ]),
+                    # Row 3: Components
+                    html.Tr([
                         html.Th("Internal", className="border-start border-dark"), html.Th("External"), html.Th("Total"), html.Th("Result"),
                         html.Th("Internal", className="border-start border-dark"), html.Th("External"), html.Th("Total"), html.Th("Result")
                     ], className="small text-muted")
@@ -496,9 +577,12 @@ def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
 
         subjects = get_subject_codes(df)
         options = [{'label': s, 'value': s} for s in subjects]
-        json_data = df.to_json(date_format='iso', orient='split')
-
-        return options, subjects, json_data, subjects, options
+        
+        # Save to Server Cache instead of JSON string
+        session_id = str(uuid.uuid4())
+        cache.set(session_id, df)
+        
+        return options, subjects, session_id, subjects, options
 
     # 2️⃣ If data already exists in session (Navigation / Restore)
     if stored_options:
@@ -668,13 +752,29 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
      Input('section-data', 'data'),
      Input('usn-mapping-store', 'data')]
 )
-def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
-    if not data or not selected_subjects:
+def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping):
+    if not session_id or not selected_subjects:
         return "0", "0", "0", "0", "0", "0%", html.Div("Upload data and select subjects to view analytics.", className="p-4 text-center text-muted")
     
-    df = pd.read_json(data, orient='split')
-    meta_col = df.columns[0]
+    # Retrieve from cache
+    df = cache.get(session_id)
+    if df is None:
+        # Session expired or invalid
+        return "0", "0", "0", "0", "0", "0%", html.Div("Session expired. Please re-upload data.", className="text-danger p-4 text-center")
     
+    # df = pd.read_json(data, orient='split') <-- OLD
+    # meta_col = df.columns[0]
+
+    # Detect Meta Column (USN)
+    meta_col = 'University Seat Number'
+    if meta_col not in df.columns:
+        # Fallback: check columns containing 'USN' or just take the first column
+        usn_candidates = [c for c in df.columns if 'USN' in str(c).upper()]
+        if usn_candidates:
+            meta_col = usn_candidates[0]
+        else:
+            meta_col = df.columns[0]
+
     # 1. Filter relevant columns
     all_subject_codes = get_subject_codes(df)
     
@@ -683,7 +783,20 @@ def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
     df_filtered = df[info_cols].copy()
     
     # Add relevant subject columns
-    subject_data_cols = [c for c in df.columns if any(c.startswith(s) for s in selected_subjects)]
+    # New logic: columns must START with the code OR match "Code - Name" pattern
+    # But simplified: just check if the code is present at the start followed by space or " - "
+    subject_data_cols = []
+    for c in df.columns:
+        for s in selected_subjects:
+            # Check for standard "CODE Component"
+            if c.startswith(f"{s} "):
+                 subject_data_cols.append(c)
+                 break
+            # Check for "CODE - Name Component"
+            if c.startswith(f"{s} - "):
+                 subject_data_cols.append(c)
+                 break
+    
     df_filtered = pd.concat([df_filtered, df[subject_data_cols]], axis=1)
 
     # 2. Convert Mark columns to Numeric
@@ -785,17 +898,20 @@ def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
             count = len(missing_usns)
             sorted_missing = sorted(list(missing_usns))
             
+            # Format with Section for better details
+            sorted_missing_display = [f"{u} ({usn_mapping.get(u, 'Unknown')})" for u in sorted_missing]
+            
             if count <= 5:
                 # Show all if few
-                display_content = html.Div(f"Missing: {', '.join(sorted_missing)}", className="small mt-1")
+                display_content = html.Div(f"Missing: {', '.join(sorted_missing_display)}", className="small mt-1")
             else:
                 # Show summary + expander for many
                 display_content = html.Div([
-                    html.Div(f"Missing first 5: {', '.join(sorted_missing[:5])}...", className="small mt-1"),
+                    html.Div(f"Missing first 5: {', '.join(sorted_missing_display[:5])}...", className="small mt-1"),
                     html.Details([
                         html.Summary(f"Click to see all {count} missing USNs", style={"cursor": "pointer"}, className="small fw-bold text-muted mt-1"),
                         html.Div(
-                            ", ".join(sorted_missing), 
+                            ", ".join(sorted_missing_display), 
                             className="small p-2 bg-light text-dark border rounded mt-1 text-break", 
                             style={"maxHeight": "150px", "overflowY": "auto"}
                         )
@@ -815,13 +931,99 @@ def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
                 className="mb-3 border-warning"
             )
 
-    # 7. Generate Table UI
-    table = dbc.Table.from_dataframe(
-        df_filtered.head(10), 
-        striped=True, borderless=True, hover=True, responsive=True, 
-        className="mb-0 align-middle",
-        style={"fontSize": "0.85rem"}
+    # 7. Generate Table UI with Complex Headers (Grouped Subjects)
+    # Convert 'Code - Name Component' or 'Code Component' to multi-index
+    cols_def = []
+    
+    # Identify non-subject columns first (Identity, Section, Overall Result)
+    # We want them to span 2 rows in the header vertically
+    # But dash_table handles this via empty strings in the first row if we want grouping
+    
+    preview_df = df_filtered.head(10)
+    
+    for c in preview_df.columns:
+        # Check if it's a valid subject column
+        is_subject_col = False
+        col_header = ["" , c] # Default [Top, Bottom]
+
+        # Is this a subject column?
+        # Check if it ends with a known component
+        # Need to iterate carefully to handle " - "
+        for s in ["Internal", "External", "Total", "Result"]:
+            # Check for EXACT ending match
+            if c.endswith(f" {s}"):
+                # Yes. Now extract the base name.
+                # E.g. "BCS504 - DATA VIS LAB"
+                base = c[:-len(s)].strip()
+                col_header = [base, s]
+                is_subject_col = True
+                break
+        
+        # Identity columns should span nicely
+        if not is_subject_col:
+             # Use empty string for the second row to avoid duplicate text display
+             # This usually creates a cleaner look, though vertical merging might not be perfect in all versions.
+             # Alternatively, ["", c] puts the label at the bottom which lines up with components.
+             col_header = ["", c]
+
+        cols_def.append({"name": col_header, "id": c})
+
+    # Use dash_table instead of dbc.Table for multi-header support
+    # Ensure columns are sorted so that components (Int, Ext, Total, Result) appear next to each other
+    # This is critical for the header merging to work visually
+    
+    # We rely on get_subject_codes logic which might give us subjects.
+    # But preview_df columns might be in any order.
+    # Let's enforce an order: Identity Cols -> (Sub1 Int, Sub1 Ext...) -> (Sub2 Int...) -> Result Cols
+    
+    # Simple check: If our processing keeps "Code - Name Int", "Code - Name Ext" adjacent, merging works.
+    # process_uploaded_excel seems to append them sequentially, so order should be preserved per subject.
+    
+    table = dash_table.DataTable(
+        data=preview_df.to_dict('records'),
+        columns=cols_def,
+        style_table={'overflowX': 'auto', 'minWidth': '100%'},
+        style_header={
+            'backgroundColor': '#f8fafc',
+            'fontWeight': 'bold',
+            'border': '1px solid #e2e8f0',
+            'textAlign': 'center',
+            'whiteSpace': 'normal',
+            'height': 'auto',
+        },
+        style_cell={
+            'textAlign': 'center',
+            'padding': '12px',
+            'fontSize': '0.85rem',
+            'fontFamily': 'var(--bs-body-font-family)',
+            'border': '1px solid #f1f5f9'
+        },
+        style_data_conditional=[
+            {
+                'if': {'row_index': 'odd'},
+                'backgroundColor': '#f9fafb'
+            },
+            # Style for different components
+            # Cannot use lambda in style_data_conditional
+            # We must use filter_query or specify column_id
+            # Since we have dynamic columns, we can add this rule per-column or omit it for now
+            # Alternative: Add 'Result' to cell style based on column name MATCH logic?
+            # Dash doesn't support regex on column_id in styles easily without loop.
+        ],
+        merge_duplicate_headers=True, # This enables the grouping!
+        page_size=10
     )
+    
+    # Dynamic styling for Result columns
+    for col in preview_df.columns:
+        if str(col).endswith(' Result'):
+            table.style_data_conditional.append({
+                'if': {'column_id': col},
+                'fontWeight': 'bold',
+                'color': '#2563eb'
+            })
+    
+    final_output = html.Div([alert_msg, table]) if alert_msg else table
     
     final_output = html.Div([alert_msg, table]) if alert_msg else table
 

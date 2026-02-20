@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.express as px
 from dash.exceptions import PreventUpdate
 from io import StringIO  # <--- Added for stability
+from cache_config import cache
 
 dash.register_page(__name__, path="/subject_analysis", name="Subject Analysis")
 
@@ -395,6 +396,7 @@ layout = dbc.Container([
                     {"if": {"filter_query": "{Overall_Result} = 'Pass'"}, "backgroundColor": "#ecfdf5", "color": "#059669", "fontWeight": "700"},
                     {"if": {"filter_query": "{Overall_Result} = 'Absent'"}, "backgroundColor": "#fff7ed", "color": "#d97706", "fontWeight": "700"},
                 ],
+                merge_duplicate_headers=True,
                 page_size=10,
                 sort_action="native",
                 filter_action="native",
@@ -499,9 +501,14 @@ def update_subject_dropdown(overview_subjects, current_value):
     State("stored-data", "data"),
     prevent_initial_call='initial_duplicate'  # <-- FIX IS HERE
 )
-def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
-    if not json_data:
+def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
+    if not session_id:
         raise PreventUpdate
+    
+    # Retrieve from Server Cache
+    df = cache.get(session_id)
+    if df is None:
+        return "Session expired", html.P("Please return to Overview and upload data.", className="text-danger"), [], [], html.P("No Data")
     
     # Remove the special markers if present
     selected_subjects = [s for s in (selected_subjects or []) if not s.startswith("__")]
@@ -509,9 +516,8 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
     if not selected_subjects:
         return "0 subjects selected", html.P("Please select at least one subject.", className="text-muted text-center"), [], [], html.Div()
 
-    # FIX: Use StringIO for safe reading
-    df = pd.read_json(StringIO(json_data), orient="split")
     first_col = df.columns[0]
+
     if "Name" not in df.columns:
         df["Name"] = ""
 
@@ -625,6 +631,27 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
         # resulting in fallback or missing data. Use df_sel to ensure consistency with KPIs.
         subj_cols = [c for c in df_sel.columns if c.startswith(subj)]
         
+        # Try to extract full subject name if available in columns
+        display_name = subj
+        for col in subj_cols:
+            if " - " in col:
+                # Expected format: "Code - Name Component"
+                # e.g. "18CS51 - DATA STRUCTURES Total"
+                try:
+                    # Split by " - " to get "Name Component" part
+                    rest = col.split(" - ", 1)[1]
+                    # Remove the component suffix
+                    for suffix in ["Result", "Total", "Internal", "External"]:
+                        if rest.strip().endswith(suffix):
+                            possible_name = rest.rsplit(suffix, 1)[0].strip()
+                            if possible_name:
+                                display_name = f"{subj} - {possible_name}"
+                            break
+                    if display_name != subj:
+                        break
+                except:
+                    continue
+
         res_col = next((c for c in subj_cols if "Result" in c), None)
         int_col = next((c for c in subj_cols if "Internal" in c), None)
         ext_col = next((c for c in subj_cols if "External" in c), None)
@@ -649,7 +676,7 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
 
         if subj_df.empty:
             subject_stats.append({
-                "Subject": subj,
+                "Subject": display_name,
                 "Total Students": 0, "Appeared": 0, "Absent": 0, "Passed": 0, "Failed": 0, "Pass %": 0
             })
             continue
@@ -694,7 +721,7 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
         s_pass_pct = round((s_passed / s_appeared) * 100, 2) if s_appeared > 0 else 0
         
         subject_stats.append({
-            "Subject": subj,
+            "Subject": display_name,
             "Total Students": s_total,
             "Appeared": s_appeared,
             "Absent": s_absent,
@@ -801,10 +828,41 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
     ])
 
 
+
     # Table
-    columns_for_table = [{"name": [c.split(" ")[0], " ".join(c.split(" ")[1:])], "id": c} for c in selected_cols]
-    columns_for_table.insert(0, {"name": ["Student", "Name"], "id": "Name"})
-    columns_for_table.insert(0, {"name": ["Student", "ID"], "id": first_col})
+    columns_for_table = []
+    
+    # Add Identity Columns first
+    columns_for_table.append({"name": ["Student", "ID"], "id": first_col})
+    columns_for_table.append({"name": ["Student", "Name"], "id": "Name"})
+
+    # robust column grouping logic
+    # Group columns by subject to ensure they appear together in the table
+    # Sort columns by subject code/name first, then bu component order (Int, Ext, Tot, Res)
+    
+    def get_col_sort_key(col_name):
+        # Extract subject prefix and component
+        for s in ["Internal", "External", "Total", "Result"]:
+            if col_name.endswith(f" {s}"):
+                base = col_name[:-len(s)].strip()
+                # Order: Internal=0, External=1, Total=2, Result=3
+                order = {"Internal": 0, "External": 1, "Total": 2, "Result": 3}.get(s, 9)
+                return (base, order)
+        return (col_name, 99)
+
+    selected_cols.sort(key=get_col_sort_key)
+
+    for c in selected_cols:
+        col_header = ["", c] # Default fallback
+        
+        for s in ["Internal", "External", "Total", "Result"]:
+            if c.endswith(f" {s}"):
+                base = c[:-len(s)].strip() # This extracts the full Subject Name e.g. "18CS51 - MATH"
+                col_header = [base, s]
+                break
+            
+        columns_for_table.append({"name": col_header, "id": c})
+
     columns_for_table.append({"name": ["Overall", "Result"], "id": "Overall_Result"})
     data = df_sel.to_dict("records")
 
@@ -851,22 +909,68 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
         if df_for_avg.empty:
             chart = html.P("No students with marks to display. All selected students are absent.", className="text-muted text-center")
         else:
-            avg_marks = {subj: df_for_avg[[c for c in selected_cols if subj in c and "Total" in c]].mean(axis=1).mean()
-                         for subj in selected_subjects}
-            bar_fig = px.bar(x=list(avg_marks.keys()), y=list(avg_marks.values()),
-                             text=[f"{v:.1f}" for v in avg_marks.values()],
-                             color=list(avg_marks.keys()), color_discrete_sequence=px.colors.qualitative.Plotly)
+            # Build data for the bar chart with Full Names
+            avg_marks_data = []
             
-            # --- CUSTOM TOOLTIP (clean style) ---
-            bar_fig.update_traces(
-                textposition="outside",
-                hovertemplate="<b>Subject:</b> %{x}<br><b>Avg Marks:</b> %{y:.2f}<extra></extra>"
-            )
-            # -----------------------------------
-            
-            bar_fig.update_layout(title="Average Total Marks per Subject", title_x=0.5, template="plotly_white",
-                                  yaxis_title="Average Marks", xaxis_title="Subject")
-            chart = dcc.Graph(figure=bar_fig)
+            for subj in selected_subjects:
+                # 1. Identify Full Name (Same logic as tables)
+                display_name = subj
+                subj_cols = [c for c in df_sel.columns if c.startswith(subj)]
+                for col in subj_cols:
+                    if " - " in col:
+                        try:
+                            rest = col.split(" - ", 1)[1]
+                            for suffix in ["Result", "Total", "Internal", "External"]:
+                                if rest.strip().endswith(suffix):
+                                    possible_name = rest.rsplit(suffix, 1)[0].strip()
+                                    if possible_name:
+                                        display_name = f"{subj} - {possible_name}"
+                                    break
+                            if display_name != subj: break
+                        except: continue
+
+                # 2. Calculate Average
+                # Filter related Total columns
+                total_cols = [c for c in selected_cols if subj in c and "Total" in c]
+                if not total_cols:
+                    continue
+                
+                # Calculate mean of totals for this subject across all students
+                # Note: This averages the student's average if multiple totals exist (rare), or just the single total
+                val = df_for_avg[total_cols].mean(axis=1).mean()
+                
+                avg_marks_data.append({"Subject_Code": subj, "Full_Name": display_name, "Average": val})
+
+            if not avg_marks_data:
+                 chart = html.P("No data available for chart.", className="text-muted text-center")
+            else:
+                df_chart = pd.DataFrame(avg_marks_data)
+                
+                bar_fig = px.bar(
+                    df_chart, 
+                    x="Subject_Code", 
+                    y="Average",
+                    text=df_chart["Average"].apply(lambda x: f"{x:.1f}"),
+                    color="Subject_Code", 
+                    color_discrete_sequence=px.colors.qualitative.Plotly,
+                    custom_data=["Full_Name"] # Store full name for tooltip
+                )
+                
+                # --- CUSTOM TOOLTIP & LAYOUT FIXES ---
+                bar_fig.update_traces(
+                    textposition="outside",
+                    hovertemplate="<b>%{customdata[0]}</b><br>Avg Marks: %{y:.2f}<extra></extra>"
+                )
+                
+                bar_fig.update_layout(
+                    title="Average Total Marks per Subject", 
+                    title_x=0.5, 
+                    template="plotly_white",
+                    yaxis_title="Average Marks", 
+                    xaxis_title="Subject Code",
+                    showlegend=False      # Hide legend as x-axis shows codes
+                )
+                chart = dcc.Graph(figure=bar_fig)
 
     return f"{len(selected_subjects)} subjects selected", cards, columns_for_table, data, chart
 

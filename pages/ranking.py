@@ -5,7 +5,9 @@ import pandas as pd
 import re
 from functools import lru_cache
 import ast
-from io import StringIO, BytesIO 
+from io import StringIO, BytesIO
+from cache_config import cache
+from dash.exceptions import PreventUpdate
 
 # Register page
 dash.register_page(__name__, path="/ranking", name="Ranking")
@@ -184,8 +186,11 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
     return df
 
 @lru_cache(maxsize=32)
-def _prepare_base(json_str, section_key, usn_mapping_str=None):
-    df = pd.read_json(StringIO(json_str), orient='split')
+def _prepare_base(session_id, section_key, usn_mapping_str=None):
+    if not session_id: return pd.DataFrame()
+    df = cache.get(session_id)
+    if df is None: return pd.DataFrame()
+
     section_ranges = None
     if section_key not in (None, "None"):
         try: section_ranges = ast.literal_eval(section_key)
@@ -531,11 +536,17 @@ def apply_theme(v): return themed_style_block("dark" if "dark" in (v or []) else
     Input('section-data', 'data'),
     Input('usn-mapping-store', 'data')
 )
-def update_section_options(json_data, section_ranges, usn_mapping):
-    if not json_data: return [{"label": "All Sections", "value": "ALL"}]
-    df = pd.read_json(StringIO(json_data), orient='split') 
-    df = _normalize_df(df, section_ranges, usn_mapping)
-    sections = sorted(df['Section'].dropna().unique())
+def update_section_options(session_id, section_ranges, usn_mapping):
+    if not session_id: return [{"label": "All Sections", "value": "ALL"}]
+    
+    # Use cached preparer
+    sec_str = str(section_ranges) if section_ranges else "None"
+    usn_str = str(usn_mapping) if usn_mapping else "None"
+    
+    df_norm = _prepare_base(session_id, sec_str, usn_str)
+    if df_norm.empty: return [{"label": "All Sections", "value": "ALL"}]
+    
+    sections = sorted(df_norm['Section'].dropna().unique())
     return [{"label": "All Sections", "value": "ALL"}] + [{"label": s, "value": s} for s in sections]
 
 @callback([Output('filter-dropdown', 'value'), Output('section-dropdown', 'value'), Output('search-input', 'value')], Input('reset-btn', 'n_clicks'), prevent_initial_call=True)
@@ -557,11 +568,13 @@ def toggle_metric_selector(rank_type):
     Input('ranking-type', 'value'),
     State('section-data', 'data')
 )
-def generate_credit_panel(json_data, ranking_type, section_ranges):
+def generate_credit_panel(session_id, ranking_type, section_ranges):
     if ranking_type != 'sgpa': return html.Div()
-    if not json_data: return ""
+    if not session_id: return ""
     
-    df = pd.read_json(StringIO(json_data), orient='split')
+    df = cache.get(session_id)
+    if df is None: return ""
+    
     codes = set()
     for col in df.columns:
         m = re.match(r'^(.*?)\s+(Internal|External|Total)$', col, flags=re.IGNORECASE)
@@ -1226,8 +1239,9 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
     # _prepare_base is lru_cached, so it won't re-parse JSON if string is identical
     try:
         df = _prepare_base(json_data, _section_key(section_data))
+        if df.empty: return no_update, no_update
     except:
-        df = pd.read_json(StringIO(json_data), orient='split')
+        return no_update, no_update
 
     if 'Student_ID' not in df.columns: df = df.rename(columns={df.columns[0]: 'Student_ID'})
     
@@ -1238,15 +1252,37 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
     
     row = student_row.iloc[0]
     
-    # Identify subject codes dynamically
-    subject_codes = sorted(list(set([c.split(' ')[0] for c in df.columns if any(k in c for k in ['Internal', 'External']) and ' ' in c])))
+    # Identify subject data dynamically
+    processed_subjects = {}
+
+    for col in df.columns:
+        if ' ' not in col: continue
+        
+        prefix, suffix = col.rsplit(' ', 1)
+        if suffix in ['Internal', 'External', 'Total', 'Result']:
+            # Handle "Code - Name" pattern or just "Code"
+            if " - " in prefix:
+                code_part = prefix.split(" - ", 1)[0].strip()
+                name_part = prefix.split(" - ", 1)[1].strip()
+            else:
+                code_part = prefix.strip()
+                name_part = prefix.strip() # Fallback if no name
+
+            if code_part not in processed_subjects:
+                processed_subjects[code_part] = {"name": name_part, "prefix": prefix}
+
+    subject_codes = sorted(list(processed_subjects.keys()))
     
     rows = []
     for code in subject_codes:
-        i_val = row.get(f"{code} Internal")
-        e_val = row.get(f"{code} External")
-        t_val = row.get(f"{code} Total")
-        r_val = row.get(f"{code} Result")
+        meta = processed_subjects[code]
+        prefix = meta["prefix"]
+        name = meta["name"]
+        
+        i_val = row.get(f"{prefix} Internal")
+        e_val = row.get(f"{prefix} External")
+        t_val = row.get(f"{prefix} Total")
+        r_val = row.get(f"{prefix} Result")
 
         # STRICT VALIDATION: Filter out subjects the student didn't take
         # We treat a subject as "not mapped" if:
@@ -1280,8 +1316,11 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
 
         res_disp = fmt_disp(r_val)    
 
+        # Use full subject name if available
+        display_subject = f"{code} - {name}" if name != code else code
+
         rows.append(html.Tr([
-            html.Td(code, className="fw-bold"),
+            html.Td(display_subject, className="fw-bold text-start"),
             html.Td(fmt_disp(i_val)),
             html.Td(fmt_disp(e_val)),
             html.Td(fmt_disp(t_val), className="fw-bold"),

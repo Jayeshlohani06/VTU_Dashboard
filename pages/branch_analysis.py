@@ -9,6 +9,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 
+import utils.master_store as ms
+
 dash.register_page(__name__, path="/branch-analysis", name="Branch Analysis")
 
 # ==================== HELPERS ====================
@@ -18,24 +20,69 @@ def process_uploaded_excel(contents):
     try:
         content_type, content_string = contents.split(',')
         decoded = base64.b64decode(content_string)
-        # VTU format typically has 2 header rows
-        df_raw = pd.read_excel(io.BytesIO(decoded), header=[0, 1])
+        
+        # Determine header depth
+        df_preview = pd.read_excel(io.BytesIO(decoded), header=None, nrows=10)
+        
+        header_row_count = 2 # Default
+        for i, row in df_preview.iterrows():
+            row_str = row.astype(str).str.lower().tolist()
+            if any("internal" in x for x in row_str) and any("external" in x for x in row_str):
+                header_row_count = i + 1
+                break
+        
+        header_indices = list(range(header_row_count))
+        df_raw = pd.read_excel(io.BytesIO(decoded), header=header_indices)
 
         fixed_cols = []
-        for h1, h2 in df_raw.columns:
-            h1 = str(h1).strip() if str(h1).lower() != "nan" else ""
-            h2 = str(h2).strip() if str(h2).lower() != "nan" else ""
-
-            if h1.lower() == "name":
-                fixed_cols.append("Name")
-            elif h2:
-                fixed_cols.append(f"{h1} {h2}")
+        last_valid_code = None
+        
+        cols = df_raw.columns
+        for col_tuple in cols:
+            # Map column tuples based on dynamic depth
+            if header_row_count == 3:
+                h1 = str(col_tuple[0]).strip() # Code
+                h2 = str(col_tuple[1]).strip() # Name
+                h3 = str(col_tuple[2]).strip() # Component
+                
+                # Check empty
+                is_empty = lambda h: str(h).lower() == "nan" or str(h).startswith("Unnamed:")
+                
+                if not is_empty(h1):
+                    last_valid_code = h1
+                elif last_valid_code:
+                    h1 = last_valid_code
+                
+                if is_empty(h3):
+                     # Likely identity column
+                     val = h1 if not is_empty(h1) else h2
+                     fixed_cols.append("Name" if "name" in val.lower() else val)
+                else:
+                     # Include Name (h2) if available to match Overview logic
+                     if not is_empty(h2) and h2.lower() not in ["internal", "external", "total", "result"]:
+                         fixed_cols.append(f"{h1} - {h2} {h3}") # Code - Name Component
+                     else:
+                         fixed_cols.append(f"{h1} {h3}")
             else:
-                fixed_cols.append(h1)
+                # 2-Row fallback (Code -> Component)
+                h1 = str(col_tuple[0]).strip()
+                h2 = str(col_tuple[1]).strip()
+                is_empty = lambda h: str(h).lower() == "nan" or str(h).startswith("Unnamed:")
+
+                if not is_empty(h1):
+                    last_valid_code = h1
+                elif last_valid_code:
+                    h1 = last_valid_code
+                
+                if is_empty(h2):
+                     fixed_cols.append("Name" if "name" in h1.lower() else h1)
+                else:
+                     fixed_cols.append(f"{h1} {h2}")
 
         df_raw.columns = fixed_cols
         # Remove empty columns
-        df = df_raw.loc[:, df_raw.columns.str.strip() != ""]
+        df = df_raw.loc[:, ~df_raw.columns.str.contains('^Unnamed')]
+        df = df.loc[:, df.columns.str.strip() != ""]
         return df
     except Exception as e:
         print(f"Error parsing file: {e}")
@@ -292,6 +339,23 @@ def analyze_branches(n, file_contents, branch_names):
 
     if university_df.empty:
         return dbc.Alert("No valid data found in uploaded files.", color="warning")
+
+    # --- UPDATE MASTER STORE FOR BRANCH INTELLIGENCE ---
+    # Convert Wide Format (University DF) -> Long Format (Master Store)
+    long_data = []
+    result_cols_all = [c for c in university_df.columns if 'Result' in c and c != 'Overall_Result']
+    
+    for rc in result_cols_all:
+        subject_name = rc.replace(' Result', '').strip()
+        temp_df = university_df[['Student_ID', 'Name', 'Branch', rc]].copy()
+        temp_df.columns = ['Student_ID', 'Name', 'Branch', 'Result']
+        temp_df['Subject'] = subject_name
+        long_data.append(temp_df)
+    
+    if long_data:
+        ms.MASTER_BRANCH_DATA = pd.concat(long_data, ignore_index=True)
+    else:
+        ms.MASTER_BRANCH_DATA = pd.DataFrame(columns=["Student_ID", "Name", "Branch", "Subject", "Result"])
 
     # --- AGGREGATE STATS ---
     uni_total = len(university_df)
