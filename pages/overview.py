@@ -758,7 +758,16 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
     # df = pd.read_json(data, orient='split') <-- OLD
     # meta_col = df.columns[0]
 
-    
+    # Detect Meta Column (USN)
+    meta_col = 'University Seat Number'
+    if meta_col not in df.columns:
+        # Fallback: check columns containing 'USN' or just take the first column
+        usn_candidates = [c for c in df.columns if 'USN' in str(c).upper()]
+        if usn_candidates:
+            meta_col = usn_candidates[0]
+        else:
+            meta_col = df.columns[0]
+
     # 1. Filter relevant columns
     all_subject_codes = get_subject_codes(df)
     
@@ -882,17 +891,20 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
             count = len(missing_usns)
             sorted_missing = sorted(list(missing_usns))
             
+            # Format with Section for better details
+            sorted_missing_display = [f"{u} ({usn_mapping.get(u, 'Unknown')})" for u in sorted_missing]
+            
             if count <= 5:
                 # Show all if few
-                display_content = html.Div(f"Missing: {', '.join(sorted_missing)}", className="small mt-1")
+                display_content = html.Div(f"Missing: {', '.join(sorted_missing_display)}", className="small mt-1")
             else:
                 # Show summary + expander for many
                 display_content = html.Div([
-                    html.Div(f"Missing first 5: {', '.join(sorted_missing[:5])}...", className="small mt-1"),
+                    html.Div(f"Missing first 5: {', '.join(sorted_missing_display[:5])}...", className="small mt-1"),
                     html.Details([
                         html.Summary(f"Click to see all {count} missing USNs", style={"cursor": "pointer"}, className="small fw-bold text-muted mt-1"),
                         html.Div(
-                            ", ".join(sorted_missing), 
+                            ", ".join(sorted_missing_display), 
                             className="small p-2 bg-light text-dark border rounded mt-1 text-break", 
                             style={"maxHeight": "150px", "overflowY": "auto"}
                         )
