@@ -16,14 +16,21 @@ dash.register_page(__name__, path="/branch-analysis", name="Branch Analysis")
 # ==================== HELPERS ====================
 
 def process_uploaded_excel(contents):
-    """Parses raw Excel content into a clean DataFrame."""
+    """Parses raw Excel content into a clean DataFrame with robust error handling."""
     try:
+        if not contents:
+            return pd.DataFrame()
+
         content_type, content_string = contents.split(',')
         decoded = base64.b64decode(content_string)
         
-        # Determine header depth
-        df_preview = pd.read_excel(io.BytesIO(decoded), header=None, nrows=10)
-        
+        # Determine header depth safely
+        try:
+            df_preview = pd.read_excel(io.BytesIO(decoded), header=None, nrows=10)
+        except Exception as e:
+            print(f"Error reading Excel preview: {e}")
+            return pd.DataFrame()
+
         header_row_count = 2 # Default
         for i, row in df_preview.iterrows():
             row_str = row.astype(str).str.lower().tolist()
