@@ -457,13 +457,20 @@ layout = dbc.Container([
             html.P("Your uploaded Excel file must follow this structure:", className="text-muted small"),
             dbc.Table([
                 html.Thead([
+                    # Row 1: Subject Codes
                     html.Tr([
-                        html.Th("University Seat Number"), html.Th("Name"), 
-                        html.Th("BAIL504", colSpan=4, className="text-center border-start border-dark"), 
-                        html.Th("BCS501", colSpan=4, className="text-center border-start border-dark")
+                        html.Th("University Seat Number", rowSpan=3, className="align-middle border-bottom"), 
+                        html.Th("Name", rowSpan=3, className="align-middle border-bottom"), 
+                        html.Th("BAIL504", colSpan=4, className="text-center border-start border-dark bg-light"), 
+                        html.Th("BCS501", colSpan=4, className="text-center border-start border-dark bg-light")
                     ]),
+                    # Row 2: Subject Names (Optional/New Format)
                     html.Tr([
-                        html.Th(""), html.Th(""), 
+                        html.Th("Artificial Intelligence Lab", colSpan=4, className="text-center border-start border-dark text-muted small"),
+                        html.Th("Computer Networks", colSpan=4, className="text-center border-start border-dark text-muted small")
+                    ]),
+                    # Row 3: Components
+                    html.Tr([
                         html.Th("Internal", className="border-start border-dark"), html.Th("External"), html.Th("Total"), html.Th("Result"),
                         html.Th("Internal", className="border-start border-dark"), html.Th("External"), html.Th("Total"), html.Th("Result")
                     ], className="small text-muted")
