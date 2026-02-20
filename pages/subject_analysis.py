@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.express as px
 from dash.exceptions import PreventUpdate
 from io import StringIO  # <--- Added for stability
+from cache_config import cache
 
 dash.register_page(__name__, path="/subject_analysis", name="Subject Analysis")
 
@@ -500,9 +501,14 @@ def update_subject_dropdown(overview_subjects, current_value):
     State("stored-data", "data"),
     prevent_initial_call='initial_duplicate'  # <-- FIX IS HERE
 )
-def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
-    if not json_data:
+def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
+    if not session_id:
         raise PreventUpdate
+    
+    # Retrieve from Server Cache
+    df = cache.get(session_id)
+    if df is None:
+        return "Session expired", html.P("Please return to Overview and upload data.", className="text-danger"), [], [], html.P("No Data")
     
     # Remove the special markers if present
     selected_subjects = [s for s in (selected_subjects or []) if not s.startswith("__")]
@@ -510,9 +516,8 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
     if not selected_subjects:
         return "0 subjects selected", html.P("Please select at least one subject.", className="text-muted text-center"), [], [], html.Div()
 
-    # FIX: Use StringIO for safe reading
-    df = pd.read_json(StringIO(json_data), orient="split")
     first_col = df.columns[0]
+
     if "Name" not in df.columns:
         df["Name"] = ""
 

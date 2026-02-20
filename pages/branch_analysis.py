@@ -9,6 +9,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 
+import utils.master_store as ms
+
 dash.register_page(__name__, path="/branch-analysis", name="Branch Analysis")
 
 # ==================== HELPERS ====================
@@ -56,7 +58,11 @@ def process_uploaded_excel(contents):
                      val = h1 if not is_empty(h1) else h2
                      fixed_cols.append("Name" if "name" in val.lower() else val)
                 else:
-                     fixed_cols.append(f"{h1} {h3}")
+                     # Include Name (h2) if available to match Overview logic
+                     if not is_empty(h2) and h2.lower() not in ["internal", "external", "total", "result"]:
+                         fixed_cols.append(f"{h1} - {h2} {h3}") # Code - Name Component
+                     else:
+                         fixed_cols.append(f"{h1} {h3}")
             else:
                 # 2-Row fallback (Code -> Component)
                 h1 = str(col_tuple[0]).strip()
@@ -333,6 +339,23 @@ def analyze_branches(n, file_contents, branch_names):
 
     if university_df.empty:
         return dbc.Alert("No valid data found in uploaded files.", color="warning")
+
+    # --- UPDATE MASTER STORE FOR BRANCH INTELLIGENCE ---
+    # Convert Wide Format (University DF) -> Long Format (Master Store)
+    long_data = []
+    result_cols_all = [c for c in university_df.columns if 'Result' in c and c != 'Overall_Result']
+    
+    for rc in result_cols_all:
+        subject_name = rc.replace(' Result', '').strip()
+        temp_df = university_df[['Student_ID', 'Name', 'Branch', rc]].copy()
+        temp_df.columns = ['Student_ID', 'Name', 'Branch', 'Result']
+        temp_df['Subject'] = subject_name
+        long_data.append(temp_df)
+    
+    if long_data:
+        ms.MASTER_BRANCH_DATA = pd.concat(long_data, ignore_index=True)
+    else:
+        ms.MASTER_BRANCH_DATA = pd.DataFrame(columns=["Student_ID", "Name", "Branch", "Subject", "Result"])
 
     # --- AGGREGATE STATS ---
     uni_total = len(university_df)

@@ -1,6 +1,7 @@
 import dash
 from dash import html, dcc, callback, Input, Output
 import dash_bootstrap_components as dbc
+from cache_config import cache
 
 # ----------------- Initialize Dash App -----------------
 app = dash.Dash(
@@ -13,6 +14,9 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     prevent_initial_callbacks='initial_duplicate'
 )
+
+server = app.server
+cache.init_app(server)
 
 app.title = "Student Performance Dashboard"
 

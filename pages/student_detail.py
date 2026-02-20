@@ -4,6 +4,8 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objs as go
 import re
+from cache_config import cache
+from dash.exceptions import PreventUpdate
 
 dash.register_page(__name__, path="/student_detail", name="Student Detail")
 
@@ -175,10 +177,12 @@ layout = dbc.Container([
     Output('student-subject-dropdown', 'value'),
     Input('stored-data', 'data')
 )
-def populate_subject_dropdown(json_data):
-    if not json_data:
+def populate_subject_dropdown(session_id):
+    if not session_id:
         return [], []
-    df = pd.read_json(json_data, orient='split')
+    df = cache.get(session_id)
+    if df is None: return [], []
+    
     if 'Name' not in df.columns:
         df['Name'] = ""
     exclude_cols = ['Student ID', 'Name', 'Section', df.columns[0]]
@@ -212,10 +216,12 @@ def populate_subject_dropdown(json_data):
     State('analysis-type-radio', 'value'),
     prevent_initial_call=True
 )
-def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_codes, analysis_type):
-    if not json_data or not search_value:
+def generate_credit_inputs(n_clicks, search_value, session_id, selected_subject_codes, analysis_type):
+    if not session_id or not search_value:
         return ""
-    df = pd.read_json(json_data, orient='split')
+    df = cache.get(session_id)
+    if df is None: return ""
+    
     if 'Name' not in df.columns:
         df['Name'] = ""
     # robust search (avoid AttributeError by ensuring Series)
@@ -339,12 +345,14 @@ def generate_credit_inputs(n_clicks, search_value, json_data, selected_subject_c
     ],
     prevent_initial_call=True
 )
-def display_full_report(n_clicks, search_value, json_data, section_ranges, usn_mapping, analysis_type, credit_ids, credit_vals):
-    if not all([json_data, search_value]):
+def display_full_report(n_clicks, search_value, session_id, section_ranges, usn_mapping, analysis_type, credit_ids, credit_vals):
+    if not all([session_id, search_value]):
         return ""
 
     # Load & normalize base columns
-    df = pd.read_json(json_data, orient='split')
+    df = cache.get(session_id)
+    if df is None: return ""
+    
     if 'Name' not in df.columns:
         df['Name'] = ""
 

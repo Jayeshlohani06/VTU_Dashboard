@@ -5,7 +5,9 @@ import pandas as pd
 import base64
 import io
 import re
-
+import uuid
+from cache_config import cache
+from dash.exceptions import PreventUpdate
 
 dash.register_page(__name__, path='/', name="Overview")
 
@@ -568,9 +570,12 @@ def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
 
         subjects = get_subject_codes(df)
         options = [{'label': s, 'value': s} for s in subjects]
-        json_data = df.to_json(date_format='iso', orient='split')
-
-        return options, subjects, json_data, subjects, options
+        
+        # Save to Server Cache instead of JSON string
+        session_id = str(uuid.uuid4())
+        cache.set(session_id, df)
+        
+        return options, subjects, session_id, subjects, options
 
     # 2️⃣ If data already exists in session (Navigation / Restore)
     if stored_options:
@@ -740,12 +745,19 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
      Input('section-data', 'data'),
      Input('usn-mapping-store', 'data')]
 )
-def update_dashboard(data, selected_subjects, section_ranges, usn_mapping):
-    if not data or not selected_subjects:
+def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping):
+    if not session_id or not selected_subjects:
         return "0", "0", "0", "0", "0", "0%", html.Div("Upload data and select subjects to view analytics.", className="p-4 text-center text-muted")
     
-    df = pd.read_json(data, orient='split')
-    meta_col = df.columns[0]
+    # Retrieve from cache
+    df = cache.get(session_id)
+    if df is None:
+        # Session expired or invalid
+        return "0", "0", "0", "0", "0", "0%", html.Div("Session expired. Please re-upload data.", className="text-danger p-4 text-center")
+    
+    # df = pd.read_json(data, orient='split') <-- OLD
+    # meta_col = df.columns[0]
+
     
     # 1. Filter relevant columns
     all_subject_codes = get_subject_codes(df)
