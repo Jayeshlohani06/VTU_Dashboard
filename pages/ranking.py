@@ -1238,15 +1238,37 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
     
     row = student_row.iloc[0]
     
-    # Identify subject codes dynamically
-    subject_codes = sorted(list(set([c.split(' ')[0] for c in df.columns if any(k in c for k in ['Internal', 'External']) and ' ' in c])))
+    # Identify subject data dynamically
+    processed_subjects = {}
+
+    for col in df.columns:
+        if ' ' not in col: continue
+        
+        prefix, suffix = col.rsplit(' ', 1)
+        if suffix in ['Internal', 'External', 'Total', 'Result']:
+            # Handle "Code - Name" pattern or just "Code"
+            if " - " in prefix:
+                code_part = prefix.split(" - ", 1)[0].strip()
+                name_part = prefix.split(" - ", 1)[1].strip()
+            else:
+                code_part = prefix.strip()
+                name_part = prefix.strip() # Fallback if no name
+
+            if code_part not in processed_subjects:
+                processed_subjects[code_part] = {"name": name_part, "prefix": prefix}
+
+    subject_codes = sorted(list(processed_subjects.keys()))
     
     rows = []
     for code in subject_codes:
-        i_val = row.get(f"{code} Internal")
-        e_val = row.get(f"{code} External")
-        t_val = row.get(f"{code} Total")
-        r_val = row.get(f"{code} Result")
+        meta = processed_subjects[code]
+        prefix = meta["prefix"]
+        name = meta["name"]
+        
+        i_val = row.get(f"{prefix} Internal")
+        e_val = row.get(f"{prefix} External")
+        t_val = row.get(f"{prefix} Total")
+        r_val = row.get(f"{prefix} Result")
 
         # STRICT VALIDATION: Filter out subjects the student didn't take
         # We treat a subject as "not mapped" if:
@@ -1280,8 +1302,11 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
 
         res_disp = fmt_disp(r_val)    
 
+        # Use full subject name if available
+        display_subject = f"{code} - {name}" if name != code else code
+
         rows.append(html.Tr([
-            html.Td(code, className="fw-bold"),
+            html.Td(display_subject, className="fw-bold text-start"),
             html.Td(fmt_disp(i_val)),
             html.Td(fmt_disp(e_val)),
             html.Td(fmt_disp(t_val), className="fw-bold"),

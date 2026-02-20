@@ -395,6 +395,7 @@ layout = dbc.Container([
                     {"if": {"filter_query": "{Overall_Result} = 'Pass'"}, "backgroundColor": "#ecfdf5", "color": "#059669", "fontWeight": "700"},
                     {"if": {"filter_query": "{Overall_Result} = 'Absent'"}, "backgroundColor": "#fff7ed", "color": "#d97706", "fontWeight": "700"},
                 ],
+                merge_duplicate_headers=True,
                 page_size=10,
                 sort_action="native",
                 filter_action="native",
@@ -625,6 +626,27 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
         # resulting in fallback or missing data. Use df_sel to ensure consistency with KPIs.
         subj_cols = [c for c in df_sel.columns if c.startswith(subj)]
         
+        # Try to extract full subject name if available in columns
+        display_name = subj
+        for col in subj_cols:
+            if " - " in col:
+                # Expected format: "Code - Name Component"
+                # e.g. "18CS51 - DATA STRUCTURES Total"
+                try:
+                    # Split by " - " to get "Name Component" part
+                    rest = col.split(" - ", 1)[1]
+                    # Remove the component suffix
+                    for suffix in ["Result", "Total", "Internal", "External"]:
+                        if rest.strip().endswith(suffix):
+                            possible_name = rest.rsplit(suffix, 1)[0].strip()
+                            if possible_name:
+                                display_name = f"{subj} - {possible_name}"
+                            break
+                    if display_name != subj:
+                        break
+                except:
+                    continue
+
         res_col = next((c for c in subj_cols if "Result" in c), None)
         int_col = next((c for c in subj_cols if "Internal" in c), None)
         ext_col = next((c for c in subj_cols if "External" in c), None)
@@ -649,7 +671,7 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
 
         if subj_df.empty:
             subject_stats.append({
-                "Subject": subj,
+                "Subject": display_name,
                 "Total Students": 0, "Appeared": 0, "Absent": 0, "Passed": 0, "Failed": 0, "Pass %": 0
             })
             continue
@@ -694,7 +716,7 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
         s_pass_pct = round((s_passed / s_appeared) * 100, 2) if s_appeared > 0 else 0
         
         subject_stats.append({
-            "Subject": subj,
+            "Subject": display_name,
             "Total Students": s_total,
             "Appeared": s_appeared,
             "Absent": s_absent,
@@ -801,10 +823,41 @@ def update_analysis(selected_subjects, result_filter, chart_tab, json_data):
     ])
 
 
+
     # Table
-    columns_for_table = [{"name": [c.split(" ")[0], " ".join(c.split(" ")[1:])], "id": c} for c in selected_cols]
-    columns_for_table.insert(0, {"name": ["Student", "Name"], "id": "Name"})
-    columns_for_table.insert(0, {"name": ["Student", "ID"], "id": first_col})
+    columns_for_table = []
+    
+    # Add Identity Columns first
+    columns_for_table.append({"name": ["Student", "ID"], "id": first_col})
+    columns_for_table.append({"name": ["Student", "Name"], "id": "Name"})
+
+    # robust column grouping logic
+    # Group columns by subject to ensure they appear together in the table
+    # Sort columns by subject code/name first, then bu component order (Int, Ext, Tot, Res)
+    
+    def get_col_sort_key(col_name):
+        # Extract subject prefix and component
+        for s in ["Internal", "External", "Total", "Result"]:
+            if col_name.endswith(f" {s}"):
+                base = col_name[:-len(s)].strip()
+                # Order: Internal=0, External=1, Total=2, Result=3
+                order = {"Internal": 0, "External": 1, "Total": 2, "Result": 3}.get(s, 9)
+                return (base, order)
+        return (col_name, 99)
+
+    selected_cols.sort(key=get_col_sort_key)
+
+    for c in selected_cols:
+        col_header = ["", c] # Default fallback
+        
+        for s in ["Internal", "External", "Total", "Result"]:
+            if c.endswith(f" {s}"):
+                base = c[:-len(s)].strip() # This extracts the full Subject Name e.g. "18CS51 - MATH"
+                col_header = [base, s]
+                break
+            
+        columns_for_table.append({"name": col_header, "id": c})
+
     columns_for_table.append({"name": ["Overall", "Result"], "id": "Overall_Result"})
     data = df_sel.to_dict("records")
 
