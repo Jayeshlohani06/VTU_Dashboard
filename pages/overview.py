@@ -96,7 +96,10 @@ def process_uploaded_excel(contents):
         header_row_count = 2 # Default
         for i, row in df_preview.iterrows():
             row_str = row.astype(str).str.lower().tolist()
-            if any("internal" in x for x in row_str) and any("external" in x for x in row_str):
+            has_internal = any(x in str(rv) for rv in row_str for x in ["internal", "ia", "cie", "int"])
+            has_external = any(x in str(rv) for rv in row_str for x in ["external", "ea", "see", "ext"])
+            
+            if has_internal and has_external:
                 # Detected the component row. Its index + 1 is the header count.
                 # e.g. if internal is at index 1 -> header rows are 0,1 (count 2)
                 # e.g. if internal is at index 2 -> header rows are 0,1,2 (count 3)
@@ -152,14 +155,27 @@ def process_uploaded_excel(contents):
                 else:
                     fixed_cols.append(val)
             else:
+                # Normalized Component Name
+                comp_clean = str(component).strip()
+                comp_lower = comp_clean.lower()
+                
+                if comp_lower in ['ia', 'internal', 'cie', 'test', 'internal assessment', 'int']:
+                    comp_clean = "Internal"
+                elif comp_lower in ['ea', 'external', 'see', 'final', 'exam', 'sem end exam', 'ext']:
+                    comp_clean = "External"
+                elif comp_lower in ['tot', 'total', 'grand total']:
+                    comp_clean = "Total"
+                elif comp_lower in ['res', 'result', 'grade']:
+                    comp_clean = "Result"
+                
                 # Subject Column: "Code Name Component" or "Code Component"
                 if header_row_count == 3 and not is_empty(h2):
                      # Clean up name to avoid very long headers?
                      # For now, append it. Format: "Code - Name Component"
                      # We use " - " as separator to easily split later if needed
-                     fixed_cols.append(f"{h1} - {h2} {component}")
+                     fixed_cols.append(f"{h1} - {h2} {comp_clean}")
                 else:
-                     fixed_cols.append(f"{h1} {component}")
+                     fixed_cols.append(f"{h1} {comp_clean}")
 
         df_raw.columns = fixed_cols
         # Remove empty columns
@@ -471,8 +487,8 @@ layout = dbc.Container([
                     ]),
                     # Row 3: Components
                     html.Tr([
-                        html.Th("Internal", className="border-start border-dark"), html.Th("External"), html.Th("Total"), html.Th("Result"),
-                        html.Th("Internal", className="border-start border-dark"), html.Th("External"), html.Th("Total"), html.Th("Result")
+                        html.Th("IA / Internal", className="border-start border-dark"), html.Th("EA / External"), html.Th("Total"), html.Th("Result"),
+                        html.Th("IA / Internal", className="border-start border-dark"), html.Th("EA / External"), html.Th("Total"), html.Th("Result")
                     ], className="small text-muted")
                 ]),
                 html.Tbody([
