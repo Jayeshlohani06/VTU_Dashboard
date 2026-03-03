@@ -170,9 +170,9 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
             elif fail_count > 0 or absent_count > 0: res = 'F'
             else: res = 'P'
             
-            return pd.Series([res, absent_count, fail_count, ", ".join(failed_list)], index=['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Examples'])
+            return pd.Series([res, absent_count, fail_count, ", ".join(failed_list)], index=['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Subject'])
 
-        df[['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Examples']] = df.apply(calc_overall, axis=1)
+        df[['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Subject']] = df.apply(calc_overall, axis=1)
     else:
         pass_mark = 18
         if total_cols:
@@ -181,7 +181,7 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
             df['Overall_Result'] = 'P'
         df['Absent_Subjects'] = 0
         df['Failed_Subjects'] = 0
-        df['Failed_Examples'] = ""
+        df['Failed_Subject'] = ""
     if 'Name' not in df.columns: df['Name'] = ""
     return df
 
@@ -1382,7 +1382,7 @@ def download_category_report(n_clicks, json_data, section_data, usn_mapping):
     export_cols = [c for c in desired_cols if c in df.columns]
     
     # Define Export Columns for Failed Sheet
-    failed_desired_cols = desired_cols + ['Failed_Examples']
+    failed_desired_cols = desired_cols + ['Failed_Subject']
     failed_export_cols = [c for c in failed_desired_cols if c in df.columns]
     
     # Filter Pass/Fail/Absent
