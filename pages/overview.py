@@ -42,6 +42,7 @@ PAGE_CSS_LIGHT = r"""
 .badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
 .badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
 .overview-kpi-clickable:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.12) !important; cursor: pointer; }
+.overview-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
 """
 
 PAGE_CSS_DARK = r"""
@@ -73,6 +74,7 @@ PAGE_CSS_DARK = r"""
 .badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
 .badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
 .overview-kpi-clickable:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.6) !important; cursor: pointer; }
+.overview-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
 """
 
 # ---------- HELPER FUNCTIONS ----------
@@ -287,10 +289,13 @@ def kpi_card(title, value, id_val, icon, color, bg_color):
                     html.H6(title, className="text-muted text-uppercase fw-bold mb-0 text-truncate", style={"fontSize": "0.7rem", "letterSpacing": "0.5px", "maxWidth": "100px"}),
                     html.H3(children=value, id=f"{id_val}-text", className="fw-bold mb-0", style={"color": color, "fontSize": "1.6rem"})
                 ], className="ms-2")
-            ], className="d-flex align-items-center h-100")
-        ], className="p-2"),
+            ], className="d-flex align-items-center h-100"),
+            # Text Cue for Clickability
+            html.Div("👆 Click for details", className="kpi-hover-hint text-muted text-end mt-1", style={"fontSize": "0.6rem", "opacity": "0.8", "position": "absolute", "bottom": "8px", "right": "12px", "display": "none", "transition": "opacity 0.2s ease"}),
+        ], className="p-2 position-relative"),
         className="card kpi-card shadow-sm h-100 border-0 overflow-hidden overview-kpi-clickable rnk-card",
         style={"borderLeft": f"4px solid {color} !important", "transition": "transform 0.2s ease-in-out", "cursor": "pointer"},
+        title=f"Click to view {title.lower()} students list",
         id={'type': 'overview-kpi-card', 'index': id_val},
         n_clicks=0
     )
