@@ -1,17 +1,38 @@
-# pages/subject_analysis.py
+﻿# pages/subject_analysis.py
 # Final stable version — Fixed DuplicateCallback error with 'initial_duplicate'
 # Updated: Custom Graph Tooltip + StringIO Fix
 
 import dash
-from dash import html, dcc, Input, Output, State, callback, dash_table, no_update
+from dash import html, dcc, Input, Output, State, callback, dash_table, no_update, ALL
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
 from dash.exceptions import PreventUpdate
 from io import StringIO  # <--- Added for stability
 from cache_config import cache
+import json
+import re  # Added for section extraction
 
 dash.register_page(__name__, path="/subject_analysis", name="Subject Analysis")
+
+# ---------- Helper Functions ----------
+def extract_numeric(roll):
+    digits = re.findall(r'\d+', str(roll))
+    return int(digits[-1]) if digits else 0
+
+def sa_assign_section(roll_no, section_ranges=None, usn_mapping=None):
+    roll_str = str(roll_no).strip().upper()
+    if usn_mapping and roll_str in usn_mapping:
+         return usn_mapping[roll_str]
+
+    roll_num = extract_numeric(roll_no)
+    if section_ranges:
+        for sec_name, (start, end) in section_ranges.items():
+            start_num = extract_numeric(start)
+            end_num = extract_numeric(end)
+            if start_num <= roll_num <= end_num:
+                return sec_name
+    return "Not Assigned"
 
 # ==================== Global Styles ====================
 PAGE_CSS = """
@@ -69,189 +90,77 @@ PAGE_CSS = """
   vertical-align: -0.1em;
 }
 
-/* UNIVERSAL BOX SIZING FIX FOR DROPDOWN */
-.Select, .Select div, .Select input, .Select span {
-  box-sizing: border-box !important;
+/* Print-friendly export */
+/* 1. CRITICAL FIX: Place @page OUTSIDE @media print for Chrome/Edge to respect it */
+@page {
+    size: landscape;
+    margin: 10mm;
 }
 
-/* Dropdown Styling for Visibility */
-.VirtualizedSelectOption {
-  color: #1f2937 !important;
-  background-color: #ffffff !important;
-  padding: 10px !important;
-  white-space: nowrap !important; /* Prevent line breaks violating bounds */
-  text-overflow: ellipsis !important; /* Handle long text gracefully */
-  overflow: hidden !important;
-}
-
-.VirtualizedSelectOption:hover {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-.VirtualizedSelectOption.isSelected {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-/* Dash Dropdown */
-.Select--multi .Select-value {
-  background-color: #3b82f6 !important;
-  border-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-/* Force Select wrapper to fill container */
-.Select {
-  position: relative !important;
-  z-index: 100 !important;
-  width: 100% !important; /* Ensure the anchor is full width */
-  box-sizing: border-box !important;
-}
-
-.Select-control, .Select-multi-value-wrapper, div[class*="-control"] {
-  background-color: #ffffff !important;
-  border-color: #d1d5db !important;
-  border-width: 1px !important;
-  border-radius: 6px !important;
-  position: relative !important;
-  z-index: 100 !important;
-  width: 100% !important; /* Ensure control matches anchor */
-  box-sizing: border-box !important;
-  height: auto !important; /* Allow wrapping */
-  min-height: 45px !important;
-  display: flex !important;
-  align-items: center !important;
-  flex-wrap: wrap !important;
-}
-
-.Select-control.is-focused {
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
-}
-
-.Select-menu-outer {
-  background-color: #ffffff !important;
-  border: 1px solid #d1d5db !important;
-  border-top: none !important;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
-  display: block !important;
-  z-index: 9999 !important;
-  position: absolute !important;
+@media print {
+  /* Reset standard body styling for print */
+  body, html {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background-color: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
   
-  /* STRICT ALIGNMENT FIX */
-  top: 100% !important;
-  left: 0 !important;
-  right: 0 !important;
-  width: auto !important; /* Let left/right dictate width */
-  margin: 0 !important; /* Reset margins that push it out */
-  margin-top: -1px !important; /* Overlap border */
+  /* Hide interactive elements like buttons and modals */
+  button, .btn-group, .modal {
+    display: none !important;
+  }
+
+  /* Remove screen-only padding and margins to push content up */
+  .sa-wrap, .pb-4, .container-fluid, .p-3, .mb-4 {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+    background: transparent !important;
+  }
+
+  /* Optimize cards for PDF flat layout */
+  .sa-card {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 20px !important;
+  }
   
-  box-sizing: border-box !important;
-  border-bottom-left-radius: 6px !important;
-  border-bottom-right-radius: 6px !important;
-  max-height: 300px !important;
-  min-width: 0 !important; /* Prevent content-based expansion */
-  max-width: 100% !important; /* Strictly enforce parent boundary */
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
+  /* Prevent Plotly charts from splitting */
+  .js-plotly-plot, .plotly, .dash-graph {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    width: 100% !important;
+  }
+  
+  /* Prevent tables from splitting rows */
+  tr, td, th {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Force KPI grid to align properly on PDF */
+  .row-cols-md-6 > * {
+    flex: 0 0 16.666667% !important;
+    max-width: 16.666667% !important;
+  }
 }
 
-/* Fix rounding when open to make it look attached */
-.Select.is-open > .Select-control {
-  border-bottom-left-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-  border-color: #d1d5db !important;
+/* Modal Print Specifics (Only print the table list when popup is open) */
+body.modal-open .pb-4 > *:not(.modal) { display: none !important; }
+body.modal-open .modal {
+    display: block !important; position: static !important;
+    opacity: 1 !important; background: transparent !important;
 }
+body.modal-open .modal-dialog { max-width: 100% !important; width: 100% !important; margin: 0 !important; }
+body.modal-open .modal-content { border: none !important; box-shadow: none !important; }
+body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
 
-.Select-menu {
-  /* Disable inner scroll to prevent double scrollbars */
-  max-height: none !important; 
-  overflow-y: visible !important;
-  overflow-x: hidden !important;
-  display: block !important;
-  visibility: visible !important;
-}
-
-.Select-option {
-  color: #1f2937 !important;
-  background-color: #ffffff !important;
-  padding: 12px 15px !important;
-  font-size: 14px !important;
-  cursor: pointer !important;
-  border: none !important;
-  pointer-events: auto !important;
-  display: block !important;
-  visibility: visible !important;
-}
-
-.Select-option:hover {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-.Select-option.is-focused {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-.Select-option.is-selected {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-.Select-input input {
-  color: #1f2937 !important;
-  font-weight: 500 !important;
-}
-
-/* Make sure dropdown container doesn't clip menu */
-.Dropdown {
-  position: relative !important;
-  z-index: 100 !important;
-}
-
-#subject-checklist, #result-filter {
-  position: relative !important;
-}
-
-/* Ensure dropdown components are always visible and clickable */
-.Select-wrapper {
-  overflow: visible !important;
-  z-index: 100 !important;
-}
-
-.react-select__menu-portal {
-  z-index: 10001 !important;
-  position: fixed !important;
-}
-
-/* Override any Bootstrap container overflow */
-.pb-4 {
-  overflow: visible !important;
-}
-
-/* Additional selectors for dropdown menu in case of different Dash versions */
-.Select-menu,
-.Select-options,
-[class*="Select"] [class*="menu"] {
-  z-index: 10000 !important;
-  display: block !important;
-  visibility: visible !important;
-}
-
-/* Force dropdown to be visible even if hidden by default */
-div[class*="Select-menu"] {
-  display: block !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
-  z-index: 10000 !important;
-}
-
-/* React-Select compatibility */
-.react-select__menu {
-  z-index: 10000 !important;
-}
+/* Make KPI Cards Clickable */
+.subject-kpi-card { cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.subject-kpi-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(59,130,246,0.2) !important; }
 """
 
 # ==================== Layout ====================
@@ -273,17 +182,15 @@ layout = dbc.Container([
                     html.H6("Select Subjects", className="fw-bold text-muted mb-1"),
                     html.Div([
                         dcc.Dropdown(
-                            id="subject-checklist",
+                            id="sa-subject-checklist",
                             options=[], value=[], multi=True,
                             placeholder="Select subjects to analyze...",
-                            className="shadow-sm custom-dropdown",
+                            className="custom-dropdown",
                             searchable=True,
                             clearable=True,
                             optionHeight=50,
                             maxHeight=300,
                             style={
-                                "color": "#1f2937", 
-                                "fontWeight": "500", 
                                 "position": "relative", 
                                 "zIndex": "1000",
                                 "minHeight": "45px"
@@ -291,27 +198,44 @@ layout = dbc.Container([
                         ),
                         html.Div(style={"height": "10px"})
                     ], style={"position": "relative", "zIndex": "1000"}),
-                    html.Div(style={"height": "15px"}),
-                ], md=4, style={"position": "relative", "zIndex": "1060", "overflow": "visible"}), # Added explicit calc props
+                ], xs=12, lg=4, style={"position": "relative", "zIndex": "1060", "overflow": "visible"}),
+                
+                dbc.Col([
+                    html.H6("Select Section", className="fw-bold text-muted mb-1"),
+                    html.Div([
+                        dcc.Dropdown(
+                            id="sa-section-filter",
+                            options=[{"label": "All Sections", "value": "ALL"}],
+                            value="ALL", clearable=False, className="custom-dropdown",
+                            searchable=True,
+                            optionHeight=50,
+                            maxHeight=300,
+                            style={
+                                "position": "relative", 
+                                "zIndex": "1000",
+                                "minHeight": "45px"
+                            }
+                        ),
+                        html.Div(style={"height": "10px"})
+                    ], style={"position": "relative", "zIndex": "1000"}),
+                ], xs=12, lg=2, style={"position": "relative", "zIndex": "1050", "overflow": "visible"}),
 
                 dbc.Col([
                     html.H6("Filter by Result", className="fw-bold text-muted mb-1"),
                     html.Div([
                         dcc.Dropdown(
-                            id="result-filter",
+                            id="sa-result-filter",
                             options=[
                                 {"label": "All Students", "value": "ALL"},
                                 {"label": "Passed Only", "value": "PASS"},
                                 {"label": "Failed Only", "value": "FAIL"},
                                 {"label": "Absent Only", "value": "ABSENT"},
                             ],
-                            value="ALL", clearable=False, className="shadow-sm custom-dropdown",
+                            value="ALL", clearable=False, className="custom-dropdown",
                             searchable=True,
                             optionHeight=50,
                             maxHeight=300,
                             style={
-                                "color": "#1f2937", 
-                                "fontWeight": "500", 
                                 "position": "relative", 
                                 "zIndex": "1000",
                                 "minHeight": "45px"
@@ -319,23 +243,22 @@ layout = dbc.Container([
                         ),
                         html.Div(style={"height": "10px"})
                     ], style={"position": "relative", "zIndex": "1000"}),
-                    html.Div(style={"height": "15px"}),
-                ], md=3, style={"position": "relative", "zIndex": "1050", "overflow": "visible"}),
+                ], xs=12, lg=3, style={"position": "relative", "zIndex": "1050", "overflow": "visible"}),
 
                 dbc.Col([
                     html.H6("Actions", className="fw-bold text-muted mb-1"),
                     dbc.ButtonGroup([
                         dbc.Button("CSV", id="sa-export-csv", color="primary", outline=True, className="me-1"),
                         dbc.Button("Excel", id="sa-export-xlsx", color="success", outline=True, className="me-1"),
+                        dbc.Button("PDF", id="sa-export-pdf", color="danger", outline=True, className="me-1"),
                         dbc.Button("ℹ️", id="sa-open-legend", color="info", outline=True),
-                    ], className="w-100"),
-                ], md=3), 
-            ], className="g-3"),
+                    ], className="w-100", style={"height": "45px"}),
+                ], xs=12, lg=3), 
+            ], className="g-3 align-items-start"),
             dbc.Row([
                 dbc.Col(
-                    # Added a small spinner for the text update
                     dbc.Spinner(
-                        html.Div(id="selected-count", className="mt-2 small text-muted"),
+                        html.Div(id="sa-selected-count", className="mt-2 small text-muted"),
                         size="sm",
                         color="primary"
                     )
@@ -348,7 +271,7 @@ layout = dbc.Container([
     # --- KPIs ---
     # Wrapped in its own Loading component
     dcc.Loading(type="default", children=[
-        dbc.Card(dbc.CardBody(html.Div(id="kpi-cards")), className="sa-card mb-4")
+        dbc.Card(dbc.CardBody(html.Div(id="sa-kpi-cards")), className="sa-card mb-4")
     ]),
 
     # --- Table ---
@@ -357,7 +280,7 @@ layout = dbc.Container([
         dbc.Card(dbc.CardBody([
             html.H5("📋 Detailed Subject Breakdown", className="fw-bold mb-3 text-center"),
             dash_table.DataTable(
-                id="subject-table",
+                id="sa-subject-table",
                 columns=[], data=[],
                 style_table={
                     "overflowX": "auto", 
@@ -430,15 +353,43 @@ layout = dbc.Container([
         dbc.ModalFooter(dbc.Button("Got it!", id="sa-close-legend", className="ms-auto", color="primary"))
     ], id="sa-legend-modal", is_open=False, size="lg", style={"zIndex": 10000}),
 
+    # --- KPI Popup Modal ---
+    dbc.Modal([
+        dbc.ModalHeader([
+            dbc.ModalTitle(id="sa-kpi-modal-title", className="fw-bold text-primary"),
+            html.Div([
+                dbc.Button("Download List PDF", id="sa-kpi-modal-pdf-top", color="danger", outline=True, size="sm", className="me-2"),
+                dbc.Button("Close", id="sa-kpi-modal-close-top", color="secondary", size="sm")
+            ], className="ms-auto d-flex")
+        ], close_button=False),
+        dbc.ModalBody([
+            dash_table.DataTable(
+                id="sa-kpi-modal-table",
+                columns=[], data=[],
+                style_table={"overflowX": "auto", "borderRadius": "8px", "border": "1px solid #d1d5db"},
+                style_cell={"textAlign": "center", "padding": "12px", "fontSize": "13px"},
+                style_header={"backgroundColor": "#1f2937", "color": "#ffffff", "fontWeight": "700"},
+                page_action='none',
+                style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': '#f3f4f6'}],
+            )
+        ]),
+        dbc.ModalFooter([
+            dbc.Button("Download List PDF", id="sa-kpi-modal-pdf", color="danger", outline=True),
+            dbc.Button("Close", id="sa-kpi-modal-close", className="ms-auto", color="secondary")
+        ])
+    ], id="sa-kpi-modal", is_open=False, size="xl", style={"zIndex": 10000}),
+    
+    html.Div(id="sa-kpi-pdf-trigger-hidden", style={"display": "none"}),
+
     # --- Tabs for Charts ---
     # Wrapped in its own Loading component
     dcc.Loading(type="default", children=[
         dbc.Card(dbc.CardBody([
-            dcc.Tabs(id="chart-tabs", value="pie", children=[
+            dcc.Tabs(id="sa-chart-tabs", value="pie", children=[
                 dcc.Tab(label="🎯 Pass vs Fail Distribution", value="pie"),
                 dcc.Tab(label="📈 Subject-wise Average Marks", value="bar"),
             ]),
-            html.Div(id="subject-analysis-chart", className="mt-3"),
+            html.Div(id="sa-subject-analysis-chart", className="mt-3"),
         ]), className="sa-card mb-4"),
     ]),
 
@@ -446,6 +397,7 @@ layout = dbc.Container([
     # Hidden Download components
     dcc.Download(id="sa-download-csv"),
     dcc.Download(id="sa-download-xlsx"),
+    html.Div(id="sa-pdf-download-trigger", style={"display": "none"}),
 
     # Use session stores to match global app.py stores
 ], fluid=True, className="pb-4")
@@ -454,27 +406,95 @@ layout = dbc.Container([
 
 # 1️⃣ Dropdown Control
 @callback(
-    Output("subject-checklist", "options", allow_duplicate=True),
-    Output("subject-checklist", "value", allow_duplicate=True),
-    Input("overview-selected-subjects", "data"),
-    Input("subject-checklist", "value"),
-    prevent_initial_call='initial_duplicate'
+    Output("sa-section-filter", "options"),
+    Input("section-data", "data"),
+    Input("usn-mapping-store", "data")  # <-- Add this input
 )
-def update_subject_dropdown(overview_subjects, current_value):
+def update_section_dropdown(section_data, usn_mapping):
+    options = [{"label": "All Sections", "value": "ALL"}]
+    sections = set()
+    
+    # Add sections from Range Config
+    if section_data:
+        for sec in section_data.keys():
+            sections.add(sec)
+            
+    # Add sections from Excel Mapping Config
+    if usn_mapping:
+        for sec in usn_mapping.values():
+            sections.add(sec)
+            
+    # Sort and append unique sections
+    for sec in sorted(list(sections)):
+        options.append({"label": sec, "value": sec})
+        
+    # ONLY show "Not Assigned" if no sections are mapped at all
+    if not sections:
+        options.append({"label": "Not Assigned", "value": "Not Assigned"})
+        
+    return options
+
+@callback(
+    Output("sa-subject-checklist", "options"),
+    Output("sa-subject-checklist", "value"),
+    Input("overview-selected-subjects", "data"),
+    Input("sa-subject-checklist", "value"),
+    State("stored-data", "data"),
+    prevent_initial_call=False
+)
+def update_subject_dropdown(overview_subjects, current_value, session_id):
     if not overview_subjects:
         return [], []
-    
+        
+    name_mapping = {}
+    if session_id:
+        df = cache.get(session_id)
+        if df is not None:
+            for subj in overview_subjects:
+                display_name = subj
+                subj_cols = [c for c in df.columns if c.startswith(subj)]
+                for col in subj_cols:
+                    if " - " in col:
+                        try:
+                            rest = col.split(" - ", 1)[1]
+                            for suffix in ["Result", "Total", "Internal", "External"]:
+                                if rest.strip().endswith(suffix):
+                                    possible_name = rest.rsplit(suffix, 1)[0].strip()
+                                    if possible_name:
+                                        display_name = f"{subj} - {possible_name}"
+                                    break
+                            if display_name != subj:
+                                break
+                        except: pass
+                name_mapping[subj] = display_name
+
     # Add "Select All" and "Remove All" options at the top
     options = [
         {"label": "✓ Select All", "value": "__SELECT_ALL__"},
         {"label": "✕ Remove All", "value": "__REMOVE_ALL__"}
-    ] + [{"label": s, "value": s} for s in overview_subjects]
+    ] 
+    
+    for s in overview_subjects:
+        full_name = name_mapping.get(s, s)
+        
+        # Extract code part to display
+        if " - " in full_name:
+            c_part = full_name.split(" - ", 1)[0]
+        else:
+            c_part = full_name
+            
+        options.append({
+            "label": html.Span(c_part, className="fw-bold"),
+            "value": s,
+            "title": full_name  # Keeps full name for standard HTML tooltips
+        })
+
     all_subject_values = [opt["value"] for opt in options[2:]]  # Exclude the special markers
     
     ctx = dash.callback_context
     trigger = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "INITIAL_LOAD"
 
-    if trigger == "subject-checklist":
+    if trigger == "sa-subject-checklist":
         # If "Select All" is clicked, select all subjects
         if current_value and "__SELECT_ALL__" in current_value:
             return options, all_subject_values
@@ -485,31 +505,35 @@ def update_subject_dropdown(overview_subjects, current_value):
         filtered_value = [v for v in (current_value or []) if not v.startswith("__")]
         return options, filtered_value
     
+    # Return ALL values on initial load so that the charts and tables populate immediately
     return options, all_subject_values
 
 
 # 2️⃣ Main Analysis
 @callback(
-    Output("selected-count", "children", allow_duplicate=True),
-    Output("kpi-cards", "children", allow_duplicate=True),
-    Output("subject-table", "columns", allow_duplicate=True),
-    Output("subject-table", "data", allow_duplicate=True),
-    Output("subject-analysis-chart", "children", allow_duplicate=True),
-    Input("subject-checklist", "value"),
-    Input("result-filter", "value"),
-    Input("chart-tabs", "value"),
+    Output("sa-selected-count", "children"),
+    Output("sa-kpi-cards", "children"),
+    Output("sa-subject-table", "columns"),
+    Output("sa-subject-table", "data"),
+    Output("sa-subject-analysis-chart", "children"),
+    Input("sa-subject-checklist", "value"),
+    Input("sa-result-filter", "value"),
+    Input("sa-section-filter", "value"),
+    Input("sa-chart-tabs", "value"),
     State("stored-data", "data"),
-    prevent_initial_call='initial_duplicate'  # <-- FIX IS HERE
+    State("section-data", "data"),
+    State("usn-mapping-store", "data"),
+    prevent_initial_call=False
 )
-def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
+def update_analysis(selected_subjects, result_filter, section_filter, chart_tab, session_id, section_ranges, usn_mapping):
     if not session_id:
         raise PreventUpdate
     
     # Retrieve from Server Cache
     df = cache.get(session_id)
     if df is None:
-        return "Session expired", html.P("Please return to Overview and upload data.", className="text-danger"), [], [], html.P("No Data")
-    
+        return "Session expired", html.P("Please return to Overview and upload data.", className="text-danger"), [], [], html.Div()
+
     # Remove the special markers if present
     selected_subjects = [s for s in (selected_subjects or []) if not s.startswith("__")]
     
@@ -527,6 +551,14 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
     selected_cols = list(dict.fromkeys(selected_cols))
 
     df_sel = df[[first_col, "Name"] + selected_cols].copy()
+    
+    # Apply Section Assignment and Filtering
+    df_sel['Section'] = df_sel[first_col].apply(lambda x: sa_assign_section(x, section_ranges, usn_mapping))
+    if section_filter and section_filter != "ALL":
+        df_sel = df_sel[df_sel['Section'] == section_filter]
+        if df_sel.empty:
+            return f"0 students in section {section_filter}", html.P(f"No data for section {section_filter}."), [], [], html.Div()
+
     num_cols = [c for c in df_sel.columns if any(k in c for k in ["Internal", "External", "Total"])]
     for c in num_cols:
         df_sel[c] = pd.to_numeric(df_sel[c], errors="coerce")
@@ -798,7 +830,8 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
     cards = html.Div([
         dbc.Row([
             dbc.Col(
-                dbc.Card(
+                # Changed from dbc.Card to html.Div to natively support n_clicks
+                html.Div(
                     dbc.CardBody([
                         html.Div([
                             # Icon on the Left
@@ -816,8 +849,10 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
                         ], className="subject-kpi-content-wrapper"),
                         
                     ], className="subject-kpi-body"),
-                    className="subject-kpi-card",
-                    style={"--kpi-color": k['color']}
+                    className="card subject-kpi-card box-shadow-sm",
+                    id={"type": "sa-kpi-card", "index": k["id"]},
+                    n_clicks=0,
+                    style={"--kpi-color": k['color'], "border": "none"}
                 )
             )
             for k in kpis
@@ -835,6 +870,7 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
     # Add Identity Columns first
     columns_for_table.append({"name": ["Student", "ID"], "id": first_col})
     columns_for_table.append({"name": ["Student", "Name"], "id": "Name"})
+    columns_for_table.append({"name": ["Student", "Section"], "id": "Section"})
 
     # robust column grouping logic
     # Group columns by subject to ensure they appear together in the table
@@ -979,8 +1015,8 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
 @callback(
     Output("sa-download-csv", "data"),
     Input("sa-export-csv", "n_clicks"),
-    State('subject-table', 'data'),
-    State('subject-table', 'columns'),
+    State('sa-subject-table', 'data'),
+    State('sa-subject-table', 'columns'),
     prevent_initial_call=True
 )
 def export_csv(n, table_data, table_columns):
@@ -1005,8 +1041,8 @@ def export_csv(n, table_data, table_columns):
 @callback(
     Output("sa-download-xlsx", "data"),
     Input("sa-export-xlsx", "n_clicks"),
-    State('subject-table', 'data'),
-    State('subject-table', 'columns'),
+    State('sa-subject-table', 'data'),
+    State('sa-subject-table', 'columns'),
     prevent_initial_call=True
 )
 def export_xlsx(n, table_data, table_columns):
@@ -1036,3 +1072,93 @@ def sa_toggle_legend(n1, n2, is_open):
     if n1 or n2:
         return not is_open
     return is_open
+
+dash.clientside_callback(
+    """
+    function(n_clicks) {
+        if (!n_clicks) {
+            return window.dash_clientside.no_update;
+        }
+        setTimeout(function () { window.print(); }, 150);
+        return "";
+    }
+    """,
+    Output("sa-pdf-download-trigger", "children"),
+    Input("sa-export-pdf", "n_clicks"),
+    prevent_initial_call=True
+)
+
+# 4️⃣ KPI Target Click Callback
+@callback(
+    Output("sa-kpi-modal", "is_open"),
+    Output("sa-kpi-modal-title", "children"),
+    Output("sa-kpi-modal-table", "data"),
+    Output("sa-kpi-modal-table", "columns"),
+    Input({"type": "sa-kpi-card", "index": ALL}, "n_clicks"),
+    Input("sa-kpi-modal-close", "n_clicks"),
+    Input("sa-kpi-modal-close-top", "n_clicks"),
+    State("sa-subject-table", "data"),
+    State("sa-subject-table", "columns"),
+    prevent_initial_call=True
+)
+def handle_kpi_click(kpi_clicks, close_click, close_click_top, table_data, table_cols):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    
+    trigger_id = ctx.triggered[0]["prop_id"]
+    
+    # Check if close button triggered (top or bottom)
+    if "sa-kpi-modal-close" in trigger_id:
+        return False, dash.no_update, dash.no_update, dash.no_update
+        
+    # Ignore initial setup triggers where all clicks might be 0/None
+    if all(c == 0 or c is None for c in kpi_clicks):
+        raise PreventUpdate
+        
+    # Extract which specific card was clicked
+    try:
+        prop_dict = json.loads(trigger_id.split(".")[0])
+        kpi_type = prop_dict["index"]
+    except Exception:
+        raise PreventUpdate
+        
+    if not table_data:
+        return True, f"Student List: {kpi_type.upper()}", [], table_cols
+        
+    # Filter the exact data subset for the clicked KPI
+    filtered_data = []
+    if kpi_type == "total":
+        filtered_data = table_data
+    elif kpi_type == "appeared":
+        filtered_data = [row for row in table_data if row.get("Overall_Result") != "Absent"]
+    elif kpi_type == "pass":
+        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Pass"]
+    elif kpi_type == "fail":
+        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Fail"]
+    elif kpi_type == "absent":
+        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Absent"]
+    elif kpi_type == "rate":
+        # Treating Rate % click as looking at passed students
+        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Pass"]
+        kpi_type = "pass"
+        
+    title = f"📃 Detail List: {kpi_type.upper()} ({len(filtered_data)} Students)"
+    
+    return True, title, filtered_data, table_cols
+
+# PDF Download directly inside Modal
+dash.clientside_callback(
+    """
+    function(n_clicks_bottom, n_clicks_top) {
+        // Prevent trigger if both are empty/initial loading
+        if (!n_clicks_bottom && !n_clicks_top) return window.dash_clientside.no_update;
+        setTimeout(function () { window.print(); }, 150);
+        return "";
+    }
+    """,
+    Output("sa-kpi-pdf-trigger-hidden", "children"),
+    Input("sa-kpi-modal-pdf", "n_clicks"),
+    Input("sa-kpi-modal-pdf-top", "n_clicks"),
+    prevent_initial_call=True
+)
