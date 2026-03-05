@@ -161,6 +161,7 @@ body.modal-open .modal-footer, body.modal-open .modal-header button { display: n
 /* Make KPI Cards Clickable */
 .subject-kpi-card { cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
 .subject-kpi-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(59,130,246,0.2) !important; }
+.subject-kpi-card:hover .kpi-hover-hint { display: block !important; }
 """
 
 # ==================== Layout ====================
@@ -848,8 +849,12 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
                             ], className="subject-kpi-text-box"),
                         ], className="subject-kpi-content-wrapper"),
                         
-                    ], className="subject-kpi-body"),
+                        # Added Text Cue for Clickability (Hidden by default, shown on hover via CSS)
+                        html.Div("👆 Click for details", className="kpi-hover-hint text-muted text-end mt-1", style={"fontSize": "0.6rem", "opacity": "0.8", "position": "absolute", "bottom": "8px", "right": "12px", "display": "none", "transition": "opacity 0.2s ease"}),
+
+                    ], className="subject-kpi-body position-relative"),
                     className="card subject-kpi-card box-shadow-sm",
+                    title=f"Click to view {k['label'].lower()} students list",
                     id={"type": "sa-kpi-card", "index": k["id"]},
                     n_clicks=0,
                     style={"--kpi-color": k['color'], "border": "none"}

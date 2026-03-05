@@ -286,6 +286,7 @@ PAGE_CSS_LIGHT = r"""
   body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
 }
 .rnk-kpi-clickable:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.12) !important; cursor: pointer; }
+.rnk-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
 """
 
 PAGE_CSS_DARK = r"""
@@ -337,6 +338,7 @@ PAGE_CSS_DARK = r"""
   body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
 }
 .rnk-kpi-clickable:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.6) !important; cursor: pointer; }
+.rnk-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
 """
 
 def themed_style_block(theme: str):
@@ -1002,10 +1004,12 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
                             html.H6(x["label"], className="text-muted text-uppercase fw-bold mb-0", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
                             html.H3(str(x["value"]), className="fw-bold mb-0", style={"color": x["color"], "fontSize": "1.6rem"})
                         ], className="ms-3")
-                    ], className="d-flex align-items-center h-100")
-                ], className="p-3"),
+                    ], className="d-flex align-items-center h-100"),
+                    html.Div("👆 Click for details", className="kpi-hover-hint text-muted text-end mt-1", style={"fontSize": "0.6rem", "opacity": "0.8", "position": "absolute", "bottom": "8px", "right": "12px", "display": "none", "transition": "opacity 0.2s ease"}),
+                ], className="p-3 position-relative"),
                 className="card kpi-card shadow-sm h-100 border-0 rnk-kpi-clickable rnk-card",
                 style={"borderLeft": f"4px solid {x['color']}", "transition": "transform 0.2s ease-in-out", "cursor": "pointer"},
+                title=f"Click to view {x['label'].lower()} students list",
                 id={'type': 'rnk-kpi-card', 'index': x['id']},
                 n_clicks=0
             )
