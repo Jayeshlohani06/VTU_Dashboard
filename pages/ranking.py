@@ -8,6 +8,7 @@ import ast
 from io import StringIO, BytesIO
 from cache_config import cache
 from dash.exceptions import PreventUpdate
+import json
 
 # Register page
 dash.register_page(__name__, path="/ranking", name="Ranking")
@@ -273,6 +274,18 @@ PAGE_CSS_LIGHT = r"""
 .table tbody tr { border-bottom: 1px solid #e9ecef; }
 .table tbody tr:hover { background-color: #f8f9fa; }
 .table thead { border-top: 2px solid #dee2e6; }
+
+/* Modal Print Specifics */
+@media print {
+  @page { size: landscape !important; margin: 1cm !important; }
+  body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: #ffffff !important; margin: 0 !important; padding: 0 !important; }
+  body.modal-open .pb-5 > *:not(.modal) { display: none !important; }
+  body.modal-open .modal { display: block !important; position: static !important; opacity: 1 !important; background: transparent !important; }
+  body.modal-open .modal-dialog { max-width: 100% !important; width: 100% !important; margin: 0 !important; }
+  body.modal-open .modal-content { border: none !important; box-shadow: none !important; }
+  body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
+}
+.rnk-kpi-clickable:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.12) !important; cursor: pointer; }
 """
 
 PAGE_CSS_DARK = r"""
@@ -301,8 +314,8 @@ PAGE_CSS_DARK = r"""
 .rank-2{ background:var(--k2); color:#60a5fa; border:1px solid #1e3a8a; }
 .rank-3{ background:var(--k3); color:#fb923c; border:1px solid #7c2d12; }
 .rank-4,.rank-5{ background:var(--k45); color:#cbd5e1; border:1px solid #475569; }
-.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
-.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
+.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td{ border-color: #334155 !important; background-color: #1e293b !important; color: #f8fafc !important; }
 .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{ border-color: #475569 !important; background-color: #0f172a !important; color: #f8fafc !important; }
 .accordion-button:not(.collapsed){ background-color: #172554; color: #60a5fa; }
@@ -312,6 +325,18 @@ PAGE_CSS_DARK = r"""
 .table tbody tr:hover { background-color: #334155 !important; }
 .table thead { border-top-color: #475569; background-color: #0f172a; }
 .table thead th { color: #f8fafc; }
+
+/* Modal Print Specifics */
+@media print {
+  @page { size: landscape !important; margin: 1cm !important; }
+  body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: #0f172a !important; margin: 0 !important; padding: 0 !important; }
+  body.modal-open .pb-5 > *:not(.modal) { display: none !important; }
+  body.modal-open .modal { display: block !important; position: static !important; opacity: 1 !important; background: transparent !important; }
+  body.modal-open .modal-dialog { max-width: 100% !important; width: 100% !important; margin: 0 !important; }
+  body.modal-open .modal-content { border: none !important; box-shadow: none !important; }
+  body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
+}
+.rnk-kpi-clickable:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.6) !important; cursor: pointer; }
 """
 
 def themed_style_block(theme: str):
@@ -509,6 +534,34 @@ layout = dbc.Container([
         ),
         dbc.ModalFooter(dbc.Button("Got it!", id="close-legend", className="ms-auto", color="primary"))
     ], id="legend-modal", is_open=False, size="lg", style={"zIndex": 10500}),
+
+    # --- Clickable KPI Popup Modal ---
+    dbc.Modal([
+        dbc.ModalHeader([
+            dbc.ModalTitle(id="rnk-kpi-modal-title", className="fw-bold text-primary"),
+            html.Div([
+                dbc.Button("Download List (Excel)", id="rnk-kpi-modal-pdf-top", color="success", outline=True, size="sm", className="me-2"),
+                dbc.Button("Close", id="rnk-kpi-modal-close-top", color="secondary", size="sm")
+            ], className="ms-auto d-flex")
+        ], close_button=False),
+        dbc.ModalBody([
+            dash_table.DataTable(
+                id="rnk-kpi-modal-table",
+                columns=[], data=[],
+                style_table={"overflowX": "auto", "borderRadius": "8px", "border": "1px solid #d1d5db"},
+                style_cell={"textAlign": "center", "padding": "12px", "fontSize": "13px"},
+                style_header={"backgroundColor": "#1f2937", "color": "#ffffff", "fontWeight": "700"},
+                page_action='none',
+                style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': '#f3f4f6'}],
+            )
+        ]),
+        dbc.ModalFooter([
+            dbc.Button("Download List (Excel)", id="rnk-kpi-modal-pdf", color="success", outline=True),
+            dbc.Button("Close", id="rnk-kpi-modal-close", className="ms-auto", color="secondary")
+        ])
+    ], id="rnk-kpi-modal", is_open=False, size="xl", style={"zIndex": 10550}),
+    
+    dcc.Download(id="rnk-kpi-excel-download"),
 
     dcc.Download(id="download-csv"),
     dcc.Download(id="download-xlsx"),
@@ -902,11 +955,6 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
     # Force 6 cards row for ALL view 
     row_cls = "row-cols-2 row-cols-md-3 row-cols-lg-6 g-3" if count >= 6 else f"row-cols-2 row-cols-md-{min(count, 4)} row-cols-lg-{min(count, 4)} g-3"
 
-    # Dynamic column width based on count
-    count = len(kpi_objs)
-    # Force 6 cards row for ALL view 
-    row_cls = "row-cols-2 row-cols-md-3 row-cols-lg-6 g-3" if count >= 6 else f"row-cols-2 row-cols-md-{min(count, 4)} row-cols-lg-{min(count, 4)} g-3"
-
     # Assign icons based on ID
     icon_map = {
         "total": "bi-people-fill",
@@ -926,7 +974,7 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
 
     kpi_cards = dbc.Row([
         dbc.Col(
-            dbc.Card(
+            html.Div(
                 dbc.CardBody([
                     html.Div([
                         html.Div(
@@ -940,9 +988,10 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
                         ], className="ms-3")
                     ], className="d-flex align-items-center h-100")
                 ], className="p-3"),
-                className="kpi-card shadow-sm h-100 border-0",
-                style={"borderLeft": f"4px solid {x['color']}", "transition": "transform 0.2s ease-in-out"},
-                id=f"kpi-{x['id']}" # Giving unique ID for potential CSS targeting
+                className="card kpi-card shadow-sm h-100 border-0 rnk-kpi-clickable rnk-card",
+                style={"borderLeft": f"4px solid {x['color']}", "transition": "transform 0.2s ease-in-out", "cursor": "pointer"},
+                id={'type': 'rnk-kpi-card', 'index': x['id']},
+                n_clicks=0
             )
         )
         for x in kpi_objs
@@ -1419,3 +1468,151 @@ def download_category_report(n_clicks, json_data, section_data, usn_mapping):
     out.seek(0)
     
     return dcc.send_bytes(out.read(), "VTU_Category_Report.xlsx")
+
+# ==================== KPI Modal & Export Logic ====================
+
+@callback(
+    Output("rnk-kpi-modal", "is_open"),
+    Output("rnk-kpi-modal-title", "children"),
+    Output("rnk-kpi-modal-table", "data"),
+    Output("rnk-kpi-modal-table", "columns"),
+    Input({"type": "rnk-kpi-card", "index": ALL}, "n_clicks"),
+    Input("rnk-kpi-modal-close", "n_clicks"),
+    Input("rnk-kpi-modal-close-top", "n_clicks"),
+    State('filter-dropdown', 'value'),
+    State('section-dropdown', 'value'),
+    State('ranking-type', 'value'),
+    State('stored-data', 'data'),
+    State('section-data', 'data'),
+    State('usn-mapping-store', 'data'),
+    State('sgpa-store', 'data'),
+    prevent_initial_call=True
+)
+def handle_rnk_kpi_click(kpi_clicks, c1, c2, filter_val, sec_val, rank_type, json_data, sec_ranges, usn_mapping, sgpa_json):
+    if not dash.ctx.triggered: 
+        raise PreventUpdate
+
+    trigger = dash.ctx.triggered_id
+
+    # Handle Modal Close
+    if trigger in ["rnk-kpi-modal-close", "rnk-kpi-modal-close-top"]:
+        return False, dash.no_update, dash.no_update, dash.no_update
+
+    # Handle Dictionary ID matching
+    if not isinstance(trigger, dict) or trigger.get("type") != "rnk-kpi-card":
+        raise PreventUpdate
+        
+    # Prevent triggering on render when n_clicks are 0
+    if all(c == 0 or c is None for c in kpi_clicks): 
+        raise PreventUpdate
+        
+    kpi_type = trigger.get("index")
+
+    if not json_data: return True, "No Data Available", [], []
+
+    mapping_str = str(usn_mapping) if usn_mapping else "None"
+    base_full = _prepare_base(json_data, _section_key(sec_ranges), mapping_str).copy()
+    
+    if sgpa_json:
+        try:
+            sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+            base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
+        except: pass
+
+    scope = base_full.copy()
+    target_res_col = "Result_Selected" if rank_type == 'sgpa' and 'Result_Selected' in scope.columns else "Overall_Result"
+    
+    pass_val = ["PASS", "Pass"] if rank_type == 'sgpa' else ["P", "PASS"]
+    fail_val = ["FAIL", "Fail"] if rank_type == 'sgpa' else ["F", "FAIL"]
+    absent_val = ["ABSENT", "Absent"] if rank_type == 'sgpa' else ["A", "ABSENT"]
+
+    def check_res(val, allowed): return str(val).upper() in [x.upper() for x in allowed]
+
+    if filter_val == "PASS": scope = scope[scope[target_res_col].apply(lambda x: check_res(x, pass_val))]
+    elif filter_val == "FAIL": scope = scope[scope[target_res_col].apply(lambda x: check_res(x, fail_val))]
+    elif filter_val == "ABSENT": scope = scope[scope[target_res_col].apply(lambda x: check_res(x, absent_val))]
+
+    if sec_val != "ALL" and 'Section' in scope.columns: scope = scope[scope["Section"] == sec_val]
+
+    scope_calc = calculate_student_metrics(scope.copy())
+
+    is_pass_mask = scope_calc[target_res_col].apply(lambda x: check_res(x, pass_val))
+    is_fail_mask = scope_calc[target_res_col].apply(lambda x: check_res(x, fail_val))
+    is_absent_mask = scope_calc[target_res_col].apply(lambda x: check_res(x, absent_val))
+
+    backlogs = pd.Series(0, index=scope_calc.index)
+    if 'Failed_Subjects' in scope_calc.columns and 'Absent_Subjects' in scope_calc.columns:
+        backlogs = scope_calc['Failed_Subjects'] + scope_calc['Absent_Subjects']
+
+    # Filter Logic
+    if kpi_type == 'total': res_df = scope_calc
+    elif kpi_type == 'appeared': res_df = scope_calc[~is_absent_mask]
+    elif kpi_type == 'absent': res_df = scope_calc[is_absent_mask]
+    elif kpi_type == 'pass' or kpi_type == 'rate': res_df = scope_calc[is_pass_mask]
+    elif kpi_type == 'fail': res_df = scope_calc[is_fail_mask]
+    elif kpi_type == 'bk1': res_df = scope_calc[is_fail_mask & (backlogs == 1)]
+    elif kpi_type == 'bk2': res_df = scope_calc[is_fail_mask & (backlogs == 2)]
+    elif kpi_type == 'bk3': res_df = scope_calc[is_fail_mask & (backlogs >= 3)]
+    elif kpi_type == 'fcd': res_df = scope_calc[is_pass_mask & (scope_calc['percentage'] >= 70)]
+    elif kpi_type == 'fc': res_df = scope_calc[is_pass_mask & (scope_calc['percentage'] >= 60) & (scope_calc['percentage'] < 70)]
+    elif kpi_type == 'sc': res_df = scope_calc[is_pass_mask & (scope_calc['percentage'] >= 50) & (scope_calc['percentage'] < 60)]
+    elif kpi_type == 'avg': return True, "Average SGPA represents the full view calculated in Ranking Mode.", [], []
+    else: res_df = scope_calc
+
+    if res_df.empty:
+        return True, f"Student List: {str(kpi_type).upper()} (0 Students)", [], []
+
+    display_cols = ['Student_ID', 'Name', 'Section', 'Total_Marks', 'percentage']
+    if rank_type == 'sgpa' and 'SGPA' in res_df.columns: display_cols.append('SGPA')
+    if 'Failed_Subject' in res_df.columns and kpi_type in ['fail', 'bk1', 'bk2', 'bk3']: display_cols.append('Failed_Subject')
+
+    final_cols = [c for c in display_cols if c in res_df.columns]
+    col_map = {'Total_Marks': 'Marks', 'percentage': 'Percentage (%)', 'Failed_Subject': 'Failed Subject(s)'}
+    tcols = [{"name": col_map.get(c, c.replace('_', ' ')), "id": c} for c in final_cols]
+
+    if 'percentage' in res_df.columns:
+        res_df['percentage'] = res_df['percentage'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+
+    tdata = res_df[final_cols].to_dict('records')
+    title = f"📃 Detail List: {str(kpi_type).upper()} ({len(res_df)} Students)"
+
+    return True, title, tdata, tcols
+
+# ...existing code...
+@callback(
+    Output("rnk-kpi-excel-download", "data"),
+    Input("rnk-kpi-modal-pdf", "n_clicks"),
+    Input("rnk-kpi-modal-pdf-top", "n_clicks"),
+    State("rnk-kpi-modal-table", "data"),
+    State("rnk-kpi-modal-title", "children"),
+    prevent_initial_call=True
+)
+def download_modal_excel(n_clicks_bottom, n_clicks_top, table_data, title):
+    if not dash.ctx.triggered or not table_data:
+        raise PreventUpdate
+        
+    df = pd.DataFrame(table_data)
+    
+    # Create a clean filename from the modal title
+    safe_title = "Student_List"
+    if title and isinstance(title, str):
+        # Extract just the category part before the parentheses
+        clean_str = title.split('(')[0].replace('📃', '').replace('Detail List:', '').strip()
+        safe_title = re.sub(r'[^A-Za-z0-9_]', '_', clean_str)
+        
+    return dcc.send_data_frame(df.to_excel, f"{safe_title}_Report.xlsx", index=False)
+    
+
+dash.clientside_callback(
+    """
+    function(n_clicks_bottom, n_clicks_top) {
+        if (!n_clicks_bottom && !n_clicks_top) return window.dash_clientside.no_update;
+        setTimeout(function () { window.print(); }, 150);
+        return "";
+    }
+    """,
+    Output("rnk-kpi-pdf-trigger-hidden", "children"),
+    Input("rnk-kpi-modal-pdf", "n_clicks"),
+    Input("rnk-kpi-modal-pdf-top", "n_clicks"),
+    prevent_initial_call=True
+)

@@ -1,15 +1,16 @@
-# pages/subject_analysis.py
+﻿# pages/subject_analysis.py
 # Final stable version — Fixed DuplicateCallback error with 'initial_duplicate'
 # Updated: Custom Graph Tooltip + StringIO Fix
 
 import dash
-from dash import html, dcc, Input, Output, State, callback, dash_table, no_update
+from dash import html, dcc, Input, Output, State, callback, dash_table, no_update, ALL
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
 from dash.exceptions import PreventUpdate
 from io import StringIO  # <--- Added for stability
 from cache_config import cache
+import json
 
 dash.register_page(__name__, path="/subject_analysis", name="Subject Analysis")
 
@@ -252,6 +253,78 @@ div[class*="Select-menu"] {
 .react-select__menu {
   z-index: 10000 !important;
 }
+
+/* Print-friendly export */
+@media print {
+  /* FORCE landscape orientation and standard margins */
+  @page {
+    size: landscape !important;
+    margin: 1cm !important;
+  }
+
+  /* Reset standard body styling for print */
+  body, html {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background-color: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Hide interactive elements like buttons and modals */
+  button, .btn-group, .modal {
+    display: none !important;
+  }
+
+  /* Remove screen-only padding and margins to push content up */
+  .sa-wrap, .pb-4, .container-fluid, .p-3, .mb-4 {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+    background: transparent !important;
+  }
+
+  /* Optimize cards for PDF flat layout */
+  .sa-card {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 20px !important;
+  }
+  
+  /* Prevent Plotly charts from splitting */
+  .js-plotly-plot, .plotly, .dash-graph {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    width: 100% !important;
+  }
+  
+  /* Prevent tables from splitting rows */
+  tr, td, th {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Force KPI grid to align properly on PDF */
+  .row-cols-md-6 > * {
+    flex: 0 0 16.666667% !important;
+    max-width: 16.666667% !important;
+  }
+}
+
+/* Modal Print Specifics (Only print the table list when popup is open) */
+body.modal-open .pb-4 > *:not(.modal) { display: none !important; }
+body.modal-open .modal {
+    display: block !important; position: static !important;
+    opacity: 1 !important; background: transparent !important;
+}
+body.modal-open .modal-dialog { max-width: 100% !important; width: 100% !important; margin: 0 !important; }
+body.modal-open .modal-content { border: none !important; box-shadow: none !important; }
+body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
+
+/* Make KPI Cards Clickable */
+.subject-kpi-card { cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.subject-kpi-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(59,130,246,0.2) !important; }
 """
 
 # ==================== Layout ====================
@@ -291,8 +364,7 @@ layout = dbc.Container([
                         ),
                         html.Div(style={"height": "10px"})
                     ], style={"position": "relative", "zIndex": "1000"}),
-                    html.Div(style={"height": "15px"}),
-                ], md=4, style={"position": "relative", "zIndex": "1060", "overflow": "visible"}), # Added explicit calc props
+                ], xs=12, lg=6, style={"position": "relative", "zIndex": "1060", "overflow": "visible"}),
 
                 dbc.Col([
                     html.H6("Filter by Result", className="fw-bold text-muted mb-1"),
@@ -319,18 +391,18 @@ layout = dbc.Container([
                         ),
                         html.Div(style={"height": "10px"})
                     ], style={"position": "relative", "zIndex": "1000"}),
-                    html.Div(style={"height": "15px"}),
-                ], md=3, style={"position": "relative", "zIndex": "1050", "overflow": "visible"}),
+                ], xs=12, lg=3, style={"position": "relative", "zIndex": "1050", "overflow": "visible"}),
 
                 dbc.Col([
                     html.H6("Actions", className="fw-bold text-muted mb-1"),
                     dbc.ButtonGroup([
                         dbc.Button("CSV", id="sa-export-csv", color="primary", outline=True, className="me-1"),
                         dbc.Button("Excel", id="sa-export-xlsx", color="success", outline=True, className="me-1"),
+                        dbc.Button("PDF", id="sa-export-pdf", color="danger", outline=True, className="me-1"),
                         dbc.Button("ℹ️", id="sa-open-legend", color="info", outline=True),
-                    ], className="w-100"),
-                ], md=3), 
-            ], className="g-3"),
+                    ], className="w-100", style={"height": "45px"}),
+                ], xs=12, lg=3), 
+            ], className="g-3 align-items-start"),
             dbc.Row([
                 dbc.Col(
                     # Added a small spinner for the text update
@@ -430,6 +502,34 @@ layout = dbc.Container([
         dbc.ModalFooter(dbc.Button("Got it!", id="sa-close-legend", className="ms-auto", color="primary"))
     ], id="sa-legend-modal", is_open=False, size="lg", style={"zIndex": 10000}),
 
+    # --- KPI Popup Modal ---
+    dbc.Modal([
+        dbc.ModalHeader([
+            dbc.ModalTitle(id="sa-kpi-modal-title", className="fw-bold text-primary"),
+            html.Div([
+                dbc.Button("Download List PDF", id="sa-kpi-modal-pdf-top", color="danger", outline=True, size="sm", className="me-2"),
+                dbc.Button("Close", id="sa-kpi-modal-close-top", color="secondary", size="sm")
+            ], className="ms-auto d-flex")
+        ], close_button=False),
+        dbc.ModalBody([
+            dash_table.DataTable(
+                id="sa-kpi-modal-table",
+                columns=[], data=[],
+                style_table={"overflowX": "auto", "borderRadius": "8px", "border": "1px solid #d1d5db"},
+                style_cell={"textAlign": "center", "padding": "12px", "fontSize": "13px"},
+                style_header={"backgroundColor": "#1f2937", "color": "#ffffff", "fontWeight": "700"},
+                page_action='none',
+                style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': '#f3f4f6'}],
+            )
+        ]),
+        dbc.ModalFooter([
+            dbc.Button("Download List PDF", id="sa-kpi-modal-pdf", color="danger", outline=True),
+            dbc.Button("Close", id="sa-kpi-modal-close", className="ms-auto", color="secondary")
+        ])
+    ], id="sa-kpi-modal", is_open=False, size="xl", style={"zIndex": 10000}),
+    
+    html.Div(id="sa-kpi-pdf-trigger-hidden", style={"display": "none"}),
+
     # --- Tabs for Charts ---
     # Wrapped in its own Loading component
     dcc.Loading(type="default", children=[
@@ -446,6 +546,7 @@ layout = dbc.Container([
     # Hidden Download components
     dcc.Download(id="sa-download-csv"),
     dcc.Download(id="sa-download-xlsx"),
+    html.Div(id="sa-pdf-download-trigger", style={"display": "none"}),
 
     # Use session stores to match global app.py stores
 ], fluid=True, className="pb-4")
@@ -798,7 +899,8 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
     cards = html.Div([
         dbc.Row([
             dbc.Col(
-                dbc.Card(
+                # Changed from dbc.Card to html.Div to natively support n_clicks
+                html.Div(
                     dbc.CardBody([
                         html.Div([
                             # Icon on the Left
@@ -816,8 +918,10 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
                         ], className="subject-kpi-content-wrapper"),
                         
                     ], className="subject-kpi-body"),
-                    className="subject-kpi-card",
-                    style={"--kpi-color": k['color']}
+                    className="card subject-kpi-card box-shadow-sm",
+                    id={"type": "sa-kpi-card", "index": k["id"]},
+                    n_clicks=0,
+                    style={"--kpi-color": k['color'], "border": "none"}
                 )
             )
             for k in kpis
@@ -1036,3 +1140,93 @@ def sa_toggle_legend(n1, n2, is_open):
     if n1 or n2:
         return not is_open
     return is_open
+
+dash.clientside_callback(
+    """
+    function(n_clicks) {
+        if (!n_clicks) {
+            return window.dash_clientside.no_update;
+        }
+        setTimeout(function () { window.print(); }, 150);
+        return "";
+    }
+    """,
+    Output("sa-pdf-download-trigger", "children"),
+    Input("sa-export-pdf", "n_clicks"),
+    prevent_initial_call=True
+)
+
+# 4️⃣ KPI Target Click Callback
+@callback(
+    Output("sa-kpi-modal", "is_open"),
+    Output("sa-kpi-modal-title", "children"),
+    Output("sa-kpi-modal-table", "data"),
+    Output("sa-kpi-modal-table", "columns"),
+    Input({"type": "sa-kpi-card", "index": ALL}, "n_clicks"),
+    Input("sa-kpi-modal-close", "n_clicks"),
+    Input("sa-kpi-modal-close-top", "n_clicks"),
+    State("subject-table", "data"),
+    State("subject-table", "columns"),
+    prevent_initial_call=True
+)
+def handle_kpi_click(kpi_clicks, close_click, close_click_top, table_data, table_cols):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    
+    trigger_id = ctx.triggered[0]["prop_id"]
+    
+    # Check if close button triggered (top or bottom)
+    if "sa-kpi-modal-close" in trigger_id:
+        return False, dash.no_update, dash.no_update, dash.no_update
+        
+    # Ignore initial setup triggers where all clicks might be 0/None
+    if all(c == 0 or c is None for c in kpi_clicks):
+        raise PreventUpdate
+        
+    # Extract which specific card was clicked
+    try:
+        prop_dict = json.loads(trigger_id.split(".")[0])
+        kpi_type = prop_dict["index"]
+    except Exception:
+        raise PreventUpdate
+        
+    if not table_data:
+        return True, f"Student List: {kpi_type.upper()}", [], table_cols
+        
+    # Filter the exact data subset for the clicked KPI
+    filtered_data = []
+    if kpi_type == "total":
+        filtered_data = table_data
+    elif kpi_type == "appeared":
+        filtered_data = [row for row in table_data if row.get("Overall_Result") != "Absent"]
+    elif kpi_type == "pass":
+        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Pass"]
+    elif kpi_type == "fail":
+        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Fail"]
+    elif kpi_type == "absent":
+        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Absent"]
+    elif kpi_type == "rate":
+        # Treating Rate % click as looking at passed students
+        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Pass"]
+        kpi_type = "pass"
+        
+    title = f"📃 Detail List: {kpi_type.upper()} ({len(filtered_data)} Students)"
+    
+    return True, title, filtered_data, table_cols
+
+# PDF Download directly inside Modal
+dash.clientside_callback(
+    """
+    function(n_clicks_bottom, n_clicks_top) {
+        // Prevent trigger if both are empty/initial loading
+        if (!n_clicks_bottom && !n_clicks_top) return window.dash_clientside.no_update;
+        setTimeout(function () { window.print(); }, 150);
+        return "";
+    }
+    """,
+    Output("sa-kpi-pdf-trigger-hidden", "children"),
+    Input("sa-kpi-modal-pdf", "n_clicks"),
+    Input("sa-kpi-modal-pdf-top", "n_clicks"),
+    prevent_initial_call=True
+)

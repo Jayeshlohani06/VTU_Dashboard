@@ -38,17 +38,10 @@ PAGE_CSS_LIGHT = r"""
 .rank-1{ background:var(--k1); color:#b45309; border:1px solid #fcd34d; }
 .rank-2{ background:var(--k2); color:#1e40af; border:1px solid #93c5fd; }
 .rank-3{ background:var(--k3); color:#9a3412; border:1px solid #fdba74; }
-.rank-4,.rank-5{ background:var(--k45); color:#475569; border:1px solid #e2e8f0; }
-.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
-.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
-.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td{ border-bottom: 1px solid #f1f5f9 !important; }
-.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{ border-bottom: 2px solid #e2e8f0 !important; font-weight: 700 !important; }
-.accordion-button:not(.collapsed){ background-color: #eff6ff; color: #1e40af; }
-.accordion-button{ color: #1f2937; }
-.table { margin-bottom: 0; }
-.table tbody tr { border-bottom: 1px solid #e9ecef; }
-.table tbody tr:hover { background-color: #f8f9fa; }
-.table thead { border-top: 2px solid #dee2e6; }
+.rank-4,.rank-5{ background:var(--k45); color:#cbd5e1; border:1px solid #475569; }
+.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+.overview-kpi-clickable:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.12) !important; cursor: pointer; }
 """
 
 PAGE_CSS_DARK = r"""
@@ -79,6 +72,7 @@ PAGE_CSS_DARK = r"""
 .rank-4,.rank-5{ background:var(--k45); color:#cbd5e1; border:1px solid #475569; }
 .badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
 .badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+.overview-kpi-clickable:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.6) !important; cursor: pointer; }
 """
 
 # ---------- HELPER FUNCTIONS ----------
@@ -276,7 +270,7 @@ def process_usn_mapping_file(contents, filename, section_name=None):
 # ---------- UI COMPONENTS ----------
 
 def kpi_card(title, value, id_val, icon, color, bg_color):
-    return dbc.Card(
+    return html.Div(
         dbc.CardBody([
             html.Div([
                 # Icon Box
@@ -291,12 +285,14 @@ def kpi_card(title, value, id_val, icon, color, bg_color):
                 # Text Content
                 html.Div([
                     html.H6(title, className="text-muted text-uppercase fw-bold mb-0 text-truncate", style={"fontSize": "0.7rem", "letterSpacing": "0.5px", "maxWidth": "100px"}),
-                    html.H3(children=value, id=id_val, className="fw-bold mb-0", style={"color": color, "fontSize": "1.6rem"})
+                    html.H3(children=value, id=f"{id_val}-text", className="fw-bold mb-0", style={"color": color, "fontSize": "1.6rem"})
                 ], className="ms-2")
             ], className="d-flex align-items-center h-100")
         ], className="p-2"),
-        className="kpi-card shadow-sm h-100 border-0 overflow-hidden",
-        style={"borderLeft": f"4px solid {color} !important", "transition": "transform 0.2s ease-in-out"}
+        className="card kpi-card shadow-sm h-100 border-0 overflow-hidden overview-kpi-clickable rnk-card",
+        style={"borderLeft": f"4px solid {color} !important", "transition": "transform 0.2s ease-in-out", "cursor": "pointer"},
+        id={'type': 'overview-kpi-card', 'index': id_val},
+        n_clicks=0
     )
 
 # ---------- LAYOUT ----------
@@ -523,6 +519,34 @@ layout = dbc.Container([
             ], bordered=True, striped=True, className="mb-0", style={"maxWidth": "200px"})
         ]),
     ], id="modal-section-format", size="sm", is_open=False),
+
+    # --- Clickable KPI Popup Modal ---
+    dbc.Modal([
+        dbc.ModalHeader([
+            dbc.ModalTitle(id="overview-kpi-modal-title", className="fw-bold text-primary"),
+            html.Div([
+                dbc.Button("Download List (Excel)", id="overview-kpi-modal-excel-top", color="success", outline=True, size="sm", className="me-2"),
+                dbc.Button("Close", id="overview-kpi-modal-close-top", color="secondary", size="sm")
+            ], className="ms-auto d-flex")
+        ], close_button=False),
+        dbc.ModalBody([
+            dash_table.DataTable(
+                id="overview-kpi-modal-table",
+                columns=[], data=[],
+                style_table={"overflowX": "auto", "borderRadius": "8px", "border": "1px solid #d1d5db"},
+                style_cell={"textAlign": "center", "padding": "12px", "fontSize": "13px"},
+                style_header={"backgroundColor": "#1f2937", "color": "#ffffff", "fontWeight": "700"},
+                page_action='none',
+                style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': '#f3f4f6'}],
+            )
+        ]),
+        dbc.ModalFooter([
+            dbc.Button("Download List (Excel)", id="overview-kpi-modal-excel", color="success", outline=True),
+            dbc.Button("Close", id="overview-kpi-modal-close", className="ms-auto", color="secondary")
+        ])
+    ], id="overview-kpi-modal", is_open=False, size="xl", style={"zIndex": 10550}),
+    
+    dcc.Download(id="overview-kpi-excel-download"),
 
     # STORES REMOVED FROM HERE TO APP.PY TO ENSURE PERSISTENCE
     
@@ -756,12 +780,12 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
     return no_update, "ℹ️ No valid USNs found in uploaded files"
 
 @callback(
-    [Output('total-students', 'children'),
-     Output('present-students', 'children'),
-     Output('passed-students', 'children'),
-     Output('failed-students', 'children'),
-     Output('absent-students', 'children'),
-     Output('result-percent', 'children'),
+    [Output('total-students-text', 'children'),
+     Output('present-students-text', 'children'),
+     Output('passed-students-text', 'children'),
+     Output('failed-students-text', 'children'),
+     Output('absent-students-text', 'children'),
+     Output('result-percent-text', 'children'),
      Output('data-preview', 'children')],
     [Input('stored-data', 'data'),
      Input('subject-selector', 'value'),
@@ -778,7 +802,7 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
         # Session expired or invalid
         return "0", "0", "0", "0", "0", "0%", html.Div("Session expired. Please re-upload data.", className="text-danger p-4 text-center")
     
-    # df = pd.read_json(data, orient='split') <-- OLD
+    # df d pd.read_json(data, orient='split') <-- OLD
     # meta_col = df.columns[0]
 
     # Detect Meta Column (USN)
@@ -791,7 +815,7 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
         else:
             meta_col = df.columns[0]
 
-    # 1. Filter relevant columns
+    # 1. Filter relevant relevant
     all_subject_codes = get_subject_codes(df)
     
     # Start with just info columns
@@ -865,20 +889,10 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
                     else:
                          subject_status.append('P')
 
-            absent_count = subject_status.count('A')
-            fail_count = subject_status.count('F')
-
-            # === OVERALL LOGIC ===
-            if not subject_status: res = 'P' # No subjects selected? Treat as Pass/Neutral
-            elif absent_count == len(subject_status): res = 'A' # All selected subjects absent
-            elif fail_count > 0 or absent_count > 0: res = 'F' # Any fail or any absent (if not all absent) -> Fail (as per ranking logic implication, actually ranking says: elif fail_count > 0 or absent_count > 0: res = 'F')
-            # Wait, ranking logic:
-            # elif fail_count > 0 or absent_count > 0: res = 'F'
-            # else: res = 'P'
-            # means if you are absent in 1 subject, you fail the overall check for the selected group.
-            else: res = 'P'
-            
-            return res
+            if not subject_status: return 'P'
+            elif subject_status.count('A') == len(subject_status): return 'A'
+            elif subject_status.count('F') > 0 or subject_status.count('A') > 0: return 'F'
+            return 'P'
 
         df_filtered['Overall_Result'] = df_filtered.apply(calc_overall, axis=1)
     else:
@@ -925,7 +939,7 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
                 display_content = html.Div([
                     html.Div(f"Missing first 5: {', '.join(sorted_missing_display[:5])}...", className="small mt-1"),
                     html.Details([
-                        html.Summary(f"Click to see all {count} missing USNs", style={"cursor": "pointer"}, className="small fw-bold text-muted mt-1"),
+                        html.Summary(f"Click to see all {count} missing USNs", style={"cursor": "pointer"}, className="small fw-bold text text mt-1"),
                         html.Div(
                             ", ".join(sorted_missing_display), 
                             className="small p-2 bg-light text-dark border rounded mt-1 text-break", 
@@ -953,7 +967,7 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
     
     # Identify non-subject columns first (Identity, Section, Overall Result)
     # We want them to span 2 rows in the header vertically
-    # But dash_table handles this via empty strings in the first row if we want grouping
+    # But dash_table handles this via empty strings in the first row r we want grouping
     
     preview_df = df_filtered.head(10)
     
@@ -1003,7 +1017,7 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
             'backgroundColor': '#f8fafc',
             'fontWeight': 'bold',
             'border': '1px solid #e2e8f0',
-            'textAlign': 'center',
+            'ground': 'center',
             'whiteSpace': 'normal',
             'height': 'auto',
         },
@@ -1020,7 +1034,7 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
                 'backgroundColor': '#f9fafb'
             },
             # Style for different components
-            # Cannot use lambda in style_data_conditional
+            # Cannot a lambda in style_data_conditional
             # We must use filter_query or specify column_id
             # Since we have dynamic columns, we can add this rule per-column or omit it for now
             # Alternative: Add 'Result' to cell style based on column name MATCH logic?
@@ -1044,3 +1058,152 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
     final_output = html.Div([alert_msg, table]) if alert_msg else table
 
     return str(total), str(present_count), str(passed_count), str(failed_count), str(absent_count), rate, final_output
+
+# ==================== KPI Modal & Export Logic ====================
+
+@callback(
+    Output("overview-kpi-modal", "is_open"),
+    Output("overview-kpi-modal-title", "children"),
+    Output("overview-kpi-modal-table", "data"),
+    Output("overview-kpi-modal-table", "columns"),
+    Input({"type": "overview-kpi-card", "index": ALL}, "n_clicks"),
+    Input("overview-kpi-modal-close", "n_clicks"),
+    Input("overview-kpi-modal-close-top", "n_clicks"),
+    State('stored-data', 'data'),
+    State('subject-selector', 'value'),
+    State('section-data', 'data'),
+    State('usn-mapping-store', 'data'),
+    prevent_initial_call=True
+)
+def handle_overview_kpi_click(kpi_clicks, c1, c2, session_id, selected_subjects, section_ranges, usn_mapping):
+    if not dash.ctx.triggered: 
+        raise PreventUpdate
+
+    trigger = dash.ctx.triggered_id
+
+    # Handle Modal Close
+    if trigger in ["overview-kpi-modal-close", "overview-kpi-modal-close-top"]:
+        return False, dash.no_update, dash.no_update, dash.no_update
+
+    # Handle Dictionary ID matching
+    if not isinstance(trigger, dict) or trigger.get("type") != "overview-kpi-card":
+        raise PreventUpdate
+        
+    if all(c == 0 or c is None for c in kpi_clicks): 
+        raise PreventUpdate
+        
+    kpi_type = trigger.get("index")
+
+    if not session_id or not selected_subjects:
+        return True, "No Data Available", [], []
+
+    df = cache.get(session_id)
+    if df is None:
+        return True, "Session Expired", [], []
+
+    # Detect Meta Column (USN)
+    meta_col = 'University Seat Number'
+    if meta_col not in df.columns:
+        usn_candidates = [c for c in df.columns if 'USN' in str(c).upper()]
+        meta_col = usn_candidates[0] if usn_candidates else df.columns[0]
+
+    # Replication of overview passing logic
+    all_subject_codes = get_subject_codes(df)
+    info_cols = [c for c in df.columns if not any(s in c for s in all_subject_codes)]
+    df_filtered = df[info_cols].copy()
+    
+    subject_data_cols = []
+    for c in df.columns:
+        for s in selected_subjects:
+            if c.startswith(f"{s} ") or c.startswith(f"{s} - "):
+                 subject_data_cols.append(c)
+                 break
+                 
+    df_filtered = pd.concat([df_filtered, df[subject_data_cols]], axis=1)
+
+    for c in subject_data_cols:
+        if any(k in c for k in ['Internal', 'External', 'Total']):
+            df_filtered[c] = pd.to_numeric(df_filtered[c], errors='coerce').fillna(0)
+
+    res_cols = [c for c in subject_data_cols if "Result" in c]
+    
+    if res_cols:
+        def calc_overall(row):
+            subject_status = []
+            for res_col in res_cols:
+                base_name = res_col.rsplit(' Result', 1)[0].rsplit('Result', 1)[0].strip()
+                i_val = row.get(f"{base_name} Internal", 0)
+                e_val = row.get(f"{base_name} External", 0)
+                
+                try: i = float(i_val)
+                except: i = 0
+                try: e = float(e_val) 
+                except: e = 0
+                
+                r = str(row.get(res_col, "")).strip().upper()
+
+                if (e == 0) and (r in ['A', 'ABSENT', '']): subject_status.append('A')
+                elif r in ['F', 'FAIL']: subject_status.append('F')
+                else: subject_status.append('F' if r == '' and (i + e) < 35 else 'P')
+
+            if not subject_status: return 'P'
+            elif subject_status.count('A') == len(subject_status): return 'A'
+            elif subject_status.count('F') > 0 or subject_status.count('A') > 0: return 'F'
+            return 'P'
+
+        df_filtered['Overall_Result'] = df_filtered.apply(calc_overall, axis=1)
+    else:
+        df_filtered['Overall_Result'] = 'P'
+
+    # Assign Section
+    if section_ranges or usn_mapping:
+        df_filtered['Section'] = df_filtered[meta_col].apply(lambda x: assign_section(x, section_ranges, usn_mapping))
+    else:
+        df_filtered['Section'] = "Unassigned"
+
+    # Filter Logic based on clicked card
+    if kpi_type == 'total-students': res_df = df_filtered
+    elif kpi_type == 'present-students': res_df = df_filtered[df_filtered['Overall_Result'] != 'A']
+    elif kpi_type == 'absent-students': res_df = df_filtered[df_filtered['Overall_Result'] == 'A']
+    elif kpi_type in ['passed-students', 'result-percent']: res_df = df_filtered[df_filtered['Overall_Result'] == 'P']
+    elif kpi_type == 'failed-students': res_df = df_filtered[df_filtered['Overall_Result'] == 'F']
+    else: res_df = df_filtered
+
+    if res_df.empty:
+        return True, f"Student List: {str(kpi_type).upper()} (0 Students)", [], []
+
+    # Display specific clean columns
+    possible_name_cols = [c for c in res_df.columns if 'name' in c.lower()]
+    name_col = possible_name_cols[0] if possible_name_cols else None
+    
+    display_cols = []
+    if meta_col in res_df.columns: display_cols.append(meta_col)
+    if name_col and name_col in res_df.columns: display_cols.append(name_col)
+    display_cols.extend(['Section', 'Overall_Result'])
+
+    tcols = [{"name": c.replace("_", " "), "id": c} for c in display_cols]
+    tdata = res_df[display_cols].to_dict('records')
+    title = f"📃 Detail List: {str(kpi_type).replace('-', ' ').title()} ({len(res_df)} Students)"
+
+    return True, title, tdata, tcols
+
+@callback(
+    Output("overview-kpi-excel-download", "data"),
+    Input("overview-kpi-modal-excel", "n_clicks"),
+    Input("overview-kpi-modal-excel-top", "n_clicks"),
+    State("overview-kpi-modal-table", "data"),
+    State("overview-kpi-modal-title", "children"),
+    prevent_initial_call=True
+)
+def download_overview_modal_excel(n_clicks_bottom, n_clicks_top, table_data, title):
+    if not dash.ctx.triggered or not table_data:
+        raise PreventUpdate
+        
+    df = pd.DataFrame(table_data)
+    
+    safe_title = "Overview_Student_List"
+    if title and isinstance(title, str):
+        clean_str = title.split('(')[0].replace('📃', '').replace('Detail List:', '').strip()
+        safe_title = re.sub(r'[^A-Za-z0-9_]', '_', clean_str)
+        
+    return dcc.send_data_frame(df.to_excel, f"{safe_title}_Report.xlsx", index=False)
