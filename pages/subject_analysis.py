@@ -11,8 +11,28 @@ from dash.exceptions import PreventUpdate
 from io import StringIO  # <--- Added for stability
 from cache_config import cache
 import json
+import re  # Added for section extraction
 
 dash.register_page(__name__, path="/subject_analysis", name="Subject Analysis")
+
+# ---------- Helper Functions ----------
+def extract_numeric(roll):
+    digits = re.findall(r'\d+', str(roll))
+    return int(digits[-1]) if digits else 0
+
+def sa_assign_section(roll_no, section_ranges=None, usn_mapping=None):
+    roll_str = str(roll_no).strip().upper()
+    if usn_mapping and roll_str in usn_mapping:
+         return usn_mapping[roll_str]
+
+    roll_num = extract_numeric(roll_no)
+    if section_ranges:
+        for sec_name, (start, end) in section_ranges.items():
+            start_num = extract_numeric(start)
+            end_num = extract_numeric(end)
+            if start_num <= roll_num <= end_num:
+                return sec_name
+    return "Not Assigned"
 
 # ==================== Global Styles ====================
 PAGE_CSS = """
@@ -70,198 +90,14 @@ PAGE_CSS = """
   vertical-align: -0.1em;
 }
 
-/* UNIVERSAL BOX SIZING FIX FOR DROPDOWN */
-.Select, .Select div, .Select input, .Select span {
-  box-sizing: border-box !important;
-}
-
-/* Dropdown Styling for Visibility */
-.VirtualizedSelectOption {
-  color: #1f2937 !important;
-  background-color: #ffffff !important;
-  padding: 10px !important;
-  white-space: nowrap !important; /* Prevent line breaks violating bounds */
-  text-overflow: ellipsis !important; /* Handle long text gracefully */
-  overflow: hidden !important;
-}
-
-.VirtualizedSelectOption:hover {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-.VirtualizedSelectOption.isSelected {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-/* Dash Dropdown */
-.Select--multi .Select-value {
-  background-color: #3b82f6 !important;
-  border-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-/* Force Select wrapper to fill container */
-.Select {
-  position: relative !important;
-  z-index: 100 !important;
-  width: 100% !important; /* Ensure the anchor is full width */
-  box-sizing: border-box !important;
-}
-
-.Select-control, .Select-multi-value-wrapper, div[class*="-control"] {
-  background-color: #ffffff !important;
-  border-color: #d1d5db !important;
-  border-width: 1px !important;
-  border-radius: 6px !important;
-  position: relative !important;
-  z-index: 100 !important;
-  width: 100% !important; /* Ensure control matches anchor */
-  box-sizing: border-box !important;
-  height: auto !important; /* Allow wrapping */
-  min-height: 45px !important;
-  display: flex !important;
-  align-items: center !important;
-  flex-wrap: wrap !important;
-}
-
-.Select-control.is-focused {
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
-}
-
-.Select-menu-outer {
-  background-color: #ffffff !important;
-  border: 1px solid #d1d5db !important;
-  border-top: none !important;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
-  display: block !important;
-  z-index: 9999 !important;
-  position: absolute !important;
-  
-  /* STRICT ALIGNMENT FIX */
-  top: 100% !important;
-  left: 0 !important;
-  right: 0 !important;
-  width: auto !important; /* Let left/right dictate width */
-  margin: 0 !important; /* Reset margins that push it out */
-  margin-top: -1px !important; /* Overlap border */
-  
-  box-sizing: border-box !important;
-  border-bottom-left-radius: 6px !important;
-  border-bottom-right-radius: 6px !important;
-  max-height: 300px !important;
-  min-width: 0 !important; /* Prevent content-based expansion */
-  max-width: 100% !important; /* Strictly enforce parent boundary */
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-}
-
-/* Fix rounding when open to make it look attached */
-.Select.is-open > .Select-control {
-  border-bottom-left-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-  border-color: #d1d5db !important;
-}
-
-.Select-menu {
-  /* Disable inner scroll to prevent double scrollbars */
-  max-height: none !important; 
-  overflow-y: visible !important;
-  overflow-x: hidden !important;
-  display: block !important;
-  visibility: visible !important;
-}
-
-.Select-option {
-  color: #1f2937 !important;
-  background-color: #ffffff !important;
-  padding: 12px 15px !important;
-  font-size: 14px !important;
-  cursor: pointer !important;
-  border: none !important;
-  pointer-events: auto !important;
-  display: block !important;
-  visibility: visible !important;
-}
-
-.Select-option:hover {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-.Select-option.is-focused {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-.Select-option.is-selected {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-}
-
-.Select-input input {
-  color: #1f2937 !important;
-  font-weight: 500 !important;
-}
-
-/* Make sure dropdown container doesn't clip menu */
-.Dropdown {
-  position: relative !important;
-  z-index: 100 !important;
-}
-
-#subject-checklist, #result-filter {
-  position: relative !important;
-}
-
-/* Ensure dropdown components are always visible and clickable */
-.Select-wrapper {
-  overflow: visible !important;
-  z-index: 100 !important;
-}
-
-.react-select__menu-portal {
-  z-index: 10001 !important;
-  position: fixed !important;
-}
-
-/* Override any Bootstrap container overflow */
-.pb-4 {
-  overflow: visible !important;
-}
-
-/* Additional selectors for dropdown menu in case of different Dash versions */
-.Select-menu,
-.Select-options,
-[class*="Select"] [class*="menu"] {
-  z-index: 10000 !important;
-  display: block !important;
-  visibility: visible !important;
-}
-
-/* Force dropdown to be visible even if hidden by default */
-div[class*="Select-menu"] {
-  display: block !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
-  z-index: 10000 !important;
-}
-
-/* React-Select compatibility */
-.react-select__menu {
-  z-index: 10000 !important;
-}
-
 /* Print-friendly export */
-@media print {
-  /* FORCE landscape orientation and standard margins */
-  @page {
-    size: landscape !important;
-    margin: 1cm !important;
-  }
+/* 1. CRITICAL FIX: Place @page OUTSIDE @media print for Chrome/Edge to respect it */
+@page {
+    size: landscape;
+    margin: 10mm;
+}
 
+@media print {
   /* Reset standard body styling for print */
   body, html {
     -webkit-print-color-adjust: exact !important;
@@ -346,17 +182,15 @@ layout = dbc.Container([
                     html.H6("Select Subjects", className="fw-bold text-muted mb-1"),
                     html.Div([
                         dcc.Dropdown(
-                            id="subject-checklist",
+                            id="sa-subject-checklist",
                             options=[], value=[], multi=True,
                             placeholder="Select subjects to analyze...",
-                            className="shadow-sm custom-dropdown",
+                            className="custom-dropdown",
                             searchable=True,
                             clearable=True,
                             optionHeight=50,
                             maxHeight=300,
                             style={
-                                "color": "#1f2937", 
-                                "fontWeight": "500", 
                                 "position": "relative", 
                                 "zIndex": "1000",
                                 "minHeight": "45px"
@@ -364,26 +198,44 @@ layout = dbc.Container([
                         ),
                         html.Div(style={"height": "10px"})
                     ], style={"position": "relative", "zIndex": "1000"}),
-                ], xs=12, lg=6, style={"position": "relative", "zIndex": "1060", "overflow": "visible"}),
+                ], xs=12, lg=4, style={"position": "relative", "zIndex": "1060", "overflow": "visible"}),
+                
+                dbc.Col([
+                    html.H6("Select Section", className="fw-bold text-muted mb-1"),
+                    html.Div([
+                        dcc.Dropdown(
+                            id="sa-section-filter",
+                            options=[{"label": "All Sections", "value": "ALL"}],
+                            value="ALL", clearable=False, className="custom-dropdown",
+                            searchable=True,
+                            optionHeight=50,
+                            maxHeight=300,
+                            style={
+                                "position": "relative", 
+                                "zIndex": "1000",
+                                "minHeight": "45px"
+                            }
+                        ),
+                        html.Div(style={"height": "10px"})
+                    ], style={"position": "relative", "zIndex": "1000"}),
+                ], xs=12, lg=2, style={"position": "relative", "zIndex": "1050", "overflow": "visible"}),
 
                 dbc.Col([
                     html.H6("Filter by Result", className="fw-bold text-muted mb-1"),
                     html.Div([
                         dcc.Dropdown(
-                            id="result-filter",
+                            id="sa-result-filter",
                             options=[
                                 {"label": "All Students", "value": "ALL"},
                                 {"label": "Passed Only", "value": "PASS"},
                                 {"label": "Failed Only", "value": "FAIL"},
                                 {"label": "Absent Only", "value": "ABSENT"},
                             ],
-                            value="ALL", clearable=False, className="shadow-sm custom-dropdown",
+                            value="ALL", clearable=False, className="custom-dropdown",
                             searchable=True,
                             optionHeight=50,
                             maxHeight=300,
                             style={
-                                "color": "#1f2937", 
-                                "fontWeight": "500", 
                                 "position": "relative", 
                                 "zIndex": "1000",
                                 "minHeight": "45px"
@@ -405,9 +257,8 @@ layout = dbc.Container([
             ], className="g-3 align-items-start"),
             dbc.Row([
                 dbc.Col(
-                    # Added a small spinner for the text update
                     dbc.Spinner(
-                        html.Div(id="selected-count", className="mt-2 small text-muted"),
+                        html.Div(id="sa-selected-count", className="mt-2 small text-muted"),
                         size="sm",
                         color="primary"
                     )
@@ -420,7 +271,7 @@ layout = dbc.Container([
     # --- KPIs ---
     # Wrapped in its own Loading component
     dcc.Loading(type="default", children=[
-        dbc.Card(dbc.CardBody(html.Div(id="kpi-cards")), className="sa-card mb-4")
+        dbc.Card(dbc.CardBody(html.Div(id="sa-kpi-cards")), className="sa-card mb-4")
     ]),
 
     # --- Table ---
@@ -429,7 +280,7 @@ layout = dbc.Container([
         dbc.Card(dbc.CardBody([
             html.H5("📋 Detailed Subject Breakdown", className="fw-bold mb-3 text-center"),
             dash_table.DataTable(
-                id="subject-table",
+                id="sa-subject-table",
                 columns=[], data=[],
                 style_table={
                     "overflowX": "auto", 
@@ -534,11 +385,11 @@ layout = dbc.Container([
     # Wrapped in its own Loading component
     dcc.Loading(type="default", children=[
         dbc.Card(dbc.CardBody([
-            dcc.Tabs(id="chart-tabs", value="pie", children=[
+            dcc.Tabs(id="sa-chart-tabs", value="pie", children=[
                 dcc.Tab(label="🎯 Pass vs Fail Distribution", value="pie"),
                 dcc.Tab(label="📈 Subject-wise Average Marks", value="bar"),
             ]),
-            html.Div(id="subject-analysis-chart", className="mt-3"),
+            html.Div(id="sa-subject-analysis-chart", className="mt-3"),
         ]), className="sa-card mb-4"),
     ]),
 
@@ -555,27 +406,95 @@ layout = dbc.Container([
 
 # 1️⃣ Dropdown Control
 @callback(
-    Output("subject-checklist", "options", allow_duplicate=True),
-    Output("subject-checklist", "value", allow_duplicate=True),
-    Input("overview-selected-subjects", "data"),
-    Input("subject-checklist", "value"),
-    prevent_initial_call='initial_duplicate'
+    Output("sa-section-filter", "options"),
+    Input("section-data", "data"),
+    Input("usn-mapping-store", "data")  # <-- Add this input
 )
-def update_subject_dropdown(overview_subjects, current_value):
+def update_section_dropdown(section_data, usn_mapping):
+    options = [{"label": "All Sections", "value": "ALL"}]
+    sections = set()
+    
+    # Add sections from Range Config
+    if section_data:
+        for sec in section_data.keys():
+            sections.add(sec)
+            
+    # Add sections from Excel Mapping Config
+    if usn_mapping:
+        for sec in usn_mapping.values():
+            sections.add(sec)
+            
+    # Sort and append unique sections
+    for sec in sorted(list(sections)):
+        options.append({"label": sec, "value": sec})
+        
+    # ONLY show "Not Assigned" if no sections are mapped at all
+    if not sections:
+        options.append({"label": "Not Assigned", "value": "Not Assigned"})
+        
+    return options
+
+@callback(
+    Output("sa-subject-checklist", "options"),
+    Output("sa-subject-checklist", "value"),
+    Input("overview-selected-subjects", "data"),
+    Input("sa-subject-checklist", "value"),
+    State("stored-data", "data"),
+    prevent_initial_call=False
+)
+def update_subject_dropdown(overview_subjects, current_value, session_id):
     if not overview_subjects:
         return [], []
-    
+        
+    name_mapping = {}
+    if session_id:
+        df = cache.get(session_id)
+        if df is not None:
+            for subj in overview_subjects:
+                display_name = subj
+                subj_cols = [c for c in df.columns if c.startswith(subj)]
+                for col in subj_cols:
+                    if " - " in col:
+                        try:
+                            rest = col.split(" - ", 1)[1]
+                            for suffix in ["Result", "Total", "Internal", "External"]:
+                                if rest.strip().endswith(suffix):
+                                    possible_name = rest.rsplit(suffix, 1)[0].strip()
+                                    if possible_name:
+                                        display_name = f"{subj} - {possible_name}"
+                                    break
+                            if display_name != subj:
+                                break
+                        except: pass
+                name_mapping[subj] = display_name
+
     # Add "Select All" and "Remove All" options at the top
     options = [
         {"label": "✓ Select All", "value": "__SELECT_ALL__"},
         {"label": "✕ Remove All", "value": "__REMOVE_ALL__"}
-    ] + [{"label": s, "value": s} for s in overview_subjects]
+    ] 
+    
+    for s in overview_subjects:
+        full_name = name_mapping.get(s, s)
+        
+        # Extract code part to display
+        if " - " in full_name:
+            c_part = full_name.split(" - ", 1)[0]
+        else:
+            c_part = full_name
+            
+        options.append({
+            "label": html.Span(c_part, className="fw-bold"),
+            "value": s,
+            "title": full_name  # Keeps full name for standard HTML tooltips
+        })
+
     all_subject_values = [opt["value"] for opt in options[2:]]  # Exclude the special markers
     
     ctx = dash.callback_context
     trigger = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "INITIAL_LOAD"
 
-    if trigger == "subject-checklist":
+    if trigger == "sa-subject-checklist":
         # If "Select All" is clicked, select all subjects
         if current_value and "__SELECT_ALL__" in current_value:
             return options, all_subject_values
@@ -586,31 +505,35 @@ def update_subject_dropdown(overview_subjects, current_value):
         filtered_value = [v for v in (current_value or []) if not v.startswith("__")]
         return options, filtered_value
     
+    # Return ALL values on initial load so that the charts and tables populate immediately
     return options, all_subject_values
 
 
 # 2️⃣ Main Analysis
 @callback(
-    Output("selected-count", "children", allow_duplicate=True),
-    Output("kpi-cards", "children", allow_duplicate=True),
-    Output("subject-table", "columns", allow_duplicate=True),
-    Output("subject-table", "data", allow_duplicate=True),
-    Output("subject-analysis-chart", "children", allow_duplicate=True),
-    Input("subject-checklist", "value"),
-    Input("result-filter", "value"),
-    Input("chart-tabs", "value"),
+    Output("sa-selected-count", "children"),
+    Output("sa-kpi-cards", "children"),
+    Output("sa-subject-table", "columns"),
+    Output("sa-subject-table", "data"),
+    Output("sa-subject-analysis-chart", "children"),
+    Input("sa-subject-checklist", "value"),
+    Input("sa-result-filter", "value"),
+    Input("sa-section-filter", "value"),
+    Input("sa-chart-tabs", "value"),
     State("stored-data", "data"),
-    prevent_initial_call='initial_duplicate'  # <-- FIX IS HERE
+    State("section-data", "data"),
+    State("usn-mapping-store", "data"),
+    prevent_initial_call=False
 )
-def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
+def update_analysis(selected_subjects, result_filter, section_filter, chart_tab, session_id, section_ranges, usn_mapping):
     if not session_id:
         raise PreventUpdate
     
     # Retrieve from Server Cache
     df = cache.get(session_id)
     if df is None:
-        return "Session expired", html.P("Please return to Overview and upload data.", className="text-danger"), [], [], html.P("No Data")
-    
+        return "Session expired", html.P("Please return to Overview and upload data.", className="text-danger"), [], [], html.Div()
+
     # Remove the special markers if present
     selected_subjects = [s for s in (selected_subjects or []) if not s.startswith("__")]
     
@@ -628,6 +551,14 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
     selected_cols = list(dict.fromkeys(selected_cols))
 
     df_sel = df[[first_col, "Name"] + selected_cols].copy()
+    
+    # Apply Section Assignment and Filtering
+    df_sel['Section'] = df_sel[first_col].apply(lambda x: sa_assign_section(x, section_ranges, usn_mapping))
+    if section_filter and section_filter != "ALL":
+        df_sel = df_sel[df_sel['Section'] == section_filter]
+        if df_sel.empty:
+            return f"0 students in section {section_filter}", html.P(f"No data for section {section_filter}."), [], [], html.Div()
+
     num_cols = [c for c in df_sel.columns if any(k in c for k in ["Internal", "External", "Total"])]
     for c in num_cols:
         df_sel[c] = pd.to_numeric(df_sel[c], errors="coerce")
@@ -939,6 +870,7 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
     # Add Identity Columns first
     columns_for_table.append({"name": ["Student", "ID"], "id": first_col})
     columns_for_table.append({"name": ["Student", "Name"], "id": "Name"})
+    columns_for_table.append({"name": ["Student", "Section"], "id": "Section"})
 
     # robust column grouping logic
     # Group columns by subject to ensure they appear together in the table
@@ -1083,8 +1015,8 @@ def update_analysis(selected_subjects, result_filter, chart_tab, session_id):
 @callback(
     Output("sa-download-csv", "data"),
     Input("sa-export-csv", "n_clicks"),
-    State('subject-table', 'data'),
-    State('subject-table', 'columns'),
+    State('sa-subject-table', 'data'),
+    State('sa-subject-table', 'columns'),
     prevent_initial_call=True
 )
 def export_csv(n, table_data, table_columns):
@@ -1109,8 +1041,8 @@ def export_csv(n, table_data, table_columns):
 @callback(
     Output("sa-download-xlsx", "data"),
     Input("sa-export-xlsx", "n_clicks"),
-    State('subject-table', 'data'),
-    State('subject-table', 'columns'),
+    State('sa-subject-table', 'data'),
+    State('sa-subject-table', 'columns'),
     prevent_initial_call=True
 )
 def export_xlsx(n, table_data, table_columns):
@@ -1165,8 +1097,8 @@ dash.clientside_callback(
     Input({"type": "sa-kpi-card", "index": ALL}, "n_clicks"),
     Input("sa-kpi-modal-close", "n_clicks"),
     Input("sa-kpi-modal-close-top", "n_clicks"),
-    State("subject-table", "data"),
-    State("subject-table", "columns"),
+    State("sa-subject-table", "data"),
+    State("sa-subject-table", "columns"),
     prevent_initial_call=True
 )
 def handle_kpi_click(kpi_clicks, close_click, close_click_top, table_data, table_cols):

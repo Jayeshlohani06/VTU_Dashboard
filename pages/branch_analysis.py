@@ -245,10 +245,13 @@ PAGE_CSS = """
 /* Keep tables scrollable on screen */
 .print-scroll-area { max-height: 500px; overflow-y: auto; overflow-x: hidden; }
 
+/* 1. CRITICAL FIX: Place @page OUTSIDE @media print for Chrome/Edge to respect it */
+@page { 
+    size: landscape; 
+    margin: 10mm; 
+}
+
 @media print {
-    /* 1. Force landscape paper size and proper margins */
-    @page { size: landscape !important; margin: 10mm !important; }
-    
     body, html { 
         -webkit-print-color-adjust: exact !important; 
         print-color-adjust: exact !important; 
@@ -628,8 +631,33 @@ def analyze_branches(n, file_contents, branch_names):
             style_table={'borderRadius': '10px', 'overflow': 'hidden', 'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.1)'}
         )
 
-        # 1. KPI Cards (6 Elements)
-        kpis = [
+        # 1. KPI Cards (Interactive Tabs for Overall vs Branch)
+        def create_kpi_cards(kpi_data):
+            return dbc.Row([
+                dbc.Col(
+                    html.Div(
+                        dbc.CardBody([
+                            html.Div([
+                                html.Div(
+                                    html.I(className=f"bi {k['icon']}", style={"color": k["color"], "fontSize": "1.4rem"}),
+                                     className="d-flex align-items-center justify-content-center",
+                                     style={"minWidth": "42px", "width": "42px", "height": "42px", "borderRadius": "10px", "backgroundColor": k["bg"]}
+                                ),
+                                html.Div([
+                                    html.H6(k["label"], className="text-muted text-uppercase fw-bold mb-0", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
+                                    # Font scale dynamic and truncated for long Topper Names
+                                    html.H3(str(k["val"]), className="fw-bold mb-0 text-truncate", style={"color": k["color"], "fontSize": "1.4rem", "maxWidth": "120px"}),
+                                ], className="ms-3")
+                            ], className="d-flex align-items-center h-100")
+                        ], className="p-3"),
+                        className="card shadow-sm h-100 border-0 ba-stat-card",
+                        style={"borderLeft": f"4px solid {k['color']}"}
+                    )
+                ) for k in kpi_data
+            ], className="row-cols-2 row-cols-md-3 row-cols-lg-6 g-3 mt-1 pb-3")
+
+        # Base Overview Tab
+        overall_kpis = [
             {"label": "Total Students", "val": uni_total, "color": "#3b82f6", "bg": "#eff6ff", "icon": "bi-people-fill"},
             {"label": "Appeared", "val": uni_appeared, "color": "#10b981", "bg": "#ecfdf5", "icon": "bi-person-circle"},
             {"label": "Passed", "val": uni_passed, "color": "#0ea5e9", "bg": "#f0f9ff", "icon": "bi-check-circle-fill"},
@@ -638,27 +666,26 @@ def analyze_branches(n, file_contents, branch_names):
             {"label": "Best Branch", "val": best_branch, "color": "#f59e0b", "bg": "#fffbeb", "icon": "bi-trophy-fill"}
         ]
 
-        kpi_section = dbc.Row([
-            dbc.Col(
-                html.Div(
-                    dbc.CardBody([
-                        html.Div([
-                            html.Div(
-                                html.I(className=f"bi {k['icon']}", style={"color": k["color"], "fontSize": "1.4rem"}),
-                                 className="d-flex align-items-center justify-content-center",
-                                 style={"minWidth": "42px", "width": "42px", "height": "42px", "borderRadius": "10px", "backgroundColor": k["bg"]}
-                            ),
-                            html.Div([
-                                html.H6(k["label"], className="text-muted text-uppercase fw-bold mb-0", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
-                                html.H3(str(k["val"]), className="fw-bold mb-0", style={"color": k["color"], "fontSize": "1.6rem"}),
-                            ], className="ms-3")
-                        ], className="d-flex align-items-center h-100")
-                    ], className="p-3"),
-                    className="card shadow-sm h-100 border-0 ba-stat-card",
-                    style={"borderLeft": f"4px solid {k['color']}"}
-                )
-            ) for k in kpis
-        ], className="row-cols-2 row-cols-md-3 row-cols-lg-6 g-3 mb-4")
+        kpi_tabs_list = [dbc.Tab(create_kpi_cards(overall_kpis), label="🌍 Overall Summary", tab_id="tab-overall", tab_style={"fontWeight": "bold", "color": "#0f172a", "padding": "8px 20px"})]
+        
+        # Tabs for Individual Branches dynamically generated
+        for stat in branch_stats:
+            # Extract just first name of Topper to fit nicely
+            t_name = str(stat.get('Topper', '-')).split(' ')[0] if stat.get('Topper') and stat.get('Topper') != "-" else "-"
+            
+            b_kpis = [
+                {"label": "Total Students", "val": stat['Total Students'], "color": "#3b82f6", "bg": "#eff6ff", "icon": "bi-people-fill"},
+                {"label": "Appeared", "val": stat['Appeared'], "color": "#10b981", "bg": "#ecfdf5", "icon": "bi-person-circle"},
+                {"label": "Passed", "val": stat['Passed'], "color": "#0ea5e9", "bg": "#f0f9ff", "icon": "bi-check-circle-fill"},
+                {"label": "Failed", "val": stat['Failed'], "color": "#ef4444", "bg": "#fef2f2", "icon": "bi-x-circle-fill"},
+                {"label": "Pass %", "val": f"{stat['Pass %']}%", "color": "#8b5cf6", "bg": "#f5f3ff", "icon": "bi-percent"},
+                {"label": "Branch Topper", "val": t_name, "color": "#f59e0b", "bg": "#fffbeb", "icon": "bi-award-fill"}
+            ]
+            kpi_tabs_list.append(dbc.Tab(create_kpi_cards(b_kpis), label=f"📍 {stat['Branch']}", tab_id=f"tab-{stat['Branch']}", tab_style={"fontWeight": "600", "color": "#475569", "padding": "8px 20px"}))
+
+        kpi_container = html.Div([
+            dbc.Tabs(kpi_tabs_list, active_tab="tab-overall", className="mb-2 border-bottom"),
+        ], className="mb-4")
 
         # 2. Detailed Branch KPI Table
         branch_grid = dash_table.DataTable(
@@ -695,8 +722,8 @@ def analyze_branches(n, file_contents, branch_names):
         return html.Div([
             # Print Button
             print_container,
-            # KPIs
-            kpi_section,
+            # Interactive KPIs (Updated)
+            kpi_container,
             
             # Branch-wise KPIs (Priority Request)
             dbc.Card([

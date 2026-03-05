@@ -638,16 +638,32 @@ def generate_credit_panel(session_id, ranking_type, section_ranges):
     
     grid_items = []
     for code in codes:
+        # Extract only the subject code (everything before " - " if present)
+        display_code = code.split(" - ")[0].strip() if " - " in code else code.strip()
+
         grid_items.append(dbc.Col(dbc.InputGroup([
-            dbc.InputGroupText(code, className="fw-bold bg-light text-dark", style={"width": "85px", "justifyContent": "center", "fontSize": "0.8rem"}),
+            # InputGroupText for the label
+            dbc.InputGroupText(
+                html.Span(display_code, title=code),
+                className="fw-bold bg-light text-dark text-truncate d-inline-block",
+                style={
+                    "width": "110px", 
+                    "justifyContent": "center", 
+                    "fontSize": "0.85rem",
+                    "whiteSpace": "nowrap",
+                    "overflow": "hidden",
+                    "textOverflow": "ellipsis"
+                }
+            ),
+            # Select dropdown for credits
             dbc.Select(
                 id={'type': 'credit-input', 'index': code}, 
                 options=[{'label': f'{i} Credits', 'value': str(i)} for i in [4,3,2,1,0]], 
                 value='3', 
-                className="form-select text-center",
-                style={"minHeight": "45px", "fontSize": "15px"}
+                className="form-select text-center flex-grow-1",
+                style={"minHeight": "45px", "fontSize": "14px"}
             )
-        ], size="sm", className="shadow-sm mb-3", style={"overflow": "visible"}), xs=12, sm=6, md=4, lg=3))
+        ], size="sm", className="shadow-sm mb-3 d-flex flex-nowrap", style={"overflow": "hidden"}), xs=12, sm=6, md=4, lg=3))
 
     return dbc.Card([
         dbc.CardHeader(html.Div([html.I(className="bi bi-sliders me-2"), "SGPA Configuration"], className="fw-bold text-primary"), className="bg-white border-bottom-0 pt-3", style={"overflow": "visible"}),
