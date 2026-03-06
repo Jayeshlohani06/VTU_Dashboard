@@ -343,6 +343,49 @@ layout = dbc.Container([
             dbc.Card([
                 dbc.CardHeader("2. Configuration", className="fw-bold bg-light", style={"overflow": "visible"}),
                 dbc.CardBody([
+                    
+                    # ⚠️ LIVE MOVING ALERT
+                    dbc.Alert(
+                        html.Marquee("🚨 Action Required: Please select your Scheme and Semester and click 'Submit Mapping' to enable automatic SGPA calculation across the dashboard! 🚨",
+                                     style={"fontWeight": "bold", "fontSize": "1.1rem"}
+                        ),
+                        id="scheme-moving-alert",
+                        color="danger",
+                        is_open=True,
+                        className="p-1 mb-3 shadow-sm border-danger"
+                    ),
+
+                    html.Label("Scheme & Semester", className="small fw-bold mb-1"),
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.Dropdown(
+                                id='scheme-selector',
+                                options=[{'label': f'{yr} Scheme', 'value': str(yr)} for yr in [2022, 2021, 2018, 2025]],
+                                value=None,
+                                clearable=False,
+                                className="mb-3",
+                                placeholder="Select Scheme..."
+                            )
+                        ], width=6),
+                        dbc.Col([
+                            dcc.Dropdown(
+                                id='semester-selector',
+                                options=[{'label': f'Sem {i}', 'value': i} for i in range(1, 9)],
+                                value=None,
+                                clearable=False,
+                                className="mb-3",
+                                placeholder="Select Semester..."
+                            )
+                        ], width=6),
+                    ]),
+
+                    dbc.Button(
+                        [html.I(className="bi bi-check-circle-fill me-2"), "Submit Mapping for SGPA"],
+                        id="submit-scheme-btn",
+                        color="success",
+                        className="w-100 mb-3 fw-bold shadow-sm"
+                    ),
+
                     html.Label("Filter Subjects", className="small fw-bold mb-1"),
                     html.Div([
                         dcc.Dropdown(
@@ -602,15 +645,17 @@ def toggle_config_mode(mode):
     Output('stored-data', 'data'),
     Output('overview-selected-subjects', 'data'),
     Output('subject-options-store', 'data'),
+    Output('usn-mapping-store', 'data', allow_duplicate=True),
+    Output('section-data', 'data', allow_duplicate=True),
     Input('upload-data', 'contents'),
     Input('subject-options-store', 'data'),
     Input('url', 'pathname'),
     State('overview-selected-subjects', 'data'),
-    prevent_initial_call=False
+    prevent_initial_call='initial_duplicate'
 )
 def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
     if pathname != "/" and pathname is not None:
-        return no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
     ctx_id = ctx.triggered_id
 
@@ -618,7 +663,7 @@ def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
     if ctx_id == 'upload-data' and upload_contents:
         df = process_uploaded_excel(upload_contents)
         if df.empty:
-            return [], [], None, None, None
+            return [], [], None, None, None, None, None
 
         subjects = get_subject_codes(df)
         options = [{'label': s, 'value': s} for s in subjects]
@@ -627,15 +672,59 @@ def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
         session_id = str(uuid.uuid4())
         cache.set(session_id, df)
         
-        return options, subjects, session_id, subjects, options
+        # Clear section and usn mappings because it is a new upload
+        return options, subjects, session_id, subjects, options, {}, {}
 
     # 2️⃣ If data already exists in session (Navigation / Restore)
     if stored_options:
         safe_subjects = stored_subjects if isinstance(stored_subjects, list) else []
-        return stored_options, safe_subjects, no_update, no_update, no_update
+        return stored_options, safe_subjects, no_update, no_update, no_update, no_update, no_update
 
     # 3️⃣ Default empty state
-    return [], [], no_update, no_update, no_update
+    return [], [], no_update, no_update, no_update, no_update, no_update
+
+@callback(
+    Output('scheme-selector', 'value'),
+    Output('semester-selector', 'value'),
+    Input('scheme-semester-store', 'data'),
+    prevent_initial_call=False
+)
+def load_scheme_semester_ui(store_data):
+    if store_data:
+        return store_data.get('scheme', None), store_data.get('semester', None)
+    return None, None
+
+@callback(
+    Output('scheme-semester-store', 'data', allow_duplicate=True),
+    Output('scheme-moving-alert', 'is_open'),
+    Input('submit-scheme-btn', 'n_clicks'),
+    State('scheme-selector', 'value'),
+    State('semester-selector', 'value'),
+    State('scheme-semester-store', 'data'),
+    prevent_initial_call=True
+)
+def update_scheme_semester_store(n_clicks, scheme, semester, store_data):
+    if not n_clicks:
+        # If no button click yet, keep alert open if nothing in store
+        return no_update, True if not store_data else False
+        
+    if not scheme or not semester:
+        # If they clicked but didn't select both, keep alert open and don't store
+        return no_update, True
+
+    # Valid submission: update store, hide alert
+    return {"scheme": scheme, "semester": semester}, False
+
+# Add a load callback to hide alert initially if already configured
+@callback(
+    Output('scheme-moving-alert', 'is_open', allow_duplicate=True),
+    Input('scheme-semester-store', 'data'),
+    prevent_initial_call='initial_duplicate'
+)
+def hide_alert_on_load(store_data):
+    if store_data and store_data.get('scheme') and store_data.get('semester'):
+        return False
+    return True
 
 @callback(
     Output('overview-selected-subjects', 'data', allow_duplicate=True),

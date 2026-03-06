@@ -9,6 +9,7 @@ from io import StringIO, BytesIO
 from cache_config import cache
 from dash.exceptions import PreventUpdate
 import json
+from services.credit_service import load_credit_map, get_credit
 
 # Register page
 dash.register_page(__name__, path="/ranking", name="Ranking")
@@ -631,11 +632,19 @@ def toggle_metric_selector(rank_type):
     Output('sgpa-credit-panel', 'children'),
     Input('stored-data', 'data'),
     Input('ranking-type', 'value'),
+    Input('scheme-semester-store', 'data'),
     State('section-data', 'data')
 )
-def generate_credit_panel(session_id, ranking_type, section_ranges):
+def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ranges):
     if ranking_type != 'sgpa': return html.Div()
     if not session_id: return ""
+    
+    # Extract scheme/sem or default
+    scheme = "2022"
+    semester = 5
+    if scheme_sem_data:
+        scheme = scheme_sem_data.get('scheme', '2022')
+        semester = scheme_sem_data.get('semester', 5)
     
     df = cache.get(session_id)
     if df is None: return ""
@@ -648,10 +657,17 @@ def generate_credit_panel(session_id, ranking_type, section_ranges):
     if not codes: return dbc.Alert("No recognizable subject columns found.", color='info')
     codes = sorted(codes)
     
+    # Load credit map using the stored scheme and semester
+    credit_map = load_credit_map(scheme, semester)
+    
     grid_items = []
     for code in codes:
         # Extract only the subject code (everything before " - " if present)
         display_code = code.split(" - ")[0].strip() if " - " in code else code.strip()
+        
+        # Get credit from service, fallback to default 0 if not found
+        fetched_credit = get_credit(display_code, credit_map)
+        default_credit = str(fetched_credit)
 
         grid_items.append(dbc.Col(dbc.InputGroup([
             # InputGroupText for the label
@@ -671,7 +687,7 @@ def generate_credit_panel(session_id, ranking_type, section_ranges):
             dbc.Select(
                 id={'type': 'credit-input', 'index': code}, 
                 options=[{'label': f'{i} Credits', 'value': str(i)} for i in [4,3,2,1,0]], 
-                value='3', 
+                value=default_credit, 
                 className="form-select text-center flex-grow-1",
                 style={"minHeight": "45px", "fontSize": "14px"}
             )
@@ -683,9 +699,9 @@ def generate_credit_panel(session_id, ranking_type, section_ranges):
             html.P("Assign credits to subjects. The system will calculate SGPA based on these values.", className="text-muted small mb-4"),
             dbc.Row(grid_items, className="g-2 mb-2", style={"overflow": "visible"}),
             html.Hr(className="my-3 text-muted opacity-25"),
-            dbc.Button([html.I(className="bi bi-calculator-fill me-2"), "Calculate SGPA"], id='calculate-sgpa-all', color='primary', size="lg", className='w-100 fw-bold shadow-sm mb-3'),
+            html.P("✨ SGPA is computed automatically based on these values.", className="text-success small fw-bold mb-0 text-center"),
             # Status Container (starts empty)
-            html.Div(id="sgpa-calc-status")
+            html.Div(id="sgpa-calc-status", className="mt-2")
         ], style={"overflow": "visible"})
     ], className="rnk-card mb-4 border-start border-4 border-primary", style={"overflow": "visible"})
 
@@ -693,17 +709,15 @@ def generate_credit_panel(session_id, ranking_type, section_ranges):
 @callback(
     Output('sgpa-store', 'data'),
     Output('sgpa-calc-status', 'children'),
-    Input('calculate-sgpa-all', 'n_clicks'),
+    Input({'type': 'credit-input', 'index': ALL}, 'value'),
     State('stored-data', 'data'),
     State('section-data', 'data'),
     State('usn-mapping-store', 'data'),
     State({'type': 'credit-input', 'index': ALL}, 'id'),
-    State({'type': 'credit-input', 'index': ALL}, 'value'),
-    prevent_initial_call=True
+    prevent_initial_call=False
 )
-def calculate_sgpa_all(n_clicks, json_data, section_ranges, usn_mapping, credit_ids, credit_vals):
-    if not n_clicks: return no_update, no_update
-    if not json_data: return no_update, no_update
+def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, credit_ids):
+    if not json_data or not credit_vals: return no_update, no_update
     
     mapping_str = str(usn_mapping) if usn_mapping else "None"
     base = _prepare_base(json_data, _section_key(section_ranges), mapping_str).copy()
@@ -1281,10 +1295,12 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
     State("ranking-table", "derived_viewport_data"), 
     State("stored-data", "data"),
     State("section-data", "data"),
+    State("sgpa-store", "data"),
+    State("usn-mapping-store", "data"),
     Input("close-modal", "n_clicks"), 
     prevent_initial_call=True
 )
-def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
+def show_modal(main_cell, bd_cells, main_data, json_data, section_data, sgpa_json, usn_mapping, close):
     trigger = dash.ctx.triggered_id
     if trigger == "close-modal" or not json_data: return False, no_update
     
@@ -1317,7 +1333,23 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
     # Use Cached Data Loader for Speed
     # _prepare_base is lru_cached, so it won't re-parse JSON if string is identical
     try:
-        df = _prepare_base(json_data, _section_key(section_data))
+        mapping_str = str(usn_mapping) if usn_mapping else "None"
+        df = _prepare_base(json_data, _section_key(section_data), mapping_str).copy()
+        
+        if sgpa_json:
+            try:
+                from io import StringIO
+                import pandas as pd
+                sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+                if 'Student_ID' in df.columns and 'Student_ID' in sgpa_df.columns:
+                    df = df.merge(sgpa_df, how='left', on='Student_ID')
+                elif df.columns[0] == 'USN' or df.columns[0] == 'Student_ID':
+                     df = df.rename(columns={df.columns[0]: 'Student_ID'})
+                     if 'Student_ID' in sgpa_df.columns:
+                         df = df.merge(sgpa_df, how='left', on='Student_ID')
+            except Exception as e:
+                pass
+
         if df.empty: return no_update, no_update
     except:
         return no_update, no_update
@@ -1406,6 +1438,13 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
             html.Td(res_disp, className="text-danger fw-bold" if str(res_disp).upper() in ['F', 'FAIL'] else "text-success fw-bold")
         ]))
 
+    sgpa_val = row.get('SGPA', 'N/A')
+    if pd.notna(sgpa_val) and str(sgpa_val).strip() != 'N/A':
+        try:
+            sgpa_val = f"{float(sgpa_val):.2f}"
+        except ValueError:
+            pass  # keep original if it fails to convert
+
     body = html.Div([
         dbc.Row([
             dbc.Col([
@@ -1414,7 +1453,7 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
             ], width=8),
             dbc.Col([
                 dbc.Badge(f"Total: {row.get('Total_Marks', 0)}", color="info", className="p-2 fs-6 me-2"),
-                dbc.Badge(f"SGPA: {row.get('SGPA', 'N/A')}", color="success", className="p-2 fs-6")
+                dbc.Badge(f"SGPA: {sgpa_val}", color="success", className="p-2 fs-6")
             ], width=4, className="text-end align-self-center")
         ], className="mb-3 border-bottom pb-3"),
         
@@ -1495,10 +1534,25 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
         ('Second Class', scope_calc[is_pass_mask & (scope_calc['percentage'] >= 50) & (scope_calc['percentage'] < 60)])
     ]
     
+    # Overview Calculation
+    overview_data = []
+    for sheet_name, df_kpi in kpi_definitions:
+        overview_data.append({"KPI Metric": sheet_name, "Count": len(df_kpi)})
+        
+    total_app = len(scope_calc[~is_absent_mask])
+    pass_cnt = len(scope_calc[is_pass_mask])
+    pass_perc = round((pass_cnt / total_app * 100) if total_app > 0 else 0, 2)
+    overview_data.insert(5, {"KPI Metric": "Pass % (Appeared)", "Count": f"{pass_perc}%"})
+    
+    overview_df = pd.DataFrame(overview_data)
+
     out = BytesIO()
     writer = pd.ExcelWriter(out, engine='openpyxl')
     
-    has_sheets = False
+    # Write Overview as the first sheet
+    overview_df.to_excel(writer, sheet_name="KPI Overview", index=False)
+    
+    has_sheets = True
     for sheet_name, df in kpi_definitions:
         if df.empty:
             continue
