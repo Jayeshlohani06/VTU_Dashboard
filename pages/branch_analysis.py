@@ -720,6 +720,15 @@ def analyze_branches(n, file_contents, branch_names):
 
         # --- ASSEMBLE VIEW (Clean Single Page) ---
         return html.Div([
+            # Extracted data arrays hidden for exports
+            dcc.Store(id='ba-kpi-data-store', data=stats_df.to_dict('records') if not stats_df.empty else []),
+            dcc.Store(id='ba-ranker-data-store', data=top_rankers.to_dict('records') if not top_rankers.empty else []),
+            dcc.Store(id='ba-subject-data-store', data=subject_df.to_dict('records') if not subject_df.empty else []),
+            
+            dcc.Download(id="download-kpi-excel"),
+            dcc.Download(id="download-rankers-excel"),
+            dcc.Download(id="download-subjects-excel"),
+
             # Print Button
             print_container,
             # Interactive KPIs (Updated)
@@ -728,8 +737,13 @@ def analyze_branches(n, file_contents, branch_names):
             # Branch-wise KPIs (Priority Request)
             dbc.Card([
                 dbc.CardHeader([
-                     html.I(className="bi bi-grid-3x3-gap me-2"),
-                     "Branch-wise KPI Summary"
+                    html.Div([
+                        html.Span([html.I(className="bi bi-grid-3x3-gap me-2"), "Branch-wise KPI Summary"]),
+                        dbc.Button(
+                            [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Branch KPIs"], 
+                            id="export-kpi-btn", size="sm", color="success", outline=True, className="fw-bold"
+                        )
+                    ], className="d-flex justify-content-between align-items-center w-100")
                 ], className="fw-bold bg-white", style={"fontSize": "1.1rem", "borderBottom": "2px solid #f1f5f9"}),
                 dbc.CardBody(branch_grid, className="p-0")
             ], className="shadow-sm border-0 mb-4", style={"overflow": "hidden", "borderRadius": "12px"}),
@@ -747,8 +761,13 @@ def analyze_branches(n, file_contents, branch_names):
             # Subject Performance
             dbc.Card([
                 dbc.CardHeader([
-                     html.I(className="bi bi-table me-2"),
-                     "Subject Level Performance (Branch/Section Wise)"
+                    html.Div([
+                        html.Span([html.I(className="bi bi-table me-2"), "Subject Level Performance (Branch/Section Wise)"]),
+                        dbc.Button(
+                            [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Subject Data"], 
+                            id="export-subjects-btn", size="sm", color="info", outline=True, className="fw-bold"
+                        )
+                    ], className="d-flex justify-content-between align-items-center w-100")
                 ], className="fw-bold bg-white", style={"fontSize": "1.1rem", "borderBottom": "2px solid #f1f5f9"}),
                 dbc.CardBody(
                     html.Div(subject_table, className="print-scroll-area"), 
@@ -759,7 +778,13 @@ def analyze_branches(n, file_contents, branch_names):
             # Top Rankers
             dbc.Row([
                 dbc.Col([
-                    html.H5("👑 University Top Rankers", className="fw-bold mb-3 text-dark text-center"),
+                    html.Div([
+                        html.H5("👑 University Top Rankers", className="fw-bold mb-0 text-dark"),
+                        dbc.Button(
+                            [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Top Rankers"], 
+                            id="export-rankers-btn", size="sm", color="primary", outline=True, className="fw-bold"
+                        )
+                    ], className="d-flex justify-content-between align-items-center mb-3 w-100"),
                     rank_table
                 ], width=12, className="mb-5")
             ])
@@ -781,3 +806,28 @@ dash.clientside_callback(
     Input("ba-print-btn", "n_clicks"),
     prevent_initial_call=True
 )
+
+# 5. Export Callbacks
+@callback(
+    Output("download-kpi-excel", "data"),
+    Input("export-kpi-btn", "n_clicks"),
+    State("ba-kpi-data-store", "data"),
+    prevent_initial_call=True
+)
+def export_kpi(n, data): return dcc.send_data_frame(pd.DataFrame(data).to_excel, "Branch_KPI_Summary.xlsx", index=False) if data else no_update
+
+@callback(
+    Output("download-rankers-excel", "data"),
+    Input("export-rankers-btn", "n_clicks"),
+    State("ba-ranker-data-store", "data"),
+    prevent_initial_call=True
+)
+def export_rankers(n, data): return dcc.send_data_frame(pd.DataFrame(data).to_excel, "Top_Rankers.xlsx", index=False) if data else no_update
+
+@callback(
+    Output("download-subjects-excel", "data"),
+    Input("export-subjects-btn", "n_clicks"),
+    State("ba-subject-data-store", "data"),
+    prevent_initial_call=True
+)
+def export_subjects(n, data): return dcc.send_data_frame(pd.DataFrame(data).to_excel, "Subject_Performance.xlsx", index=False) if data else no_update

@@ -272,14 +272,29 @@ layout = dbc.Container([
     # --- KPIs ---
     # Wrapped in its own Loading component
     dcc.Loading(type="default", children=[
-        dbc.Card(dbc.CardBody(html.Div(id="sa-kpi-cards")), className="sa-card mb-4")
+        dbc.Card(dbc.CardBody([
+            html.Div([
+                html.H6([html.I(className="bi bi-activity me-2 text-primary"), "Performance Metrics"], className="fw-bold mb-0 text-primary"),
+                dbc.Button(
+                    [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download KPI Details"], 
+                    id="sa-export-all-kpis", size="sm", color="primary", outline=True, className="fw-bold shadow-sm"
+                )
+            ], className="d-flex justify-content-between align-items-center mb-3"),
+            html.Div(id="sa-kpi-cards")
+        ]), className="sa-card mb-4")
     ]),
 
     # --- Table ---
     # Wrapped in its own Loading component
     dcc.Loading(type="default", children=[
         dbc.Card(dbc.CardBody([
-            html.H5("📋 Detailed Subject Breakdown", className="fw-bold mb-3 text-center"),
+            html.Div([
+                html.H5("📋 Detailed Subject Breakdown", className="fw-bold mb-0 text-center"),
+                html.Div([
+                    dbc.Button("Download CSV", id="sa-export-detailed-csv", color="primary", outline=True, size="sm", className="me-2"),
+                    dbc.Button("Download Excel", id="sa-export-detailed-xlsx", color="success", outline=True, size="sm"),
+                ])
+            ], className="d-flex justify-content-between align-items-center mb-3"),
             dash_table.DataTable(
                 id="sa-subject-table",
                 columns=[], data=[],
@@ -318,6 +333,9 @@ layout = dbc.Container([
                     # Result coloring
                     {"if": {"filter_query": "{Overall_Result} = 'Fail'"}, "backgroundColor": "#fef2f2", "color": "#dc2626", "fontWeight": "700"},
                     {"if": {"filter_query": "{Overall_Result} = 'Pass'"}, "backgroundColor": "#ecfdf5", "color": "#059669", "fontWeight": "700"},
+                    {"if": {"filter_query": "{Overall_Result} = 'FCD'"}, "backgroundColor": "#ecfdf5", "color": "#059669", "fontWeight": "700"},
+                    {"if": {"filter_query": "{Overall_Result} = 'FC'"}, "backgroundColor": "#ecfdf5", "color": "#10b981", "fontWeight": "700"},
+                    {"if": {"filter_query": "{Overall_Result} = 'SC'"}, "backgroundColor": "#ecfdf5", "color": "#3b82f6", "fontWeight": "700"},
                     {"if": {"filter_query": "{Overall_Result} = 'Absent'"}, "backgroundColor": "#fff7ed", "color": "#d97706", "fontWeight": "700"},
                 ],
                 merge_duplicate_headers=True,
@@ -359,7 +377,7 @@ layout = dbc.Container([
         dbc.ModalHeader([
             dbc.ModalTitle(id="sa-kpi-modal-title", className="fw-bold text-primary"),
             html.Div([
-                dbc.Button("Download List PDF", id="sa-kpi-modal-pdf-top", color="danger", outline=True, size="sm", className="me-2"),
+                dbc.Button("Download List (Excel)", id="sa-kpi-modal-excel-top", color="success", outline=True, size="sm", className="me-2"),
                 dbc.Button("Close", id="sa-kpi-modal-close-top", color="secondary", size="sm")
             ], className="ms-auto d-flex")
         ], close_button=False),
@@ -375,12 +393,12 @@ layout = dbc.Container([
             )
         ]),
         dbc.ModalFooter([
-            dbc.Button("Download List PDF", id="sa-kpi-modal-pdf", color="danger", outline=True),
+            dbc.Button("Download List (Excel)", id="sa-kpi-modal-excel", color="success", outline=True),
             dbc.Button("Close", id="sa-kpi-modal-close", className="ms-auto", color="secondary")
         ])
     ], id="sa-kpi-modal", is_open=False, size="xl", style={"zIndex": 10000}),
     
-    html.Div(id="sa-kpi-pdf-trigger-hidden", style={"display": "none"}),
+    dcc.Download(id="sa-kpi-excel-download"),
 
     # --- Tabs for Charts ---
     # Wrapped in its own Loading component
@@ -388,7 +406,7 @@ layout = dbc.Container([
         dbc.Card(dbc.CardBody([
             dcc.Tabs(id="sa-chart-tabs", value="pie", children=[
                 dcc.Tab(label="🎯 Pass vs Fail Distribution", value="pie"),
-                dcc.Tab(label="📈 Subject-wise Average Marks", value="bar"),
+                dcc.Tab(label="📈 Average Marks & Performance", value="bar"),
             ]),
             html.Div(id="sa-subject-analysis-chart", className="mt-3"),
         ]), className="sa-card mb-4"),
@@ -398,6 +416,8 @@ layout = dbc.Container([
     # Hidden Download components
     dcc.Download(id="sa-download-csv"),
     dcc.Download(id="sa-download-xlsx"),
+    dcc.Download(id="sa-download-summary-xlsx"),
+    dcc.Download(id="sa-download-all-kpis"),
     html.Div(id="sa-pdf-download-trigger", style={"display": "none"}),
 
     # Use session stores to match global app.py stores
@@ -595,20 +615,49 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
         
         # Filter out students who aren't taking ANY of the selected subjects (Result = NA)
         df_sel = df_sel[df_sel["Overall_Result"] != "NA"]
+        
+        # Calculate percentage for full FCD/FC breakdown based on all subjects in original df
+        all_subj_cols = [c for c in df.columns if c.strip().endswith(' Total') and c not in ['Total_Marks', 'Grand Total'] and 'grand total' not in c.lower()]
+        
+        def assign_fcd(row_idx):
+            res = df_sel.at[row_idx, "Overall_Result"]
+            if res != "Pass":
+                return res
+                
+            orig_row = df.loc[row_idx]
+            attempted = 0
+            t_marks = 0
+            for c in all_subj_cols:
+                v = pd.to_numeric(orig_row.get(c, 0), errors='coerce')
+                if pd.notna(v) and v > 0:
+                    attempted += 1
+                    t_marks += v
+            if attempted == 0: return "Pass"
+            pct = (t_marks / (attempted * 100)) * 100
+            
+            if pct >= 70: return "FCD"
+            elif pct >= 60: return "FC"
+            elif pct >= 50: return "SC"
+            else: return "Pass"
+            
+        df_sel["Overall_Result"] = [assign_fcd(idx) for idx in df_sel.index]
+
     else:
         df_sel["Overall_Result"] = "Pass"
+
+    pass_cats = ["Pass", "FCD", "FC", "SC"]
 
     # Count Absent, Appeared, Passed, Failed (before filtering)
     total_students = len(df_sel)
     absent = (df_sel["Overall_Result"] == "Absent").sum()
     appeared = total_students - absent
-    passed = (df_sel["Overall_Result"] == "Pass").sum()
+    passed = df_sel["Overall_Result"].isin(pass_cats).sum()
     failed = (df_sel["Overall_Result"] == "Fail").sum()
     pass_pct_appeared = round((passed / appeared) * 100, 2) if appeared > 0 else 0
 
     # Apply result filter
     if result_filter == "PASS":
-        df_sel = df_sel[df_sel["Overall_Result"] == "Pass"]
+        df_sel = df_sel[df_sel["Overall_Result"].isin(pass_cats)]
     elif result_filter == "FAIL":
         df_sel = df_sel[df_sel["Overall_Result"] == "Fail"]
     elif result_filter == "ABSENT":
@@ -616,7 +665,7 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
     # For "ALL" filter, keep all rows including Absent
 
     total = len(df_sel)
-    passed_filtered = (df_sel["Overall_Result"] == "Pass").sum()
+    passed_filtered = df_sel["Overall_Result"].isin(pass_cats).sum()
     failed_filtered = (df_sel["Overall_Result"] == "Fail").sum()
     absent_filtered = (df_sel["Overall_Result"] == "Absent").sum()
 
@@ -771,8 +820,12 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
     else:
         # Create a Summary Table for Subject-wise stats
         summary_card = dbc.Card(dbc.CardBody([
-            html.H5("📚 Subject Level Performance", className="fw-bold mb-3 text-primary"),
+            html.Div([
+                html.H5("📚 Subject Level Performance", className="fw-bold mb-0 text-primary"),
+                dbc.Button("Download Excel", id="sa-export-summary-xlsx", color="success", outline=True, size="sm")
+            ], className="d-flex justify-content-between align-items-center mb-3"),
             dash_table.DataTable(
+                id="sa-summary-table",
                 data=subject_summary_df.to_dict('records'),
                 columns=[{"name": i, "id": i} for i in subject_summary_df.columns],
                 style_table={"overflowX": "auto", "borderRadius": "8px", "boxShadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1)"},
@@ -910,7 +963,7 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
     # Charts
     if chart_tab == "pie":
         # Use df_sel for pie counts (already filtered)
-        pie_pass = (df_sel["Overall_Result"] == "Pass").sum()
+        pie_pass = df_sel["Overall_Result"].isin(pass_cats).sum()
         pie_fail = (df_sel["Overall_Result"] == "Fail").sum()
         pie_absent = (df_sel["Overall_Result"] == "Absent").sum()
         
@@ -941,7 +994,7 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
             hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>"
         )
         fig.update_layout(title="Pass vs Fail Distribution", title_x=0.5, template="plotly_white")
-        chart = dcc.Graph(figure=fig)
+        chart = dcc.Graph(id="sa-pie-chart", figure=fig, style={"cursor": "pointer"})
     else:
         # Exclude Absent students from bar averages
         df_for_avg = df_sel[df_sel["Overall_Result"] != "Absent"].copy()
@@ -1011,7 +1064,42 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
                     xaxis_title="Subject Code",
                     showlegend=False      # Hide legend as x-axis shows codes
                 )
-                chart = dcc.Graph(figure=bar_fig)
+                
+                # --- NEW PERFORMANCE BAR CHART (Pass %) ---
+                if not subject_summary_df.empty:
+                    # Create a copy so we don't accidentally mutate the underlying table data format inappropriately
+                    perf_df = subject_summary_df.copy()
+                    perf_df["Subject_Code"] = perf_df["Subject"].apply(lambda x: x.split(" - ")[0] if isinstance(x, str) and " - " in x else x)
+                    
+                    perf_fig = px.bar(
+                        perf_df,
+                        x="Subject_Code",
+                        y="Pass %",
+                        text=perf_df["Pass %"].apply(lambda x: f"{x}%"),
+                        color="Subject_Code",
+                        color_discrete_sequence=px.colors.qualitative.Pastel,
+                        custom_data=["Subject"] # original display name
+                    )
+                    perf_fig.update_traces(
+                        textposition="outside",
+                        hovertemplate="<b>%{customdata[0]}</b><br>Pass Percentage: %{y}%<extra></extra>"
+                    )
+                    perf_fig.update_layout(
+                        title="Subject-wise Pass Percentage",
+                        title_x=0.5,
+                        template="plotly_white",
+                        yaxis_title="Pass Percentage (%)",
+                        xaxis_title="Subject Code",
+                        showlegend=False,
+                        yaxis=dict(range=[0, min(100 + 15, 110)])  # keep headroom for label
+                    )
+                    
+                    chart = dbc.Row([
+                        dbc.Col(dcc.Graph(figure=bar_fig), xs=12, lg=6),
+                        dbc.Col(dcc.Graph(figure=perf_fig), xs=12, lg=6)
+                    ], className="g-3")
+                else:
+                    chart = dcc.Graph(figure=bar_fig)
 
     return f"{len(selected_subjects)} subjects selected", cards, columns_for_table, data, chart
 
@@ -1020,53 +1108,138 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
 @callback(
     Output("sa-download-csv", "data"),
     Input("sa-export-csv", "n_clicks"),
+    Input("sa-export-detailed-csv", "n_clicks"),
     State('sa-subject-table', 'data'),
     State('sa-subject-table', 'columns'),
     prevent_initial_call=True
 )
-def export_csv(n, table_data, table_columns):
+def export_csv(n_clicks_top, n_clicks_inline, table_data, table_columns):
     """Export the visible table to CSV."""
+    # Check which button triggered the callback
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return no_update
+        
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
+    # If the triggered button has no clicks (e.g. initial render weirdness), prevent update
+    if trigger_id == "sa-export-csv" and not n_clicks_top:
+        return no_update
+    if trigger_id == "sa-export-detailed-csv" and not n_clicks_inline:
+        return no_update
+        
     if not table_data:
         return no_update
     
     df = pd.DataFrame(table_data)
     
-    # Create simple, single-row headers for CSV
-    flat_headers = []
-    for col in table_columns:
-        if isinstance(col['name'], list):
-            flat_headers.append(" ".join(col['name']))
-        else:
-            flat_headers.append(col['name'])
+    # 🌟 CRITICAL FIX: Ensure mapping of columns exactly matches what displays on screen
+    col_ids = [c['id'] for c in table_columns]
+    valid_cols = [c for c in col_ids if c in df.columns]
+    df = df[valid_cols]
     
-    df.columns = flat_headers
+    # Check if we have multi-level headers (which are represented as lists)
+    is_multiindex = any(isinstance(col['name'], list) for col in table_columns)
+    
+    if is_multiindex:
+        # Create MultiIndex for columns
+        tuples = []
+        for col in table_columns:
+            if col['id'] not in valid_cols: continue
+            
+            if isinstance(col['name'], list):
+                # Ensure all parts of the header are strings and pad if necessary to max depth
+                # Most of our headers here are depth 2 (Category, Subcategory)
+                tuples.append(tuple(str(x) for x in col['name']))
+            else:
+                # If it's not a list, copy the same name for both levels
+                name = str(col['name'])
+                tuples.append((name, name))
+                
+        df.columns = pd.MultiIndex.from_tuples(tuples)
+    else:
+        df.columns = [col['name'] for col in table_columns if col['id'] in valid_cols]
     
     return dcc.send_data_frame(df.to_csv, "subject_analysis.csv", index=False)
 
 @callback(
     Output("sa-download-xlsx", "data"),
     Input("sa-export-xlsx", "n_clicks"),
+    Input("sa-export-detailed-xlsx", "n_clicks"),
     State('sa-subject-table', 'data'),
     State('sa-subject-table', 'columns'),
     prevent_initial_call=True
 )
-def export_xlsx(n, table_data, table_columns):
+def export_xlsx(n_clicks_top, n_clicks_inline, table_data, table_columns):
     """Export the visible table to Excel."""
+    # Check which button triggered the callback
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return no_update
+        
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
+    # If the triggered button has no clicks, prevent update
+    if trigger_id == "sa-export-xlsx" and not n_clicks_top:
+        return no_update
+    if trigger_id == "sa-export-detailed-xlsx" and not n_clicks_inline:
+        return no_update
+        
     if not table_data:
         return no_update
         
     df = pd.DataFrame(table_data)
     
-    flat_headers = []
-    for col in table_columns:
-        if isinstance(col['name'], list):
-            flat_headers.append(" ".join(col['name']))
-        else:
-            flat_headers.append(col['name'])
+    # 🌟 CRITICAL FIX: Ensure mapping of columns exactly matches what displays on screen
+    col_ids = [c['id'] for c in table_columns]
+    valid_cols = [c for c in col_ids if c in df.columns]
+    df = df[valid_cols]
+    
+    # Check if we have multi-level headers (which are represented as lists)
+    is_multiindex = any(isinstance(col['name'], list) for col in table_columns)
+    
+    if is_multiindex:
+        # Create MultiIndex for columns
+        tuples = []
+        for col in table_columns:
+            if col['id'] not in valid_cols: continue
             
+            if isinstance(col['name'], list):
+                tuples.append(tuple(str(x) for x in col['name']))
+            else:
+                name = str(col['name'])
+                tuples.append((name, name))
+                
+        df.columns = pd.MultiIndex.from_tuples(tuples)
+        
+        # When using MultiIndex columns in Excel, pandas requires index=True.
+        # So we create a blank hidden index so it aligns nicely below the multi-row header.
+        df.index = [""] * len(df)
+        df.index.name = None
+        return dcc.send_data_frame(df.to_excel, "subject_analysis.xlsx", sheet_name="Subject Analysis", index=True)
+    else:
+        df.columns = [col['name'] for col in table_columns if col['id'] in valid_cols]
+        return dcc.send_data_frame(df.to_excel, "subject_analysis.xlsx", sheet_name="Subject Analysis", index=False)
+
+@callback(
+    Output("sa-download-summary-xlsx", "data"),
+    Input("sa-export-summary-xlsx", "n_clicks"),
+    State('sa-summary-table', 'data'),
+    State('sa-summary-table', 'columns'),
+    prevent_initial_call=True
+)
+def export_summary_xlsx(n_clicks, table_data, table_columns):
+    """Export the subject summary table to Excel."""
+    if not n_clicks or not table_data:
+        return no_update
+        
+    df = pd.DataFrame(table_data)
+    
+    # Simple headers for summary table, as they are not grouped
+    flat_headers = [col['name'] for col in table_columns]
     df.columns = flat_headers
 
-    return dcc.send_data_frame(df.to_excel, "subject_analysis.xlsx", sheet_name="Subject Analysis", index=False)
+    return dcc.send_data_frame(df.to_excel, "subject_level_performance.xlsx", sheet_name="Performance", index=False)
 
 @callback(
     Output("sa-legend-modal", "is_open"),
@@ -1100,13 +1273,14 @@ dash.clientside_callback(
     Output("sa-kpi-modal-table", "data"),
     Output("sa-kpi-modal-table", "columns"),
     Input({"type": "sa-kpi-card", "index": ALL}, "n_clicks"),
+    Input("sa-pie-chart", "clickData"),
     Input("sa-kpi-modal-close", "n_clicks"),
     Input("sa-kpi-modal-close-top", "n_clicks"),
     State("sa-subject-table", "data"),
     State("sa-subject-table", "columns"),
     prevent_initial_call=True
 )
-def handle_kpi_click(kpi_clicks, close_click, close_click_top, table_data, table_cols):
+def handle_kpi_click(kpi_clicks, pie_click, close_click, close_click_top, table_data, table_cols):
     ctx = dash.callback_context
     if not ctx.triggered:
         raise PreventUpdate
@@ -1117,19 +1291,38 @@ def handle_kpi_click(kpi_clicks, close_click, close_click_top, table_data, table
     if "sa-kpi-modal-close" in trigger_id:
         return False, dash.no_update, dash.no_update, dash.no_update
         
-    # Ignore initial setup triggers where all clicks might be 0/None
-    if all(c == 0 or c is None for c in kpi_clicks):
-        raise PreventUpdate
-        
-    # Extract which specific card was clicked
-    try:
-        prop_dict = json.loads(trigger_id.split(".")[0])
-        kpi_type = prop_dict["index"]
-    except Exception:
-        raise PreventUpdate
+    kpi_type = None
+
+    # Handle Pie Chart Click
+    if "sa-pie-chart" in trigger_id:
+        if not pie_click:
+            raise PreventUpdate
+        point_data = pie_click['points'][0]
+        clicked_label = point_data.get('label', '').lower()
+        if clicked_label == "pass":
+            kpi_type = "pass"
+        elif clicked_label == "fail":
+            kpi_type = "fail"
+        elif clicked_label == "absent":
+            kpi_type = "absent"
+        else:
+            raise PreventUpdate
+
+    # Handle KPI Card Click
+    else:
+        # Ignore initial setup triggers where all clicks might be 0/None
+        if all(c == 0 or c is None for c in kpi_clicks):
+            raise PreventUpdate
+            
+        # Extract which specific card was clicked
+        try:
+            prop_dict = json.loads(trigger_id.split(".")[0])
+            kpi_type = prop_dict["index"]
+        except Exception:
+            raise PreventUpdate
         
     if not table_data:
-        return True, f"Student List: {kpi_type.upper()}", [], table_cols
+        return True, f"Student List: {kpi_type.upper() if kpi_type else 'UNKNOWN'}", [], table_cols
         
     # Filter the exact data subset for the clicked KPI
     filtered_data = []
@@ -1138,32 +1331,165 @@ def handle_kpi_click(kpi_clicks, close_click, close_click_top, table_data, table
     elif kpi_type == "appeared":
         filtered_data = [row for row in table_data if row.get("Overall_Result") != "Absent"]
     elif kpi_type == "pass":
-        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Pass"]
+        filtered_data = [row for row in table_data if row.get("Overall_Result") in ["Pass", "FCD", "FC", "SC"]]
     elif kpi_type == "fail":
         filtered_data = [row for row in table_data if row.get("Overall_Result") == "Fail"]
     elif kpi_type == "absent":
         filtered_data = [row for row in table_data if row.get("Overall_Result") == "Absent"]
     elif kpi_type == "rate":
         # Treating Rate % click as looking at passed students
-        filtered_data = [row for row in table_data if row.get("Overall_Result") == "Pass"]
+        filtered_data = [row for row in table_data if row.get("Overall_Result") in ["Pass", "FCD", "FC", "SC"]]
         kpi_type = "pass"
         
-    title = f"📃 Detail List: {kpi_type.upper()} ({len(filtered_data)} Students)"
+    title = f"📃 Detail List: {kpi_type.title()} ({len(filtered_data)} Students)"
     
     return True, title, filtered_data, table_cols
 
-# PDF Download directly inside Modal
-dash.clientside_callback(
-    """
-    function(n_clicks_bottom, n_clicks_top) {
-        // Prevent trigger if both are empty/initial loading
-        if (!n_clicks_bottom && !n_clicks_top) return window.dash_clientside.no_update;
-        setTimeout(function () { window.print(); }, 150);
-        return "";
-    }
-    """,
-    Output("sa-kpi-pdf-trigger-hidden", "children"),
-    Input("sa-kpi-modal-pdf", "n_clicks"),
-    Input("sa-kpi-modal-pdf-top", "n_clicks"),
+# Excel Download directly inside Modal
+@callback(
+    Output("sa-kpi-excel-download", "data"),
+    Input("sa-kpi-modal-excel", "n_clicks"),
+    Input("sa-kpi-modal-excel-top", "n_clicks"),
+    State("sa-kpi-modal-table", "data"),
+    State("sa-kpi-modal-table", "columns"),
+    State("sa-kpi-modal-title", "children"),
     prevent_initial_call=True
 )
+def download_modal_excel(n_clicks_bottom, n_clicks_top, table_data, table_cols, title):
+    if not dash.ctx.triggered or not table_data:
+        raise PreventUpdate
+        
+    df = pd.DataFrame(table_data)
+    
+    # Check if headers are configured as a multi-index list (as in the screenshot)
+    if table_cols and isinstance(table_cols[0].get('name'), list):
+        # We need to construct a proper multi-index dataframe headers for excel export
+        cols_to_keep = [col['id'] for col in table_cols if col['id'] in df.columns]
+        if cols_to_keep:
+            df = df[cols_to_keep]
+            
+        # Extract the multi-level names
+        multi_names = [tuple(col['name']) for col in table_cols if col['id'] in cols_to_keep]
+        
+        # Assign multi-index column to pandas DataFrame
+        df.columns = pd.MultiIndex.from_tuples(multi_names)
+    elif table_cols:
+        col_map = {col['id']: col['name'] for col in table_cols if 'name' in col and 'id' in col}
+        # Only keep columns that are in table_cols and rename them
+        cols_to_keep = [col['id'] for col in table_cols if col['id'] in df.columns]
+        if cols_to_keep:
+            df = df[cols_to_keep]
+        df.rename(columns=col_map, inplace=True)
+    
+    # Create a clean filename from the modal title
+    safe_title = "Student_List"
+    if title and isinstance(title, str):
+        # Extract just the category part before the parentheses
+        clean_str = title.split('(')[0].replace('📃', '').replace('Detail List:', '').strip()
+        safe_title = re.sub(r'[^A-Za-z0-9_]', '_', clean_str)
+        
+    # Apply the MultiIndex Excel index workaround
+    if isinstance(df.columns, pd.MultiIndex):
+        df.index = [""] * len(df)
+        df.index.name = None
+        return dcc.send_data_frame(df.to_excel, f"{safe_title}_Report.xlsx", index=True)
+    else:
+        return dcc.send_data_frame(df.to_excel, f"{safe_title}_Report.xlsx", index=False)
+
+@callback(
+    Output("sa-download-all-kpis", "data"),
+    Input("sa-export-all-kpis", "n_clicks"),
+    State("sa-kpi-modal-table", "data"), # It's better to fetch from the master dataset
+    State("stored-data", "data"),
+    State("sa-subject-selector", "value"),
+    State("sa-section-filter", "value"),
+    State("sa-result-filter", "value"),
+    prevent_initial_call=True
+)
+def download_all_kpis_subject_analysis(n_clicks, kpi_table_data, stored_data, subject, section, result_filter):
+    if not n_clicks or not stored_data or not subject:
+        raise PreventUpdate
+        
+    df = pd.DataFrame(stored_data)
+    
+    # Check if this subject really exists in data
+    subject_cols = [c for c in df.columns if c.endswith(' Total')]
+    subj_base_names = [c.replace(' Total', '') for c in subject_cols]
+    
+    # Use exact subject name matching
+    target_base = subject
+    if target_base not in subj_base_names:
+        # User might have passed full code + name combo. The data has "Code Components"
+        target_base = subject
+
+    # Filter section if selected
+    if section and section != "ALL" and "Section" in df.columns:
+        df = df[df["Section"] == section]
+        
+    int_col = f"{target_base} Internal"
+    ext_col = f"{target_base} External"
+    tot_col = f"{target_base} Total"
+    res_col = f"{target_base} Result"
+    
+    req_cols = [c for c in [int_col, ext_col, tot_col, res_col] if c in df.columns]
+    if not req_cols:
+        raise PreventUpdate
+
+    # Filter by result 
+    if res_col in df.columns and result_filter != "ALL":
+        if result_filter == "PASS":
+            df = df[df[res_col].astype(str).str.upper().isin(["P", "PASS"])]
+        elif result_filter == "FAIL":
+            df = df[df[res_col].astype(str).str.upper().isin(["F", "FAIL"])]
+        elif result_filter == "ABSENT":
+            df = df[df[res_col].astype(str).str.upper().isin(["A", "ABSENT"])]
+            
+    # Standardize result text
+    df['Overall_Result'] = df[res_col] if res_col in df.columns else "Unknown"
+
+    kpi_definitions = [
+        ('Total Students', df),
+        ('Appeared', df[df['Overall_Result'] != 'Absent']),
+        ('Passed', df[df['Overall_Result'].isin(['Pass', 'FCD', 'FC', 'SC'])]),
+        ('Failed', df[df['Overall_Result'] == 'Fail']),
+        ('Absent', df[df['Overall_Result'] == 'Absent'])
+    ]
+    
+    from io import BytesIO
+    out = BytesIO()
+    writer = pd.ExcelWriter(out, engine='openpyxl')
+    
+    has_sheets = False
+    for sheet_name, scoped_df in kpi_definitions:
+        if scoped_df.empty: continue
+            
+        display_cols = ['Student_ID', 'Name', 'Section']
+        for c in [int_col, ext_col, tot_col, res_col]:
+            if c in scoped_df.columns:
+                display_cols.append(c)
+                
+        export_df = scoped_df[display_cols].copy()
+        
+        # Friendly Headers
+        col_map = {
+            'Student_ID': 'Student ID',
+            'Name': 'Student Name',
+            'Section': 'Section',
+            int_col: 'Internal Marks',
+            ext_col: 'External Marks',
+            tot_col: 'Total Marks',
+            res_col: 'Overall Result'
+        }
+        export_df.rename(columns=col_map, inplace=True)
+        
+        export_df.to_excel(writer, sheet_name=sheet_name, index=False)
+        has_sheets = True
+        
+    if not has_sheets:
+        empty_df = pd.DataFrame({"Message": ["No data available"]})
+        empty_df.to_excel(writer, sheet_name="No Data", index=False)
+        
+    writer.close()
+    out.seek(0)
+    
+    return dcc.send_bytes(out.read(), "Consolidated_Subject_KPIs.xlsx")
