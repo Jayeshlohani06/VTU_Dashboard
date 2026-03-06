@@ -1534,10 +1534,25 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
         ('Second Class', scope_calc[is_pass_mask & (scope_calc['percentage'] >= 50) & (scope_calc['percentage'] < 60)])
     ]
     
+    # Overview Calculation
+    overview_data = []
+    for sheet_name, df_kpi in kpi_definitions:
+        overview_data.append({"KPI Metric": sheet_name, "Count": len(df_kpi)})
+        
+    total_app = len(scope_calc[~is_absent_mask])
+    pass_cnt = len(scope_calc[is_pass_mask])
+    pass_perc = round((pass_cnt / total_app * 100) if total_app > 0 else 0, 2)
+    overview_data.insert(5, {"KPI Metric": "Pass % (Appeared)", "Count": f"{pass_perc}%"})
+    
+    overview_df = pd.DataFrame(overview_data)
+
     out = BytesIO()
     writer = pd.ExcelWriter(out, engine='openpyxl')
     
-    has_sheets = False
+    # Write Overview as the first sheet
+    overview_df.to_excel(writer, sheet_name="KPI Overview", index=False)
+    
+    has_sheets = True
     for sheet_name, df in kpi_definitions:
         if df.empty:
             continue
