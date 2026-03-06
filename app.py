@@ -116,7 +116,9 @@ app.layout = dbc.Container(
                 [
                     html.Span("Designed & Developed by Students of Acharya Institute of Technology:", className="fw-bold"),
                     html.Br(),
-                    html.Span("Jayesh Lohani | Amit Kumar Thakur | Aman Raj | Avni Chauhan", className="fw-medium")
+                    html.Span("Jayesh Lohani | Amit Kumar Thakur | Aman Raj | Avni Chauhan", className="fw-medium"),
+                    html.Br(),
+                    html.Span("Under the Guidance of Professor Arun K H, Assistant Professor Acharya Institute of Technology", className="fw-bold mt-2 d-inline-block")
                 ],
                 className="text-center",
                 style={

@@ -431,7 +431,16 @@ layout = dbc.Container([
     html.Div(id='sgpa-credit-panel'),
 
     # KPIs (Cards)
-    html.Div(dbc.Spinner(html.Div(id='kpi-cards'), color="primary"), className="mb-4"),
+    html.Div([
+        html.Div([
+            html.H6([html.I(className="bi bi-activity me-2 text-primary"), "Performance Metrics"], className="fw-bold mb-0 text-primary"),
+            dbc.Button(
+                [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download KPI Details"], 
+                id="export-all-kpis", size="sm", color="primary", outline=True, className="fw-bold shadow-sm"
+            )
+        ], className="d-flex justify-content-between align-items-center mb-3 mt-2 px-1"),
+        dbc.Spinner(html.Div(id='kpi-cards'), color="primary")
+    ], className="mb-4"),
 
     # VTU Category Breakdown Table
     dbc.Card(dbc.CardBody([
@@ -568,6 +577,7 @@ layout = dbc.Container([
     dcc.Download(id="download-csv"),
     dcc.Download(id="download-xlsx"),
     dcc.Download(id="download-category-report"),
+    dcc.Download(id="download-all-kpis"),
     dcc.Store(id='sgpa-store', storage_type='session'),
 ], fluid=True, className="pb-5")
 
@@ -1422,6 +1432,102 @@ def exp_csv(n, d): return dcc.send_data_frame(pd.DataFrame(d).to_csv, "rank.csv"
 @callback(Output("download-xlsx", "data"), Input("export-xlsx", "n_clicks"), State('ranking-table', 'data'), prevent_initial_call=True)
 def exp_xlsx(n, d): return dcc.send_data_frame(pd.DataFrame(d).to_excel, "rank.xlsx", index=False) if d else no_update
 
+@callback(
+    Output("download-all-kpis", "data"),
+    Input("export-all-kpis", "n_clicks"),
+    State('filter-dropdown', 'value'),
+    State('section-dropdown', 'value'),
+    State('ranking-type', 'value'),
+    State('stored-data', 'data'),
+    State('section-data', 'data'),
+    State('usn-mapping-store', 'data'),
+    State('sgpa-store', 'data'),
+    prevent_initial_call=True
+)
+def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, sec_ranges, usn_mapping, sgpa_json):
+    if not json_data: return no_update
+
+    mapping_str = str(usn_mapping) if usn_mapping else "None"
+    base_full = _prepare_base(json_data, _section_key(sec_ranges), mapping_str).copy()
+    
+    if sgpa_json:
+        try:
+            sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+            base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
+        except: pass
+
+    scope = base_full.copy()
+    target_res_col = "Result_Selected" if rank_type == 'sgpa' and 'Result_Selected' in scope.columns else "Overall_Result"
+    
+    pass_val = ["PASS", "Pass"] if rank_type == 'sgpa' else ["P", "PASS"]
+    fail_val = ["FAIL", "Fail"] if rank_type == 'sgpa' else ["F", "FAIL"]
+    absent_val = ["ABSENT", "Absent"] if rank_type == 'sgpa' else ["A", "ABSENT"]
+
+    def check_res(val, allowed): return str(val).upper() in [x.upper() for x in allowed]
+
+    if filter_val == "PASS": scope = scope[scope[target_res_col].apply(lambda x: check_res(x, pass_val))]
+    elif filter_val == "FAIL": scope = scope[scope[target_res_col].apply(lambda x: check_res(x, fail_val))]
+    elif filter_val == "ABSENT": scope = scope[scope[target_res_col].apply(lambda x: check_res(x, absent_val))]
+
+    if sec_val != "ALL" and 'Section' in scope.columns: scope = scope[scope["Section"] == sec_val]
+
+    scope_calc = calculate_student_metrics(scope.copy())
+
+    is_pass_mask = scope_calc[target_res_col].apply(lambda x: check_res(x, pass_val))
+    is_fail_mask = scope_calc[target_res_col].apply(lambda x: check_res(x, fail_val))
+    is_absent_mask = scope_calc[target_res_col].apply(lambda x: check_res(x, absent_val))
+
+    backlogs = pd.Series(0, index=scope_calc.index)
+    if 'Failed_Subjects' in scope_calc.columns and 'Absent_Subjects' in scope_calc.columns:
+        backlogs = scope_calc['Failed_Subjects'] + scope_calc['Absent_Subjects']
+
+    kpi_definitions = [
+        ('Total Students', scope_calc),
+        ('Appeared', scope_calc[~is_absent_mask]),
+        ('Absent', scope_calc[is_absent_mask]),
+        ('Passed', scope_calc[is_pass_mask]),
+        ('Failed', scope_calc[is_fail_mask]),
+        ('1 Subject Fail', scope_calc[is_fail_mask & (backlogs == 1)]),
+        ('2 Subject Fails', scope_calc[is_fail_mask & (backlogs == 2)]),
+        ('3+ Subject Fails', scope_calc[is_fail_mask & (backlogs >= 3)]),
+        ('First Class Distinction', scope_calc[is_pass_mask & (scope_calc['percentage'] >= 70)]),
+        ('First Class', scope_calc[is_pass_mask & (scope_calc['percentage'] >= 60) & (scope_calc['percentage'] < 70)]),
+        ('Second Class', scope_calc[is_pass_mask & (scope_calc['percentage'] >= 50) & (scope_calc['percentage'] < 60)])
+    ]
+    
+    out = BytesIO()
+    writer = pd.ExcelWriter(out, engine='openpyxl')
+    
+    has_sheets = False
+    for sheet_name, df in kpi_definitions:
+        if df.empty:
+            continue
+            
+        display_cols = ['Student_ID', 'Name', 'Section', 'Total_Marks', 'percentage']
+        if rank_type == 'sgpa' and 'SGPA' in df.columns: display_cols.append('SGPA')
+        if 'Failed_Subject' in df.columns and 'Fail' in sheet_name: display_cols.append('Failed_Subject')
+        
+        final_cols = [c for c in display_cols if c in df.columns]
+        export_df = df[final_cols].copy()
+        
+        if 'percentage' in export_df.columns:
+            export_df['percentage'] = export_df['percentage'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            
+        export_df.rename(columns={'Total_Marks': 'Marks', 'percentage': 'Percentage (%)', 'Failed_Subject': 'Failed Subject(s)'}, inplace=True)
+        
+        valid_sheet_name = sheet_name[:31]
+        export_df.to_excel(writer, sheet_name=valid_sheet_name, index=False)
+        has_sheets = True
+        
+    if not has_sheets:
+        empty_df = pd.DataFrame({"Message": ["No data available"]})
+        empty_df.to_excel(writer, sheet_name="No Data", index=False)
+        
+    writer.close()
+    out.seek(0)
+    
+    return dcc.send_bytes(out.read(), "Consolidated_KPI_Report.xlsx")
+
 # ==================== Download Reports ====================
 
 @callback(
@@ -1579,8 +1685,27 @@ def handle_rnk_kpi_click(kpi_clicks, c1, c2, filter_val, sec_val, rank_type, jso
     elif kpi_type == 'avg': return True, "Average SGPA represents the full view calculated in Ranking Mode.", [], []
     else: res_df = scope_calc
 
+    # KPI Names mapping
+    kpi_labels = {
+        'total': 'Total Students',
+        'appeared': 'Appeared',
+        'absent': 'Absent',
+        'pass': 'Passed',
+        'fail': 'Failed',
+        'rate': 'Pass Percentage',
+        'bk1': '1 Subject Fail',
+        'bk2': '2 Subject Fails',
+        'bk3': '3+ Subject Fails',
+        'fcd': 'First Class Distinction',
+        'fc': 'First Class',
+        'sc': 'Second Class',
+        'avg': 'Average SGPA'
+    }
+    
+    kpi_display_name = kpi_labels.get(kpi_type, str(kpi_type).upper())
+
     if res_df.empty:
-        return True, f"Student List: {str(kpi_type).upper()} (0 Students)", [], []
+        return True, f"Student List: {kpi_display_name} (0 Students)", [], []
 
     display_cols = ['Student_ID', 'Name', 'Section', 'Total_Marks', 'percentage']
     if rank_type == 'sgpa' and 'SGPA' in res_df.columns: display_cols.append('SGPA')
@@ -1594,7 +1719,7 @@ def handle_rnk_kpi_click(kpi_clicks, c1, c2, filter_val, sec_val, rank_type, jso
         res_df['percentage'] = res_df['percentage'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
 
     tdata = res_df[final_cols].to_dict('records')
-    title = f"📃 Detail List: {str(kpi_type).upper()} ({len(res_df)} Students)"
+    title = f"📃 Detail List: {kpi_display_name} ({len(res_df)} Students)"
 
     return True, title, tdata, tcols
 
@@ -1604,14 +1729,23 @@ def handle_rnk_kpi_click(kpi_clicks, c1, c2, filter_val, sec_val, rank_type, jso
     Input("rnk-kpi-modal-pdf", "n_clicks"),
     Input("rnk-kpi-modal-pdf-top", "n_clicks"),
     State("rnk-kpi-modal-table", "data"),
+    State("rnk-kpi-modal-table", "columns"),
     State("rnk-kpi-modal-title", "children"),
     prevent_initial_call=True
 )
-def download_modal_excel(n_clicks_bottom, n_clicks_top, table_data, title):
+def download_modal_excel(n_clicks_bottom, n_clicks_top, table_data, table_cols, title):
     if not dash.ctx.triggered or not table_data:
         raise PreventUpdate
         
     df = pd.DataFrame(table_data)
+    
+    # Reorder and rename columns precisely to match the visible modal table map
+    if table_cols:
+        col_map = {col['id']: col['name'] for col in table_cols if 'name' in col and 'id' in col}
+        cols_to_keep = [col['id'] for col in table_cols if col['id'] in df.columns]
+        if cols_to_keep:
+            df = df[cols_to_keep]
+            df.rename(columns=col_map, inplace=True)
     
     # Create a clean filename from the modal title
     safe_title = "Student_List"
@@ -1620,7 +1754,13 @@ def download_modal_excel(n_clicks_bottom, n_clicks_top, table_data, title):
         clean_str = title.split('(')[0].replace('📃', '').replace('Detail List:', '').strip()
         safe_title = re.sub(r'[^A-Za-z0-9_]', '_', clean_str)
         
-    return dcc.send_data_frame(df.to_excel, f"{safe_title}_Report.xlsx", index=False)
+    # Standard excel output for simple tables
+    if isinstance(df.columns, pd.MultiIndex):
+        df.index = [""] * len(df)
+        df.index.name = None
+        return dcc.send_data_frame(df.to_excel, f"{safe_title}_Report.xlsx", index=True)
+    else:
+        return dcc.send_data_frame(df.to_excel, f"{safe_title}_Report.xlsx", index=False)
     
 
 dash.clientside_callback(
