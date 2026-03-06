@@ -98,6 +98,7 @@ app.layout = dbc.Container(
         dcc.Store(id="section-data", storage_type="session"),
         dcc.Store(id="usn-mapping-store", storage_type="session"),
         dcc.Store(id="subject-options-store", storage_type="session"),
+        dcc.Store(id="scheme-semester-store", storage_type="session"),
 
         # PAGE CONTENT
         html.Div(

@@ -6,6 +6,7 @@ import plotly.graph_objs as go
 import re
 from cache_config import cache
 from dash.exceptions import PreventUpdate
+from services.credit_service import load_credit_map, get_credit
 
 dash.register_page(__name__, path="/student_detail", name="Student Detail")
 
@@ -210,15 +211,24 @@ def populate_subject_dropdown(session_id):
 @callback(
     Output('credit-input-container', 'children'),
     Input('search-btn', 'n_clicks'),
+    Input('scheme-semester-store', 'data'),
     State('student-search', 'value'),
     State('stored-data', 'data'),
     State('student-subject-dropdown', 'value'),
     State('analysis-type-radio', 'value'),
-    prevent_initial_call=True
+    prevent_initial_call=False
 )
-def generate_credit_inputs(n_clicks, search_value, session_id, selected_subject_codes, analysis_type):
+def generate_credit_inputs(n_clicks, scheme_sem_data, search_value, session_id, selected_subject_codes, analysis_type):
     if not session_id or not search_value:
         return ""
+        
+    # Extract scheme/sem or default
+    scheme = "2022"
+    semester = 5
+    if scheme_sem_data:
+        scheme = scheme_sem_data.get('scheme', '2022')
+        semester = scheme_sem_data.get('semester', 5)
+        
     df = cache.get(session_id)
     if df is None: return ""
     
@@ -265,20 +275,28 @@ def generate_credit_inputs(n_clicks, search_value, session_id, selected_subject_
             className="text-center mt-3"
         )
 
+    credit_map = load_credit_map(scheme, semester)
+
     credit_inputs = []
     for idx, raw_code in enumerate(subject_codes_for_credits):
         # Clean display: Extract just the code if name is present
         # Format: "Code - Name" -> display "Code (Name truncated?)" or full
         if " - " in raw_code:
             parts = raw_code.split(" - ", 1)
+            display_code = parts[0]
             display_text = html.Div([
-                html.Span(parts[0], className="fw-bold d-block"),
+                html.Span(display_code, className="fw-bold d-block"),
                 html.Small(parts[1], className="text-muted d-block text-truncate", style={"maxWidth": "250px"})
             ])
             code_val = raw_code # keep full key for ID
         else:
-            display_text = html.Span(raw_code, className="fw-bold")
+            display_code = raw_code
+            display_text = html.Span(display_code, className="fw-bold")
             code_val = raw_code
+
+        # Fetch default credit value
+        fetched_credit = get_credit(display_code, credit_map)
+        default_credit = fetched_credit if fetched_credit is not None else 3
 
         z_index = 1000 - (idx * 5)  # Decreasing z-index for each card
         credit_inputs.append(
@@ -295,7 +313,7 @@ def generate_credit_inputs(n_clicks, search_value, session_id, selected_subject_
                             dcc.Dropdown(
                                 id={'type': 'credit-input-student', 'index': code_val},
                                 options=[{'label': f'{i} Credit{"s" if i != 1 else ""}', 'value': i} for i in range(0, 5)],
-                                value=3,
+                                value=default_credit,
                                 clearable=False,
                                 className="custom-dropdown",
                                 style={"zIndex": str(z_index + 1)}
@@ -309,22 +327,16 @@ def generate_credit_inputs(n_clicks, search_value, session_id, selected_subject_
     card = dbc.Card([
         dbc.CardBody([
             html.Div([
-                html.I(className="bi bi-calculator me-2", style={"color": "#667eea", "fontSize": "1.5rem"}),
-                html.H5("Step 2: Enter Subject Credits", className="fw-bold d-inline mb-0")
+                html.I(className="bi bi-info-circle me-2", style={"color": "#667eea", "fontSize": "1.5rem"}),
+                html.H5("Subject Credits (Auto-mapped)", className="fw-bold d-inline mb-0")
             ], className="text-center mb-2", style={"color": "#2c3e50"}),
             html.P([
-                html.I(className="bi bi-info-circle me-2", style={"color": "#667eea"}),
-                "Select credits (0–4) for subjects you want included in SGPA / KPI calculations."
+                "Credits are automatically assigned based on your selected scheme & semester."
             ], className="text-muted text-center mb-3", style={"fontSize": "0.9rem"}),
             html.Div(
                 credit_inputs,
                 style={"maxHeight": "400px", "overflowY": "auto", "overflowX": "visible", "padding": "0.5rem", "position": "relative"}
-            ),
-            dbc.Button([
-                html.I(className="bi bi-calculator-fill me-2"),
-                "Calculate & View Full Report"
-            ], id='calculate-sgpa-btn', color="success", className="w-100 mt-3 shadow",
-            style={"fontSize": "1.05rem", "fontWeight": "600", "height": "50px"})
+            )
         ], style={"padding": "2rem", "overflow": "visible"})
     ], className="shadow-custom mb-4", style={"borderRadius": "15px", "overflow": "visible"})
 
@@ -333,7 +345,7 @@ def generate_credit_inputs(n_clicks, search_value, session_id, selected_subject_
 # ---------- Display Full Report ----------
 @callback(
     Output('student-detail-content', 'children'),
-    Input('calculate-sgpa-btn', 'n_clicks'),
+    Input({'type': 'credit-input-student', 'index': ALL}, 'value'),
     [
         State('student-search', 'value'),
         State('stored-data', 'data'),
@@ -341,11 +353,10 @@ def generate_credit_inputs(n_clicks, search_value, session_id, selected_subject_
         State('usn-mapping-store', 'data'),
         State('analysis-type-radio', 'value'),
         State({'type': 'credit-input-student', 'index': ALL}, 'id'),
-        State({'type': 'credit-input-student', 'index': ALL}, 'value'),
     ],
-    prevent_initial_call=True
+    prevent_initial_call=False
 )
-def display_full_report(n_clicks, search_value, session_id, section_ranges, usn_mapping, analysis_type, credit_ids, credit_vals):
+def display_full_report(credit_vals, search_value, session_id, section_ranges, usn_mapping, analysis_type, credit_ids):
     if not all([session_id, search_value]):
         return ""
 

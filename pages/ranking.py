@@ -9,6 +9,7 @@ from io import StringIO, BytesIO
 from cache_config import cache
 from dash.exceptions import PreventUpdate
 import json
+from services.credit_service import load_credit_map, get_credit
 
 # Register page
 dash.register_page(__name__, path="/ranking", name="Ranking")
@@ -631,11 +632,19 @@ def toggle_metric_selector(rank_type):
     Output('sgpa-credit-panel', 'children'),
     Input('stored-data', 'data'),
     Input('ranking-type', 'value'),
+    Input('scheme-semester-store', 'data'),
     State('section-data', 'data')
 )
-def generate_credit_panel(session_id, ranking_type, section_ranges):
+def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ranges):
     if ranking_type != 'sgpa': return html.Div()
     if not session_id: return ""
+    
+    # Extract scheme/sem or default
+    scheme = "2022"
+    semester = 5
+    if scheme_sem_data:
+        scheme = scheme_sem_data.get('scheme', '2022')
+        semester = scheme_sem_data.get('semester', 5)
     
     df = cache.get(session_id)
     if df is None: return ""
@@ -648,10 +657,17 @@ def generate_credit_panel(session_id, ranking_type, section_ranges):
     if not codes: return dbc.Alert("No recognizable subject columns found.", color='info')
     codes = sorted(codes)
     
+    # Load credit map using the stored scheme and semester
+    credit_map = load_credit_map(scheme, semester)
+    
     grid_items = []
     for code in codes:
         # Extract only the subject code (everything before " - " if present)
         display_code = code.split(" - ")[0].strip() if " - " in code else code.strip()
+        
+        # Get credit from service, fallback to default (e.g., 3) if not 0 or not found
+        fetched_credit = get_credit(display_code, credit_map)
+        default_credit = str(fetched_credit) if fetched_credit is not None else '3'
 
         grid_items.append(dbc.Col(dbc.InputGroup([
             # InputGroupText for the label
@@ -671,7 +687,7 @@ def generate_credit_panel(session_id, ranking_type, section_ranges):
             dbc.Select(
                 id={'type': 'credit-input', 'index': code}, 
                 options=[{'label': f'{i} Credits', 'value': str(i)} for i in [4,3,2,1,0]], 
-                value='3', 
+                value=default_credit, 
                 className="form-select text-center flex-grow-1",
                 style={"minHeight": "45px", "fontSize": "14px"}
             )
@@ -683,9 +699,9 @@ def generate_credit_panel(session_id, ranking_type, section_ranges):
             html.P("Assign credits to subjects. The system will calculate SGPA based on these values.", className="text-muted small mb-4"),
             dbc.Row(grid_items, className="g-2 mb-2", style={"overflow": "visible"}),
             html.Hr(className="my-3 text-muted opacity-25"),
-            dbc.Button([html.I(className="bi bi-calculator-fill me-2"), "Calculate SGPA"], id='calculate-sgpa-all', color='primary', size="lg", className='w-100 fw-bold shadow-sm mb-3'),
+            html.P("✨ SGPA is computed automatically based on these values.", className="text-success small fw-bold mb-0 text-center"),
             # Status Container (starts empty)
-            html.Div(id="sgpa-calc-status")
+            html.Div(id="sgpa-calc-status", className="mt-2")
         ], style={"overflow": "visible"})
     ], className="rnk-card mb-4 border-start border-4 border-primary", style={"overflow": "visible"})
 
@@ -693,17 +709,15 @@ def generate_credit_panel(session_id, ranking_type, section_ranges):
 @callback(
     Output('sgpa-store', 'data'),
     Output('sgpa-calc-status', 'children'),
-    Input('calculate-sgpa-all', 'n_clicks'),
+    Input({'type': 'credit-input', 'index': ALL}, 'value'),
     State('stored-data', 'data'),
     State('section-data', 'data'),
     State('usn-mapping-store', 'data'),
     State({'type': 'credit-input', 'index': ALL}, 'id'),
-    State({'type': 'credit-input', 'index': ALL}, 'value'),
-    prevent_initial_call=True
+    prevent_initial_call=False
 )
-def calculate_sgpa_all(n_clicks, json_data, section_ranges, usn_mapping, credit_ids, credit_vals):
-    if not n_clicks: return no_update, no_update
-    if not json_data: return no_update, no_update
+def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, credit_ids):
+    if not json_data or not credit_vals: return no_update, no_update
     
     mapping_str = str(usn_mapping) if usn_mapping else "None"
     base = _prepare_base(json_data, _section_key(section_ranges), mapping_str).copy()

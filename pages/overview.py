@@ -343,6 +343,30 @@ layout = dbc.Container([
             dbc.Card([
                 dbc.CardHeader("2. Configuration", className="fw-bold bg-light", style={"overflow": "visible"}),
                 dbc.CardBody([
+                    html.Label("Scheme & Semester", className="small fw-bold mb-1"),
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.Dropdown(
+                                id='scheme-selector',
+                                options=[{'label': f'{yr} Scheme', 'value': str(yr)} for yr in [2022, 2021, 2018, 2025]],
+                                value='2022',
+                                clearable=False,
+                                className="mb-3",
+                                placeholder="Scheme"
+                            )
+                        ], width=6),
+                        dbc.Col([
+                            dcc.Dropdown(
+                                id='semester-selector',
+                                options=[{'label': f'Sem {i}', 'value': i} for i in range(1, 9)],
+                                value=5,
+                                clearable=False,
+                                className="mb-3",
+                                placeholder="Semester"
+                            )
+                        ], width=6),
+                    ]),
+
                     html.Label("Filter Subjects", className="small fw-bold mb-1"),
                     html.Div([
                         dcc.Dropdown(
@@ -602,15 +626,17 @@ def toggle_config_mode(mode):
     Output('stored-data', 'data'),
     Output('overview-selected-subjects', 'data'),
     Output('subject-options-store', 'data'),
+    Output('usn-mapping-store', 'data', allow_duplicate=True),
+    Output('section-data', 'data', allow_duplicate=True),
     Input('upload-data', 'contents'),
     Input('subject-options-store', 'data'),
     Input('url', 'pathname'),
     State('overview-selected-subjects', 'data'),
-    prevent_initial_call=False
+    prevent_initial_call='initial_duplicate'
 )
 def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
     if pathname != "/" and pathname is not None:
-        return no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
     ctx_id = ctx.triggered_id
 
@@ -618,7 +644,7 @@ def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
     if ctx_id == 'upload-data' and upload_contents:
         df = process_uploaded_excel(upload_contents)
         if df.empty:
-            return [], [], None, None, None
+            return [], [], None, None, None, None, None
 
         subjects = get_subject_codes(df)
         options = [{'label': s, 'value': s} for s in subjects]
@@ -627,15 +653,39 @@ def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
         session_id = str(uuid.uuid4())
         cache.set(session_id, df)
         
-        return options, subjects, session_id, subjects, options
+        # Clear section and usn mappings because it is a new upload
+        return options, subjects, session_id, subjects, options, {}, {}
 
     # 2️⃣ If data already exists in session (Navigation / Restore)
     if stored_options:
         safe_subjects = stored_subjects if isinstance(stored_subjects, list) else []
-        return stored_options, safe_subjects, no_update, no_update, no_update
+        return stored_options, safe_subjects, no_update, no_update, no_update, no_update, no_update
 
     # 3️⃣ Default empty state
-    return [], [], no_update, no_update, no_update
+    return [], [], no_update, no_update, no_update, no_update, no_update
+
+@callback(
+    Output('scheme-selector', 'value'),
+    Output('semester-selector', 'value'),
+    Input('scheme-semester-store', 'data'),
+    prevent_initial_call=False
+)
+def load_scheme_semester_ui(store_data):
+    if store_data:
+        return store_data.get('scheme', '2022'), store_data.get('semester', 5)
+    return '2022', 5
+
+@callback(
+    Output('scheme-semester-store', 'data', allow_duplicate=True),
+    Input('scheme-selector', 'value'),
+    Input('semester-selector', 'value'),
+    State('scheme-semester-store', 'data'),
+    prevent_initial_call=True
+)
+def update_scheme_semester_store(scheme, semester, store_data):
+    if store_data and store_data.get('scheme') == scheme and store_data.get('semester') == semester:
+        raise dash.exceptions.PreventUpdate
+    return {"scheme": scheme, "semester": semester}
 
 @callback(
     Output('overview-selected-subjects', 'data', allow_duplicate=True),
