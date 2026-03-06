@@ -665,9 +665,9 @@ def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ran
         # Extract only the subject code (everything before " - " if present)
         display_code = code.split(" - ")[0].strip() if " - " in code else code.strip()
         
-        # Get credit from service, fallback to default (e.g., 3) if not 0 or not found
+        # Get credit from service, fallback to default 0 if not found
         fetched_credit = get_credit(display_code, credit_map)
-        default_credit = str(fetched_credit) if fetched_credit is not None else '3'
+        default_credit = str(fetched_credit)
 
         grid_items.append(dbc.Col(dbc.InputGroup([
             # InputGroupText for the label
@@ -1295,10 +1295,12 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
     State("ranking-table", "derived_viewport_data"), 
     State("stored-data", "data"),
     State("section-data", "data"),
+    State("sgpa-store", "data"),
+    State("usn-mapping-store", "data"),
     Input("close-modal", "n_clicks"), 
     prevent_initial_call=True
 )
-def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
+def show_modal(main_cell, bd_cells, main_data, json_data, section_data, sgpa_json, usn_mapping, close):
     trigger = dash.ctx.triggered_id
     if trigger == "close-modal" or not json_data: return False, no_update
     
@@ -1331,7 +1333,23 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
     # Use Cached Data Loader for Speed
     # _prepare_base is lru_cached, so it won't re-parse JSON if string is identical
     try:
-        df = _prepare_base(json_data, _section_key(section_data))
+        mapping_str = str(usn_mapping) if usn_mapping else "None"
+        df = _prepare_base(json_data, _section_key(section_data), mapping_str).copy()
+        
+        if sgpa_json:
+            try:
+                from io import StringIO
+                import pandas as pd
+                sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+                if 'Student_ID' in df.columns and 'Student_ID' in sgpa_df.columns:
+                    df = df.merge(sgpa_df, how='left', on='Student_ID')
+                elif df.columns[0] == 'USN' or df.columns[0] == 'Student_ID':
+                     df = df.rename(columns={df.columns[0]: 'Student_ID'})
+                     if 'Student_ID' in sgpa_df.columns:
+                         df = df.merge(sgpa_df, how='left', on='Student_ID')
+            except Exception as e:
+                pass
+
         if df.empty: return no_update, no_update
     except:
         return no_update, no_update
@@ -1420,6 +1438,13 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
             html.Td(res_disp, className="text-danger fw-bold" if str(res_disp).upper() in ['F', 'FAIL'] else "text-success fw-bold")
         ]))
 
+    sgpa_val = row.get('SGPA', 'N/A')
+    if pd.notna(sgpa_val) and str(sgpa_val).strip() != 'N/A':
+        try:
+            sgpa_val = f"{float(sgpa_val):.2f}"
+        except ValueError:
+            pass  # keep original if it fails to convert
+
     body = html.Div([
         dbc.Row([
             dbc.Col([
@@ -1428,7 +1453,7 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, close):
             ], width=8),
             dbc.Col([
                 dbc.Badge(f"Total: {row.get('Total_Marks', 0)}", color="info", className="p-2 fs-6 me-2"),
-                dbc.Badge(f"SGPA: {row.get('SGPA', 'N/A')}", color="success", className="p-2 fs-6")
+                dbc.Badge(f"SGPA: {sgpa_val}", color="success", className="p-2 fs-6")
             ], width=4, className="text-end align-self-center")
         ], className="mb-3 border-bottom pb-3"),
         

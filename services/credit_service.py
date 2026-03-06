@@ -40,5 +40,5 @@ def get_credit(subject_code, credit_map):
     if number and number in credit_map:
         return credit_map[number]
 
-    print(f"Warning: Credit not found for {subject_code}")
-    return None
+    print(f"⚠ Credit mapping missing for {subject_code}")
+    return 0

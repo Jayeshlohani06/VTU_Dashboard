@@ -343,29 +343,48 @@ layout = dbc.Container([
             dbc.Card([
                 dbc.CardHeader("2. Configuration", className="fw-bold bg-light", style={"overflow": "visible"}),
                 dbc.CardBody([
+                    
+                    # ⚠️ LIVE MOVING ALERT
+                    dbc.Alert(
+                        html.Marquee("🚨 Action Required: Please select your Scheme and Semester and click 'Submit Mapping' to enable automatic SGPA calculation across the dashboard! 🚨",
+                                     style={"fontWeight": "bold", "fontSize": "1.1rem"}
+                        ),
+                        id="scheme-moving-alert",
+                        color="danger",
+                        is_open=True,
+                        className="p-1 mb-3 shadow-sm border-danger"
+                    ),
+
                     html.Label("Scheme & Semester", className="small fw-bold mb-1"),
                     dbc.Row([
                         dbc.Col([
                             dcc.Dropdown(
                                 id='scheme-selector',
                                 options=[{'label': f'{yr} Scheme', 'value': str(yr)} for yr in [2022, 2021, 2018, 2025]],
-                                value='2022',
+                                value=None,
                                 clearable=False,
                                 className="mb-3",
-                                placeholder="Scheme"
+                                placeholder="Select Scheme..."
                             )
                         ], width=6),
                         dbc.Col([
                             dcc.Dropdown(
                                 id='semester-selector',
                                 options=[{'label': f'Sem {i}', 'value': i} for i in range(1, 9)],
-                                value=5,
+                                value=None,
                                 clearable=False,
                                 className="mb-3",
-                                placeholder="Semester"
+                                placeholder="Select Semester..."
                             )
                         ], width=6),
                     ]),
+
+                    dbc.Button(
+                        [html.I(className="bi bi-check-circle-fill me-2"), "Submit Mapping for SGPA"],
+                        id="submit-scheme-btn",
+                        color="success",
+                        className="w-100 mb-3 fw-bold shadow-sm"
+                    ),
 
                     html.Label("Filter Subjects", className="small fw-bold mb-1"),
                     html.Div([
@@ -672,20 +691,40 @@ def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
 )
 def load_scheme_semester_ui(store_data):
     if store_data:
-        return store_data.get('scheme', '2022'), store_data.get('semester', 5)
-    return '2022', 5
+        return store_data.get('scheme', None), store_data.get('semester', None)
+    return None, None
 
 @callback(
     Output('scheme-semester-store', 'data', allow_duplicate=True),
-    Input('scheme-selector', 'value'),
-    Input('semester-selector', 'value'),
+    Output('scheme-moving-alert', 'is_open'),
+    Input('submit-scheme-btn', 'n_clicks'),
+    State('scheme-selector', 'value'),
+    State('semester-selector', 'value'),
     State('scheme-semester-store', 'data'),
     prevent_initial_call=True
 )
-def update_scheme_semester_store(scheme, semester, store_data):
-    if store_data and store_data.get('scheme') == scheme and store_data.get('semester') == semester:
-        raise dash.exceptions.PreventUpdate
-    return {"scheme": scheme, "semester": semester}
+def update_scheme_semester_store(n_clicks, scheme, semester, store_data):
+    if not n_clicks:
+        # If no button click yet, keep alert open if nothing in store
+        return no_update, True if not store_data else False
+        
+    if not scheme or not semester:
+        # If they clicked but didn't select both, keep alert open and don't store
+        return no_update, True
+
+    # Valid submission: update store, hide alert
+    return {"scheme": scheme, "semester": semester}, False
+
+# Add a load callback to hide alert initially if already configured
+@callback(
+    Output('scheme-moving-alert', 'is_open', allow_duplicate=True),
+    Input('scheme-semester-store', 'data'),
+    prevent_initial_call='initial_duplicate'
+)
+def hide_alert_on_load(store_data):
+    if store_data and store_data.get('scheme') and store_data.get('semester'):
+        return False
+    return True
 
 @callback(
     Output('overview-selected-subjects', 'data', allow_duplicate=True),

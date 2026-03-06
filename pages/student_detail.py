@@ -296,7 +296,7 @@ def generate_credit_inputs(n_clicks, scheme_sem_data, search_value, session_id, 
 
         # Fetch default credit value
         fetched_credit = get_credit(display_code, credit_map)
-        default_credit = fetched_credit if fetched_credit is not None else 3
+        default_credit = fetched_credit
 
         z_index = 1000 - (idx * 5)  # Decreasing z-index for each card
         credit_inputs.append(
