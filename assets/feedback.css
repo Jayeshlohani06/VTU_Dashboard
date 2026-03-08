@@ -1,0 +1,331 @@
+/* ══════════════════════════════════════════════
+   FLOATING FEEDBACK BUTTON (FAB)
+   ══════════════════════════════════════════════ */
+.feedback-fab {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    z-index: 1050;
+    padding: 12px 22px;
+    border-radius: 50px;
+    border: none;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff !important;
+    box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
+    opacity: 0.92;
+}
+
+.feedback-fab:hover {
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 12px 35px rgba(99, 102, 241, 0.55);
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: #fff !important;
+    opacity: 1;
+}
+
+.feedback-fab:active {
+    transform: translateY(0) scale(0.97);
+    opacity: 1;
+}
+
+.feedback-fab-label {
+    font-size: 0.9rem;
+}
+
+/* Pulse animation on load */
+@keyframes fabPulse {
+    0%, 100% { box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4); }
+    50%      { box-shadow: 0 8px 35px rgba(99, 102, 241, 0.65); }
+}
+.feedback-fab { animation: fabPulse 3s ease-in-out infinite; }
+.feedback-fab:hover { animation: none; }
+
+
+/* ══════════════════════════════════════════════
+   FEEDBACK MODAL
+   ══════════════════════════════════════════════ */
+.feedback-modal .modal-content {
+    border: none;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.feedback-modal {
+    z-index: 2050 !important;
+}
+
+/* Modal backdrop must also be above navbar, but not too dark */
+.modal-backdrop {
+    z-index: 2040 !important;
+}
+.feedback-backdrop {
+    z-index: 2040 !important;
+    opacity: 0.3 !important;
+}
+
+/* Header */
+.feedback-modal-header {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border-bottom: none;
+    padding: 20px 28px;
+}
+
+.feedback-modal-header .btn-close {
+    filter: brightness(0) invert(1);
+    opacity: 0.8;
+}
+
+.feedback-modal-header .btn-close:hover {
+    opacity: 1;
+}
+
+.feedback-modal-header h5,
+.feedback-modal-header small {
+    color: #fff !important;
+}
+
+.feedback-header-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+/* Body */
+.feedback-modal-body {
+    padding: 24px 28px 20px;
+    background: #fafbfc;
+}
+
+/* Scrollable modal body */
+.feedback-modal .modal-body {
+    overflow-y: auto;
+    flex: 1 1 auto;
+}
+
+/* Tab content scroll */
+.feedback-modal .tab-content {
+    max-height: 48vh;
+    overflow-y: auto;
+}
+
+/* Input fields */
+.feedback-input {
+    border: 2px solid #e5e7eb;
+    border-radius: 12px !important;
+    padding: 10px 16px;
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
+    background: #fff;
+}
+
+.feedback-input:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+/* Feedback type radio pills */
+.feedback-type-pills {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.feedback-type-pills .form-check {
+    padding: 0;
+    margin: 0;
+}
+
+.feedback-type-pills .form-check-input {
+    display: none;
+}
+
+.feedback-type-pills .form-check-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 18px;
+    border-radius: 50px;
+    border: 2px solid #e5e7eb;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: #4b5563;
+    transition: all 0.2s ease;
+}
+
+.feedback-type-pills .form-check-label:hover {
+    border-color: #a5b4fc;
+    background: #eef2ff;
+    color: #4338ca;
+}
+
+.feedback-type-pills .form-check-input:checked + .form-check-label {
+    border-color: #6366f1;
+    background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+    color: #4338ca;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+}
+
+/* Footer */
+.feedback-modal-footer {
+    background: #fafbfc;
+    border-top: 1px solid #f0f0f0;
+    padding: 16px 28px;
+}
+
+/* Submit button */
+.feedback-submit-btn {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border: none;
+    border-radius: 12px;
+    padding: 10px 28px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #fff;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+}
+
+.feedback-submit-btn:hover {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+    color: #fff;
+}
+
+.feedback-submit-btn:active {
+    transform: translateY(0);
+}
+
+/* Labels */
+.feedback-modal-body .form-label {
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+/* Textarea */
+.feedback-modal-body textarea.feedback-input {
+    min-height: 100px;
+}
+
+/* Alert styling inside modal */
+.feedback-modal-body .alert {
+    border-radius: 12px;
+    border: none;
+    font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 576px) {
+    .feedback-fab-label { display: none; }
+    .feedback-fab { padding: 14px; border-radius: 50%; width: 56px; height: 56px; }
+    .feedback-modal-body { padding: 20px 16px; }
+    .feedback-type-pills { flex-direction: column; }
+}
+
+
+/* ══════════════════════════════════════════════
+   TABS
+   ══════════════════════════════════════════════ */
+.feedback-tabs .nav-tabs {
+    border-bottom: 2px solid #e5e7eb;
+    gap: 4px;
+}
+
+.feedback-tabs .nav-link {
+    border: none;
+    border-radius: 12px 12px 0 0;
+    padding: 10px 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #6b7280;
+    transition: all 0.2s ease;
+}
+
+.feedback-tabs .nav-link:hover {
+    color: #6366f1;
+    background: #eef2ff;
+}
+
+.feedback-tabs .nav-link.active {
+    color: #6366f1;
+    background: transparent;
+    border-bottom: 3px solid #6366f1;
+}
+
+.feedback-tab-pane {
+    min-height: 280px;
+}
+
+
+/* ══════════════════════════════════════════════
+   CONTACT CARDS
+   ══════════════════════════════════════════════ */
+.contact-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: none;
+}
+
+.contact-card:hover {
+    border-color: #a5b4fc;
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.12);
+    transform: translateY(-2px);
+}
+
+.contact-icon-circle {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.contact-whatsapp {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.contact-card:hover .contact-whatsapp {
+    background: #25d366;
+    color: #fff;
+}
+
+.contact-email {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.contact-card:hover .contact-email {
+    background: #2563eb;
+    color: #fff;
+}
+
+.contact-info-note {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: #0369a1;
+    font-size: 0.88rem;
+    font-weight: 500;
+}

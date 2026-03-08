@@ -1,7 +1,8 @@
 import dash
-from dash import html, dcc, callback, Input, Output
+from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
 from cache_config import cache
+from services.google_sheets_service import save_feedback
 
 # ----------------- Initialize Dash App -----------------
 app = dash.Dash(
@@ -63,86 +64,277 @@ navbar = dbc.Navbar(
     style={"zIndex": 2000}
 )
 
-# ----------------- Layout -----------------
-app.layout = dbc.Container(
+# ----------------- Feedback Modal -----------------
+feedback_modal = dbc.Modal(
     [
-
-        dcc.Location(id="url", refresh=False),
-
-        # NAVBAR
-        navbar,
-
-        # PAGE HEADER (UPGRADED)
-        html.Div(
-            id="page-title-display",
-            children=[
-                html.H3("🏠 Overview", className="fw-bold mb-1"),
-                html.P(
-                    "Track overall student performance, pass percentage, and academic insights.",
-                    className="text-muted mb-0"
-                )
-            ],
-            style={
-                "background": "white",
-                "padding": "20px",
-                "borderRadius": "14px",
-                "marginBottom": "20px",
-                "boxShadow": "0 4px 14px rgba(0,0,0,0.06)"
-            }
+        dbc.ModalHeader(
+            html.Div([
+                html.Div([
+                    html.Div(
+                        html.I(className="bi bi-headset", style={"fontSize": "1.6rem"}),
+                        className="feedback-header-icon"
+                    ),
+                    html.Div([
+                        html.H5("Feedback & Contact", className="fw-bold mb-0"),
+                        html.Small("We're here to help", className="text-muted")
+                    ])
+                ], className="d-flex align-items-center gap-3")
+            ], className="w-100"),
+            close_button=True,
+            className="feedback-modal-header"
         ),
+        dbc.ModalBody([
+            # Tab switcher
+            dbc.Tabs([
+                # ──── FEEDBACK TAB ────
+                dbc.Tab(
+                    html.Div([
+                        dbc.Row([
+                            dbc.Col([
+                                dbc.Label([
+                                    html.I(className="bi bi-person-fill me-2 text-primary"),
+                                    "Name"
+                                ], className="fw-semibold small"),
+                                dbc.Input(
+                                    id="fb-name", placeholder="John Doe",
+                                    className="feedback-input"
+                                ),
+                            ], md=6),
+                            dbc.Col([
+                                dbc.Label([
+                                    html.I(className="bi bi-envelope-fill me-2 text-primary"),
+                                    "Email"
+                                ], className="fw-semibold small"),
+                                dbc.Input(
+                                    id="fb-email", type="email", placeholder="you@example.com",
+                                    className="feedback-input"
+                                ),
+                            ], md=6),
+                        ], className="mb-3"),
 
-        # 🔥 GLOBAL SESSION STORES
-        dcc.Store(id="stored-data", storage_type="session"),
-        dcc.Store(id="overview-selected-subjects", storage_type="session"),
-        dcc.Store(id="branch-long-data", storage_type="session"),
-        dcc.Store(id="section-data", storage_type="session"),
-        dcc.Store(id="usn-mapping-store", storage_type="session"),
-        dcc.Store(id="subject-options-store", storage_type="session"),
-        dcc.Store(id="scheme-semester-store", storage_type="session"),
+                        dbc.Label([
+                            html.I(className="bi bi-tag-fill me-2 text-primary"),
+                            "Feedback Type"
+                        ], className="fw-semibold small"),
+                        html.Div([
+                            dbc.RadioItems(
+                                id="fb-type",
+                                options=[
+                                    {"label": "Bug Report", "value": "Bug"},
+                                    {"label": "Feature Request", "value": "Feature"},
+                                    {"label": "UI Suggestion", "value": "UI"},
+                                ],
+                                value=None,
+                                inline=True,
+                                className="feedback-type-pills",
+                            ),
+                        ], className="mb-3"),
 
-        # PAGE CONTENT
-        html.Div(
-            dash.page_container,
-            style={
-                "background": "white",
-                "padding": "20px",
-                "borderRadius": "14px",
-                "boxShadow": "0 4px 14px rgba(0,0,0,0.05)"
-            }
-        ),
+                        dbc.Label([
+                            html.I(className="bi bi-chat-text-fill me-2 text-primary"),
+                            "Message"
+                        ], className="fw-semibold small"),
+                        dbc.Textarea(
+                            id="fb-message",
+                            placeholder="Tell us what's on your mind...",
+                            rows=3,
+                            className="feedback-input",
+                            style={"resize": "vertical"}
+                        ),
 
-        # ----------------- Footer -----------------
-        html.Footer(
+                        dcc.Loading(
+                            html.Div(id="fb-status"),
+                            type="circle",
+                            color="#6366f1",
+                            className="mt-3"
+                        ),
+
+                        html.Div(
+                            dbc.Button([
+                                html.I(className="bi bi-send-fill me-2"),
+                                "Submit Feedback"
+                            ], id="fb-submit", className="feedback-submit-btn mt-3"),
+                            className="text-end"
+                        )
+                    ], className="pt-3"),
+                    label="❤️ Feedback",
+                    tab_id="tab-feedback",
+                    className="feedback-tab-pane",
+                ),
+
+                # ──── CONTACT US TAB ────
+                dbc.Tab(
+                    html.Div([
+                        # WhatsApp Card
+                        html.A(
+                            dbc.Card([
+                                dbc.CardBody([
+                                    html.Div([
+                                        html.Div(
+                                            html.I(className="bi bi-whatsapp", style={"fontSize": "1.8rem"}),
+                                            className="contact-icon-circle contact-whatsapp"
+                                        ),
+                                        html.Div([
+                                            html.H6("Chat on WhatsApp", className="fw-bold mb-0"),
+                                            html.Small("Tap to start a conversation", className="text-muted")
+                                        ])
+                                    ], className="d-flex align-items-center gap-3"),
+                                    html.I(className="bi bi-arrow-right", style={"fontSize": "1.2rem", "color": "#9ca3af"})
+                                ], className="d-flex align-items-center justify-content-between")
+                            ], className="contact-card"),
+                            href="https://wa.me/918936897736?text=Hi%2C%20I%20have%20a%20query%20about%20the%20VTU%20Dashboard",
+                            target="_blank",
+                            style={"textDecoration": "none"}
+                        ),
+
+                        # Email Card
+                        html.A(
+                            dbc.Card([
+                                dbc.CardBody([
+                                    html.Div([
+                                        html.Div(
+                                            html.I(className="bi bi-envelope-fill", style={"fontSize": "1.8rem"}),
+                                            className="contact-icon-circle contact-email"
+                                        ),
+                                        html.Div([
+                                            html.H6("Send an Email", className="fw-bold mb-0"),
+                                            html.Small("jayeshlohani06@gmail.com", className="text-muted")
+                                        ])
+                                    ], className="d-flex align-items-center gap-3"),
+                                    html.I(className="bi bi-arrow-right", style={"fontSize": "1.2rem", "color": "#9ca3af"})
+                                ], className="d-flex align-items-center justify-content-between")
+                            ], className="contact-card"),
+                            href="mailto:jayeshlohani06@gmail.com?subject=VTU%20Dashboard%20Query",
+                            target="_blank",
+                            style={"textDecoration": "none"}
+                        ),
+
+                        # Info note
+                        html.Div([
+                            html.I(className="bi bi-info-circle me-2"),
+                            "We typically respond within 24 hours."
+                        ], className="contact-info-note mt-3")
+
+                    ], className="pt-3 d-grid gap-3"),
+                    label="\U0001f4de Contact Us",
+                    tab_id="tab-contact",
+                    className="feedback-tab-pane",
+                ),
+            ], id="feedback-tabs", active_tab="tab-feedback", className="feedback-tabs"),
+
+        ], className="feedback-modal-body"),
+        dbc.ModalFooter([
+            html.Small("We value your feedback \u2764\ufe0f", className="text-muted me-auto"),
+        ], className="feedback-modal-footer"),
+    ],
+    id="feedback-modal",
+    is_open=False,
+    centered=True,
+    scrollable=True,
+    size="lg",
+    className="feedback-modal",
+    style={"zIndex": 2050},
+    backdrop_class_name="feedback-backdrop",
+)
+
+# Floating feedback button
+feedback_fab = dbc.Button(
+    html.Div([
+        html.I(className="bi bi-headset", style={"fontSize": "1.4rem"}),
+        html.Span("Help", className="feedback-fab-label")
+    ], className="d-flex align-items-center gap-2"),
+    id="feedback-fab",
+    className="feedback-fab",
+    title="Feedback & Contact",
+    n_clicks=0,
+)
+
+# ----------------- Layout -----------------
+app.layout = html.Div([
+    dbc.Container(
+        [
+
+            dcc.Location(id="url", refresh=False),
+
+            # NAVBAR
+            navbar,
+
+            # PAGE HEADER (UPGRADED)
             html.Div(
-                [
-                    html.Span("Designed & Developed by Students of Acharya Institute of Technology:", className="fw-bold"),
-                    html.Br(),
-                    html.Span("Jayesh Lohani | Amit Kumar Thakur | Aman Raj | Avni Chauhan", className="fw-medium"),
-                    html.Br(),
-                    html.Span("Under the Guidance of Professor Arun K H, Assistant Professor Acharya Institute of Technology", className="fw-bold mt-2 d-inline-block")
+                id="page-title-display",
+                children=[
+                    html.H3("🏠 Overview", className="fw-bold mb-1"),
+                    html.P(
+                        "Track overall student performance, pass percentage, and academic insights.",
+                        className="text-muted mb-0"
+                    )
                 ],
-                className="text-center",
                 style={
-                    "fontSize": "1rem", 
-                    "padding": "15px", 
-                    "color": "#333",
-                    "backgroundColor": "#e9ecef",
-                    "borderRadius": "8px",
-                    "border": "1px solid #ced4da"
+                    "background": "white",
+                    "padding": "20px",
+                    "borderRadius": "14px",
+                    "marginBottom": "20px",
+                    "boxShadow": "0 4px 14px rgba(0,0,0,0.06)"
                 }
             ),
-            style={"marginTop": "30px", "paddingBottom": "20px"}
-        )
 
-    ],
-    fluid=True,
-    className="d-flex flex-column",
-    style={
-        "backgroundColor": "#f3f4f6",
-        "padding": "25px",
-        "minHeight": "100vh"
-    },
-)
+            # 🔥 GLOBAL SESSION STORES
+            dcc.Store(id="stored-data", storage_type="session"),
+            dcc.Store(id="overview-selected-subjects", storage_type="session"),
+            dcc.Store(id="branch-long-data", storage_type="session"),
+            dcc.Store(id="section-data", storage_type="session"),
+            dcc.Store(id="usn-mapping-store", storage_type="session"),
+            dcc.Store(id="subject-options-store", storage_type="session"),
+            dcc.Store(id="scheme-semester-store", storage_type="session"),
+
+            # PAGE CONTENT
+            html.Div(
+                dash.page_container,
+                style={
+                    "background": "white",
+                    "padding": "20px",
+                    "borderRadius": "14px",
+                    "boxShadow": "0 4px 14px rgba(0,0,0,0.05)"
+                }
+            ),
+
+            # ----------------- Footer -----------------
+            html.Footer(
+                html.Div(
+                    [
+                        html.Span("Designed & Developed by Students of Acharya Institute of Technology:", className="fw-bold"),
+                        html.Br(),
+                        html.Span("Jayesh Lohani | Amit Kumar Thakur | Aman Raj | Avni Chauhan", className="fw-medium"),
+                        html.Br(),
+                        html.Span("Under the Guidance of Professor Arun K H, Assistant Professor Acharya Institute of Technology", className="fw-bold mt-2 d-inline-block")
+                    ],
+                    className="text-center",
+                    style={
+                        "fontSize": "1rem", 
+                        "padding": "15px", 
+                        "color": "#333",
+                        "backgroundColor": "#e9ecef",
+                        "borderRadius": "8px",
+                        "border": "1px solid #ced4da"
+                    }
+                ),
+                style={"marginTop": "30px", "paddingBottom": "20px"}
+            )
+
+        ],
+        fluid=True,
+        className="d-flex flex-column",
+        style={
+            "backgroundColor": "#f3f4f6",
+            "padding": "25px",
+            "minHeight": "100vh"
+        },
+    ),
+
+    # FEEDBACK COMPONENTS — placed outside Container to avoid navbar stacking context
+    feedback_fab,
+    feedback_modal,
+])
 
 # ----------------- Dynamic Page Title -----------------
 @callback(
@@ -169,6 +361,53 @@ def display_page_title(pathname):
         html.H3(title, className="fw-bold mb-1"),
         html.P(subtitle, className="text-muted mb-0")
     ]
+
+
+# ----------------- Feedback Callbacks -----------------
+@callback(
+    Output("feedback-modal", "is_open"),
+    Input("feedback-fab", "n_clicks"),
+    State("feedback-modal", "is_open"),
+    prevent_initial_call=True
+)
+def toggle_feedback_modal(n, is_open):
+    if n:
+        return not is_open
+    return is_open
+
+
+@callback(
+    Output("fb-status", "children"),
+    Output("fb-name", "value"),
+    Output("fb-email", "value"),
+    Output("fb-type", "value"),
+    Output("fb-message", "value"),
+    Input("fb-submit", "n_clicks"),
+    State("fb-name", "value"),
+    State("fb-email", "value"),
+    State("fb-type", "value"),
+    State("fb-message", "value"),
+    prevent_initial_call=True
+)
+def submit_feedback(n, name, email, ftype, message):
+    if not n:
+        raise dash.exceptions.PreventUpdate
+    if not name or not message:
+        return (
+            dbc.Alert("Name and Message are required.", color="warning"),
+            dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        )
+    try:
+        save_feedback(name, email, ftype, message)
+        return (
+            dbc.Alert("✅ Feedback submitted — thank you!", color="success"),
+            "", "", None, ""
+        )
+    except Exception as e:
+        return (
+            dbc.Alert(f"Error: {e}", color="danger"),
+            dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        )
 
 
 # ----------------- Server -----------------
