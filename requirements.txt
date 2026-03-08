@@ -10,3 +10,5 @@ Flask>=3.0.0,<4
 Werkzeug>=3.0.1,<4
 Flask-Caching>=2.1.0,<3
 waitress>=3.0.0,<4
+xlsxwriter>=3.0.3,<4
+reportlab>=3.6.12,<4

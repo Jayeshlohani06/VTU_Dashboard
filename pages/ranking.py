@@ -392,8 +392,6 @@ layout = dbc.Container([
                 dbc.Col(dbc.ButtonGroup([
                     dbc.Button("ℹ️ Info", id="open-legend", color="info", outline=True),
                     dbc.Button("Reset", id="reset-btn", color="secondary", outline=True),
-                    dbc.Button("CSV", id="export-csv", color="primary", outline=True),
-                    dbc.Button("Excel", id="export-xlsx", color="success", outline=True),
                 ], className="w-100 d-flex justify-content-end"), md=3, xs=12),
             ], className="g-2 rnk-controls mb-3"),
 
@@ -478,7 +476,10 @@ layout = dbc.Container([
 
     # Table
     dbc.Card(dbc.CardBody([
-        html.H6([html.I(className="bi bi-table me-2 text-primary"), "Detailed Ranking Table"], className="fw-bold mb-3"),
+        html.Div([
+            html.H6([html.I(className="bi bi-table me-2 text-primary"), "Detailed Ranking Table"], className="fw-bold mb-0"),
+            dbc.Button("Download Excel", id="export-xlsx", color="success", outline=True, size="sm")
+        ], className="d-flex justify-content-between align-items-center mb-3"),
         dcc.Loading(
             type="circle",
             children=dash_table.DataTable(
@@ -575,7 +576,6 @@ layout = dbc.Container([
     
     dcc.Download(id="rnk-kpi-excel-download"),
 
-    dcc.Download(id="download-csv"),
     dcc.Download(id="download-xlsx"),
     dcc.Download(id="download-category-report"),
     dcc.Download(id="download-all-kpis"),
@@ -1465,11 +1465,103 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, sgpa_jso
     
     return True, body
 
-@callback(Output("download-csv", "data"), Input("export-csv", "n_clicks"), State('ranking-table', 'data'), prevent_initial_call=True)
-def exp_csv(n, d): return dcc.send_data_frame(pd.DataFrame(d).to_csv, "rank.csv", index=False) if d else no_update
+@callback(
+    Output("download-xlsx", "data"), 
+    Input("export-xlsx", "n_clicks"), 
+    State('ranking-table', 'data'), 
+    State('ranking-table', 'columns'), 
+    prevent_initial_call=True
+)
+def exp_xlsx(n, d, cols): 
+    if not d: return no_update
+    from io import BytesIO
+    import openpyxl
+    from openpyxl.styles import PatternFill, Font, Alignment
+    from openpyxl.utils import get_column_letter
+    
+    df = pd.DataFrame(d)
+    
+    # Filter and rename according to displayed columns
+    if cols:
+        col_ids = [c['id'] for c in cols if c['id'] in df.columns]
+        df = df[col_ids]
+        df.columns = [c['name'] for c in cols if c['id'] in df.columns]
+        
+    out = BytesIO()
+    writer = pd.ExcelWriter(out, engine='openpyxl')
+    df.to_excel(writer, sheet_name="Ranking", index=False)
+    
+    worksheet = writer.sheets["Ranking"]
+    
+    # Define Styles
+    rank1_style = {"bg": "FFFFFBEB", "font": "FF92400E"}
+    rank2_style = {"bg": "FFF0F9FF", "font": "FF075985"}
+    rank3_style = {"bg": "FFFFF7ED", "font": "FF9A3412"}
+    fail_style = {"bg": "FFFFF1F2", "font": "FF991B1B"}
+    absent_style = {"bg": "FFFFFBEB", "font": "FFB45309"}
+    odd_row_bg = "FFFAFAFA"
+    
+    header_fill = PatternFill(start_color="FF1F2937", end_color="FF1F2937", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFFFF")
+    
+    # Apply column widths and header styles
+    for col_idx, col_name in enumerate(df.columns, start=1):
+        cell = worksheet.cell(row=1, column=col_idx)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        worksheet.column_dimensions[get_column_letter(col_idx)].width = max(len(str(col_name)) + 5, 12)
+        if "Name" in col_name:
+            worksheet.column_dimensions[get_column_letter(col_idx)].width = 30
+            
+    # Apply row styles based on conditions (ignoring original index, checking dataframe data)
+    # We need to map dataframe column names back to what is being evaluated (overall_result, class_rank, etc)
+    for row_idx, row_data in enumerate(df.itertuples(index=False), start=2):
+        row_dict = dict(zip(df.columns, row_data))
+        
+        # Check conditions
+        is_fail = str(row_dict.get("Overall Result", "")).upper() == "F" or str(row_dict.get("Result Selected", "")).upper() == "FAIL"
+        is_absent = str(row_dict.get("Overall Result", "")).upper() == "A" or str(row_dict.get("Result Selected", "")).upper() == "ABSENT"
+        
+        rank_val = row_dict.get("Class Rank", row_dict.get("SGPA Class Rank", ""))
+        try:
+            rank_val = float(rank_val) if pd.notna(rank_val) else 999
+        except (ValueError, TypeError):
+            rank_val = 999
+            
+        # Determine row style
+        bg_color = None
+        font_color = "FF000000"
+        is_bold = False
+        
+        if is_fail:
+            bg_color, font_color = fail_style["bg"], fail_style["font"]
+        elif is_absent:
+            bg_color, font_color = absent_style["bg"], absent_style["font"]
+            is_bold = True
+        elif rank_val == 1:
+            bg_color, font_color = rank1_style["bg"], rank1_style["font"]
+            is_bold = True
+        elif rank_val == 2:
+            bg_color, font_color = rank2_style["bg"], rank2_style["font"]
+            is_bold = True
+        elif rank_val == 3:
+            bg_color, font_color = rank3_style["bg"], rank3_style["font"]
+            is_bold = True
+        elif row_idx % 2 == 1:
+            bg_color = odd_row_bg
+            
+        for col_idx in range(1, len(df.columns) + 1):
+            cell = worksheet.cell(row=row_idx, column=col_idx)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            if bg_color:
+                cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
+            if font_color != "FF000000" or is_bold:
+                cell.font = Font(color=font_color, bold=is_bold)
 
-@callback(Output("download-xlsx", "data"), Input("export-xlsx", "n_clicks"), State('ranking-table', 'data'), prevent_initial_call=True)
-def exp_xlsx(n, d): return dcc.send_data_frame(pd.DataFrame(d).to_excel, "rank.xlsx", index=False) if d else no_update
+    writer.close()
+    out.seek(0)
+    return dcc.send_bytes(out.read(), "ranking_table.xlsx")
 
 @callback(
     Output("download-all-kpis", "data"),
