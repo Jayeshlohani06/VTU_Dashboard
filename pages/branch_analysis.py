@@ -8,6 +8,7 @@ import re
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+from io import BytesIO
 
 import utils.master_store as ms
 
@@ -534,40 +535,143 @@ def analyze_branches(n, file_contents, branch_names):
 
         subject_df = pd.DataFrame(subject_stats_list)
         if not subject_df.empty:
-            subject_df = subject_df.sort_values("SUBJECT")
-        
-        subject_table = dash_table.DataTable(
-            data=subject_df.to_dict('records') if not subject_df.empty else [],
-            columns=[
-                {"name": i, "id": i} for i in ["SUBJECT", "BRANCH", "TOTAL", "APPEARED", "ABSENT", "PASSED", "FAILED", "PASS %"]
-            ],
-            style_header={
-                'backgroundColor': '#1e293b', 
-                'color': 'white', 
-                'fontWeight': 'bold',
-                'textAlign': 'center',
-                'textTransform': 'uppercase',
-                'fontSize': '13px'
-            },
-            style_cell={
-                'padding': '12px', 
-                'textAlign': 'center', 
-                'fontFamily': 'Inter, sans-serif',
-                'fontSize': '14px',
-                'color': '#334155'
-            },
-            style_data_conditional=[
-                {'if': {'row_index': 'odd'}, 'backgroundColor': '#f8fafc'},
-                {'if': {'row_index': 'even'}, 'backgroundColor': '#ffffff'},
-                {'if': {'column_id': 'BRANCH'}, 'fontWeight': 'bold', 'color': '#3b82f6'},
-                {'if': {'filter_query': '{PASS %} >= 95', 'column_id': 'PASS %'}, 'color': '#16a34a', 'fontWeight': 'bold'},
-                {'if': {'filter_query': '{PASS %} >= 80 && {PASS %} < 95', 'column_id': 'PASS %'}, 'color': '#059669', 'fontWeight': 'bold'},
-                {'if': {'filter_query': '{PASS %} < 50', 'column_id': 'PASS %'}, 'color': '#dc2626', 'fontWeight': 'bold'},
-            ],
-            sort_action="native",
-            page_action="none",
-            style_table={'borderRadius': '10px', 'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.1)'}
-        )
+            # Build subject code to full name mapping
+            subject_name_map = {}
+            for subj in subject_df["SUBJECT"].unique():
+                # Try to extract full name from original data if available
+                full_name = subj
+                if " - " in subj:
+                    code, name = subj.split(" - ", 1)
+                    subject_name_map[code.strip()] = name.strip()
+                    subj_code = code.strip()
+                else:
+                    subj_code = subj
+                    subject_name_map[subj_code] = subj_code
+            # Pivot and transpose to match screenshot format
+            pivoted = subject_df.pivot_table(index=["BRANCH"], columns=["SUBJECT"], values=["TOTAL", "APPEARED", "ABSENT", "PASSED", "FAILED", "PASS %"])
+            metric_order = ["TOTAL", "APPEARED", "ABSENT", "PASSED", "FAILED", "PASS %"]
+            branch_order = sorted(subject_df["BRANCH"].unique())
+            subject_order = sorted(subject_df["SUBJECT"].unique())
+            # Build table data
+            table_data = []
+            for metric in metric_order:
+                row = {"Metric": metric}
+                for subject in subject_order:
+                    for branch in branch_order:
+                        val = pivoted[metric].get(subject, {}).get(branch, "")
+                        row[f"{subject}_{branch}"] = val
+                table_data.append(row)
+            # Build columns with subject code only, tooltip for full name
+            columns = [{"name": "", "id": "Metric"}]
+            for subject in subject_order:
+                # Extract subject code
+                subj_code = subject.split(" - ")[0].strip() if " - " in subject else subject
+                tooltip = subject_name_map.get(subj_code, subj_code)
+                for branch in branch_order:
+                    columns.append({"name": [subj_code, branch], "id": f"{subject}_{branch}", "tooltip": tooltip})
+        else:
+            table_data = []
+            columns = [{"name": "", "id": "Metric"}]
+
+        # Download buttons
+        import io
+        import base64
+        from dash import dcc
+
+        download_buttons = html.Div([
+            dcc.Download(id="ba-download-excel"),
+            dcc.Download(id="ba-download-csv"),
+            dcc.Download(id="ba-download-pdf"),
+            html.Button("Download Excel", id="ba-download-excel-btn", className="ba-download-btn btn btn-primary btn-sm"),
+            html.Button("Download CSV", id="ba-download-csv-btn", className="ba-download-btn btn btn-secondary btn-sm"),
+            html.Button("Download PDF", id="ba-download-pdf-btn", className="ba-download-btn btn btn-danger btn-sm"),
+        ], style={"float": "right", "marginBottom": "10px"})
+
+        subject_table = html.Div([
+            download_buttons,
+            dash_table.DataTable(
+                data=table_data,
+                columns=columns,
+                merge_duplicate_headers=True,
+                tooltip_data=[
+                    {col["id"]: {"value": col.get("tooltip", ""), "type": "markdown"} for col in columns if col.get("tooltip")}
+                    for _ in table_data
+                ],
+                style_header={
+                    'backgroundColor': '#1e293b', 
+                    'color': 'white', 
+                    'fontWeight': 'bold',
+                    'textAlign': 'center',
+                    'textTransform': 'uppercase',
+                    'fontSize': '13px'
+                },
+                style_cell={
+                    'padding': '12px', 
+                    'textAlign': 'center', 
+                    'fontFamily': 'Inter, sans-serif',
+                    'fontSize': '14px',
+                    'color': '#334155',
+                    'minWidth': '120px',
+                    'maxWidth': '180px'
+                },
+                style_data_conditional=[
+                    {'if': {'row_index': 'odd'}, 'backgroundColor': '#f8fafc'},
+                    {'if': {'row_index': 'even'}, 'backgroundColor': '#ffffff'},
+                    {'if': {'column_id': 'STAT'}, 'fontWeight': 'bold', 'color': '#3b82f6'},
+                ],
+                sort_action="none",
+                page_action="none",
+                style_table={'borderRadius': '10px', 'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.1)', 'overflowX': 'auto', 'width': '100%', 'maxWidth': '100vw'}
+            )
+        ], className="mb-4")
+
+        # Download callbacks
+        from dash import callback, Output, Input, State
+
+        @callback(Output("ba-download-excel", "data"), Input("ba-download-excel-btn", "n_clicks"), State("ba-subject-data-store", "data"), prevent_initial_call=True)
+        def download_excel(n_clicks, data):
+            if n_clicks and data:
+                import pandas as pd
+                df = pd.DataFrame(data)
+                # Multi-header fix: set blank index if columns are MultiIndex
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.index = [""] * len(df)
+                    df.index.name = None
+                    index_flag = True
+                else:
+                    index_flag = False
+                return dcc.send_data_frame(df.to_excel, "Subject_Performance.xlsx", sheet_name="Subject Performance", index=index_flag)
+            return None
+
+        @callback(Output("ba-download-csv", "data"), Input("ba-download-csv-btn", "n_clicks"), State("ba-subject-data-store", "data"), prevent_initial_call=True)
+        def download_csv(n_clicks, data):
+            if n_clicks and data:
+                import pandas as pd
+                df = pd.DataFrame(data)
+                csv_str = df.to_csv(index=False)
+                return dcc.send_string(csv_str, "Subject_Performance.csv")
+            return None
+
+        @callback(Output("ba-download-pdf", "data"), Input("ba-download-pdf-btn", "n_clicks"), State("ba-subject-data-store", "data"), prevent_initial_call=True)
+        def download_pdf(n_clicks, data):
+            if n_clicks and data:
+                import pandas as pd
+                from io import BytesIO
+                df = pd.DataFrame(data)
+                output = BytesIO()
+                df.to_string(buf=output)
+                output.seek(0)
+                return dcc.send_bytes(output.read(), "Subject_Performance.pdf")
+            return None
+
+        @callback(Output("download-subjects-csv", "data"), Input("export-subjects-btn", "n_clicks"), State("ba-subject-data-store", "data"), prevent_initial_call=True)
+        def export_subjects_csv(n, data):
+            if not data:
+                return no_update
+            import pandas as pd
+            df = pd.DataFrame(data)
+            csv_str = df.to_csv(index=False)
+            return dcc.send_string(csv_str, "Subject_Performance.csv")
 
         # --- BUILD VISUALS ---
         
@@ -814,7 +918,19 @@ dash.clientside_callback(
     State("ba-kpi-data-store", "data"),
     prevent_initial_call=True
 )
-def export_kpi(n, data): return dcc.send_data_frame(pd.DataFrame(data).to_excel, "Branch_KPI_Summary.xlsx", index=False) if data else no_update
+def export_kpi(n, data):
+    if not data:
+        return no_update
+    import pandas as pd
+    df = pd.DataFrame(data)
+    # Multi-header fix
+    if isinstance(df.columns, pd.MultiIndex):
+        df.index = [""] * len(df)
+        df.index.name = None
+        index_flag = True
+    else:
+        index_flag = False
+    return dcc.send_data_frame(df.to_excel, "Branch_KPI_Summary.xlsx", index=index_flag)
 
 @callback(
     Output("download-rankers-excel", "data"),
@@ -822,7 +938,19 @@ def export_kpi(n, data): return dcc.send_data_frame(pd.DataFrame(data).to_excel,
     State("ba-ranker-data-store", "data"),
     prevent_initial_call=True
 )
-def export_rankers(n, data): return dcc.send_data_frame(pd.DataFrame(data).to_excel, "Top_Rankers.xlsx", index=False) if data else no_update
+def export_rankers(n, data):
+    if not data:
+        return no_update
+    import pandas as pd
+    df = pd.DataFrame(data)
+    # Multi-header fix
+    if isinstance(df.columns, pd.MultiIndex):
+        df.index = [""] * len(df)
+        df.index.name = None
+        index_flag = True
+    else:
+        index_flag = False
+    return dcc.send_data_frame(df.to_excel, "Top_Rankers.xlsx", index=index_flag)
 
 @callback(
     Output("download-subjects-excel", "data"),
@@ -830,4 +958,94 @@ def export_rankers(n, data): return dcc.send_data_frame(pd.DataFrame(data).to_ex
     State("ba-subject-data-store", "data"),
     prevent_initial_call=True
 )
-def export_subjects(n, data): return dcc.send_data_frame(pd.DataFrame(data).to_excel, "Subject_Performance.xlsx", index=False) if data else no_update
+def export_subjects(n, data):
+    if not data:
+        return no_update
+    import pandas as pd
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill
+
+    df = pd.DataFrame(data)
+
+    # Reconstruct the pivoted table matching the dashboard layout
+    subject_order = sorted(df["SUBJECT"].unique())
+    branch_order = sorted(df["BRANCH"].unique())
+    metric_order = ["TOTAL", "APPEARED", "ABSENT", "PASSED", "FAILED", "PASS %"]
+
+    pivoted = df.pivot_table(
+        index=["BRANCH"], columns=["SUBJECT"],
+        values=["TOTAL", "APPEARED", "ABSENT", "PASSED", "FAILED", "PASS %"]
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Subject Performance"
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    center_align = Alignment(horizontal="center", vertical="center")
+
+    # Row 1: Subject codes (merged across branches)
+    # Row 2: Branch names under each subject
+    ws.cell(row=1, column=1, value="Metric")
+    ws.cell(row=2, column=1, value="")
+
+    col = 2
+    for subject in subject_order:
+        subj_code = subject.split(" - ")[0].strip() if " - " in subject else subject
+        start_col = col
+        for branch in branch_order:
+            ws.cell(row=1, column=col, value=subj_code)
+            ws.cell(row=2, column=col, value=branch)
+            col += 1
+        if len(branch_order) > 1:
+            ws.merge_cells(start_row=1, start_column=start_col, end_row=1, end_column=start_col + len(branch_order) - 1)
+
+    # Style header rows
+    total_cols = col
+    for col_idx in range(1, total_cols):
+        for row_idx in [1, 2]:
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+
+    # Write data rows (one per metric)
+    for row_idx, metric in enumerate(metric_order, start=3):
+        ws.cell(row=row_idx, column=1, value=metric).font = Font(bold=True)
+        col_idx = 2
+        for subject in subject_order:
+            for branch in branch_order:
+                try:
+                    val = pivoted.loc[branch, (metric, subject)]
+                    if pd.notna(val):
+                        ws.cell(row=row_idx, column=col_idx, value=val)
+                except (KeyError, TypeError):
+                    pass
+                col_idx += 1
+
+    # Auto-fit column widths
+    from openpyxl.utils import get_column_letter
+    for col_idx in range(1, total_cols):
+        col_letter = get_column_letter(col_idx)
+        max_len = max((len(str(ws.cell(row=r, column=col_idx).value or "")) for r in range(1, len(metric_order) + 3)), default=10)
+        ws.column_dimensions[col_letter].width = min(max_len + 2, 20)
+
+    output = BytesIO()
+    wb.save(output)
+    return dcc.send_bytes(output.getvalue(), "Subject_Performance.xlsx")
+
+@callback(
+    Output("download-subjects-csv", "data"),
+    Input("export-subjects-btn", "n_clicks"),
+    State("ba-subject-data-store", "data"),
+    prevent_initial_call=True
+)
+def export_subjects_csv(n, data):
+    if not data:
+        return no_update
+    import pandas as pd
+    df = pd.DataFrame(data)
+    csv_str = df.to_csv(index=False)
+    return dcc.send_string(csv_str, "Subject_Performance.csv")
