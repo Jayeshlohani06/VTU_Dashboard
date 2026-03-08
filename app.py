@@ -89,6 +89,31 @@ feedback_modal = dbc.Modal(
                 # ──── FEEDBACK TAB ────
                 dbc.Tab(
                     html.Div([
+
+                        # ── Emoji mood rating ──
+                        html.Div([
+                            html.Label([
+                                html.I(className="bi bi-emoji-smile me-2 text-primary"),
+                                "How's your experience?"
+                            ], className="fw-semibold small d-block mb-2"),
+                            dbc.RadioItems(
+                                id="fb-rating",
+                                options=[
+                                    {"label": "😡", "value": "1"},
+                                    {"label": "😕", "value": "2"},
+                                    {"label": "😐", "value": "3"},
+                                    {"label": "🙂", "value": "4"},
+                                    {"label": "😍", "value": "5"},
+                                ],
+                                value=None,
+                                inline=True,
+                                className="emoji-rating-group",
+                            ),
+                        ], className="mb-3"),
+
+                        html.Hr(className="my-2", style={"opacity": "0.1"}),
+
+                        # ── Name + Email ──
                         dbc.Row([
                             dbc.Col([
                                 dbc.Label([
@@ -112,35 +137,65 @@ feedback_modal = dbc.Modal(
                             ], md=6),
                         ], className="mb-3"),
 
+                        # ── Feedback Type as icon cards ──
                         dbc.Label([
                             html.I(className="bi bi-tag-fill me-2 text-primary"),
                             "Feedback Type"
                         ], className="fw-semibold small"),
-                        html.Div([
-                            dbc.RadioItems(
-                                id="fb-type",
-                                options=[
-                                    {"label": "Bug Report", "value": "Bug"},
-                                    {"label": "Feature Request", "value": "Feature"},
-                                    {"label": "UI Suggestion", "value": "UI"},
-                                ],
-                                value=None,
-                                inline=True,
-                                className="feedback-type-pills",
-                            ),
-                        ], className="mb-3"),
-
-                        dbc.Label([
-                            html.I(className="bi bi-chat-text-fill me-2 text-primary"),
-                            "Message"
-                        ], className="fw-semibold small"),
-                        dbc.Textarea(
-                            id="fb-message",
-                            placeholder="Tell us what's on your mind...",
-                            rows=3,
-                            className="feedback-input",
-                            style={"resize": "vertical"}
+                        dbc.RadioItems(
+                            id="fb-type",
+                            options=[
+                                {"label": html.Span([
+                                    html.Span("🐛", className="fb-type-emoji"),
+                                    html.Span("Bug Report", className="fb-type-text"),
+                                ], className="fb-type-option fb-type-bug"), "value": "Bug"},
+                                {"label": html.Span([
+                                    html.Span("✨", className="fb-type-emoji"),
+                                    html.Span("Feature Request", className="fb-type-text"),
+                                ], className="fb-type-option fb-type-feature"), "value": "Feature"},
+                                {"label": html.Span([
+                                    html.Span("🎨", className="fb-type-emoji"),
+                                    html.Span("UI Suggestion", className="fb-type-text"),
+                                ], className="fb-type-option fb-type-ui"), "value": "UI"},
+                                {"label": html.Span([
+                                    html.Span("💡", className="fb-type-emoji"),
+                                    html.Span("Other", className="fb-type-text"),
+                                ], className="fb-type-option fb-type-other"), "value": "Other"},
+                            ],
+                            value=None,
+                            inline=True,
+                            className="feedback-type-pills",
                         ),
+
+                        html.Div(style={"height": "12px"}),
+
+                        # ── Message + character counter ──
+                        html.Div([
+                            dbc.Label([
+                                html.I(className="bi bi-chat-text-fill me-2 text-primary"),
+                                "Message"
+                            ], className="fw-semibold small"),
+                            dbc.Textarea(
+                                id="fb-message",
+                                placeholder="Tell us what's on your mind...",
+                                rows=3,
+                                className="feedback-input",
+                                maxLength=500,
+                                style={"resize": "vertical"}
+                            ),
+                            html.Div(
+                                html.Small("0 / 500", id="fb-char-count", className="text-muted"),
+                                className="text-end mt-1"
+                            ),
+                        ]),
+
+                        # ── Tip: share screenshots via WhatsApp ──
+                        html.Div([
+                            html.I(className="bi bi-info-circle me-2"),
+                            "Want to share a screenshot? Reach out via ",
+                            html.Strong("WhatsApp"),
+                            " in the Contact Us tab."
+                        ], className="screenshot-tip mt-3"),
 
                         dcc.Loading(
                             html.Div(id="fb-status"),
@@ -224,7 +279,7 @@ feedback_modal = dbc.Modal(
 
         ], className="feedback-modal-body"),
         dbc.ModalFooter([
-            html.Small("We value your feedback \u2764\ufe0f", className="text-muted me-auto"),
+            html.Small("We value your feedback ❤️", className="text-muted me-auto"),
         ], className="feedback-modal-footer"),
     ],
     id="feedback-modal",
@@ -376,37 +431,55 @@ def toggle_feedback_modal(n, is_open):
     return is_open
 
 
+# Character counter for message textarea
+@callback(
+    Output("fb-char-count", "children"),
+    Input("fb-message", "value"),
+    prevent_initial_call=True
+)
+def update_char_count(msg):
+    length = len(msg) if msg else 0
+    return f"{length} / 500"
+
+
 @callback(
     Output("fb-status", "children"),
     Output("fb-name", "value"),
     Output("fb-email", "value"),
     Output("fb-type", "value"),
     Output("fb-message", "value"),
+    Output("fb-rating", "value"),
     Input("fb-submit", "n_clicks"),
     State("fb-name", "value"),
     State("fb-email", "value"),
     State("fb-type", "value"),
     State("fb-message", "value"),
+    State("fb-rating", "value"),
     prevent_initial_call=True
 )
-def submit_feedback(n, name, email, ftype, message):
+def submit_feedback(n, name, email, ftype, message, rating):
     if not n:
         raise dash.exceptions.PreventUpdate
     if not name or not message:
         return (
             dbc.Alert("Name and Message are required.", color="warning"),
-            dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
         )
     try:
-        save_feedback(name, email, ftype, message)
+        rating_map = {"1": "😡", "2": "😕", "3": "😐", "4": "🙂", "5": "😍"}
+        rating_label = rating_map.get(rating, "N/A")
+        save_feedback(name, email, ftype, message, rating_label)
         return (
-            dbc.Alert("✅ Feedback submitted — thank you!", color="success"),
-            "", "", None, ""
+            dbc.Alert([
+                html.I(className="bi bi-check-circle-fill me-2"),
+                "Feedback submitted — thank you! 🎉"
+            ], color="success", className="d-flex align-items-center"),
+            "", "", None, "", None
         )
     except Exception as e:
         return (
             dbc.Alert(f"Error: {e}", color="danger"),
-            dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
         )
 
 

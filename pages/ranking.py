@@ -1338,8 +1338,6 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, sgpa_jso
         
         if sgpa_json:
             try:
-                from io import StringIO
-                import pandas as pd
                 sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
                 if 'Student_ID' in df.columns and 'Student_ID' in sgpa_df.columns:
                     df = df.merge(sgpa_df, how='left', on='Student_ID')
