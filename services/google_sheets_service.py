@@ -1,6 +1,8 @@
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import json
+import os
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1oVCBqYIUlZItZvG1sTWH5wuJ5j4smI2Mmis8xS8l65w"
 
@@ -12,6 +14,12 @@ SCOPES = [
 
 
 def _get_credentials():
+    # Priority 1: Environment variable (for Render / production)
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        return ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
+    # Priority 2: Local file (for development)
     return ServiceAccountCredentials.from_json_keyfile_name(
         "service_account.json", SCOPES
     )
