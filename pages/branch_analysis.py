@@ -1073,12 +1073,20 @@ def export_subjects(n, data):
         for row_idx in [1, 2]:
             ws.cell(row=row_idx, column=col_idx).border = thin_border
 
-    # Auto-fit column widths based on header content (full subject names)
+    # Auto-fit column widths based on header content
     from openpyxl.utils import get_column_letter
     for col_idx in range(1, total_cols):
         col_letter = get_column_letter(col_idx)
-        max_len = max((len(str(ws.cell(row=r, column=col_idx).value or "")) for r in range(1, len(metric_order) + 3)), default=10)
-        ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
+        if col_idx == 1:
+            # Metric column (include row 1 in calculation)
+            max_len = max((len(str(ws.cell(row=r, column=col_idx).value or "")) for r in range(1, len(metric_order) + 3)), default=10)
+            ws.column_dimensions[col_letter].width = max(max_len + 5, 15)
+        else:
+            # Branch data columns (ignore row 1 because it's merged, look at row 2 downwards)
+            max_len = max((len(str(ws.cell(row=r, column=col_idx).value or "")) for r in range(2, len(metric_order) + 3)), default=10)
+            # Add padding and set a generous minimum width (18) to ensure the merged subject headers look good
+            ws.column_dimensions[col_letter].width = max(max_len + 8, 18)
+
     # Wrap text in header row 1 so full subject names are always visible
     wrap_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
     for col_idx in range(1, total_cols):

@@ -6,3 +6,4 @@ cache-directory/
 venv/
 *.log
 .vscode/
+service_account.json
