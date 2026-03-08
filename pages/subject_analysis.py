@@ -857,13 +857,45 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
                         "backgroundColor": "rgba(59, 130, 246, 0.1)",
                         "border": "1px solid #3b82f6"
                     },
-                    # Add simple conditional formatting for Pass %
+                    # Column-level color formatting
+                    {
+                        "if": {"column_id": "Total Students"},
+                        "backgroundColor": "#eff6ff",
+                        "color": "#1e3a8a",
+                        "fontWeight": "600"
+                    },
+                    {
+                        "if": {"column_id": "Appeared"},
+                        "backgroundColor": "#e0f2fe",
+                        "color": "#0369a1",
+                        "fontWeight": "600"
+                    },
+                    {
+                        "if": {"column_id": "Absent"},
+                        "backgroundColor": "#fffbeb",
+                        "color": "#b45309",
+                        "fontWeight": "600"
+                    },
+                    {
+                        "if": {"column_id": "Passed"},
+                        "backgroundColor": "#ecfdf5",
+                        "color": "#047857",
+                        "fontWeight": "600"
+                    },
+                    {
+                        "if": {"column_id": "Failed"},
+                        "backgroundColor": "#fef2f2",
+                        "color": "#b91c1c",
+                        "fontWeight": "600"
+                    },
+                    # Conditional formatting for Pass %
                     {
                         "if": {
                             "filter_query": "{Pass %} >= 50",
                             "column_id": "Pass %"
                         },
-                        "color": "#059669",
+                        "backgroundColor": "#d1fae5",
+                        "color": "#065f46",
                         "fontWeight": "bold"
                     },
                     {
@@ -871,7 +903,8 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
                             "filter_query": "{Pass %} < 50",
                             "column_id": "Pass %"
                         },
-                        "color": "#dc2626",
+                        "backgroundColor": "#fee2e2",
+                        "color": "#991b1b",
                         "fontWeight": "bold"
                     }
                 ],
@@ -1239,7 +1272,71 @@ def export_summary_xlsx(n_clicks, table_data, table_columns):
     flat_headers = [col['name'] for col in table_columns]
     df.columns = flat_headers
 
-    return dcc.send_data_frame(df.to_excel, "subject_level_performance.xlsx", sheet_name="Performance", index=False)
+    from io import BytesIO
+    import openpyxl
+    from openpyxl.styles import PatternFill, Font, Alignment
+    from openpyxl.utils import get_column_letter
+
+    output = BytesIO()
+    writer = pd.ExcelWriter(output, engine='openpyxl')
+    df.to_excel(writer, sheet_name="Performance", index=False)
+    
+    workbook = writer.book
+    worksheet = writer.sheets["Performance"]
+    
+    # Define styles matching dashboard UI (ARGB hex)
+    styles = {
+        "Total Students": {"bg": "FFEFF6FF", "font": "FF1E3A8A"},
+        "Appeared": {"bg": "FFE0F2FE", "font": "FF0369A1"},
+        "Absent": {"bg": "FFFFFBEB", "font": "FFB45309"},
+        "Passed": {"bg": "FFECFDF5", "font": "FF047857"},
+        "Failed": {"bg": "FFFEF2F2", "font": "FFB91C1C"}
+    }
+    pass_high_style = {"bg": "FFD1FAE5", "font": "FF065F46"}
+    pass_low_style = {"bg": "FFFEE2E2", "font": "FF991B1B"}
+    
+    # Apply column styles
+    for col_idx, col_name in enumerate(df.columns, start=1):
+        # Header style
+        header_cell = worksheet.cell(row=1, column=col_idx)
+        header_cell.font = Font(bold=True, color="FFFFFFFF")
+        header_cell.fill = PatternFill(start_color="FF1F2937", end_color="FF1F2937", fill_type="solid")
+        header_cell.alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Adjust column width
+        col_letter = get_column_letter(col_idx)
+        worksheet.column_dimensions[col_letter].width = max(len(str(col_name)) + 5, 15)
+        if col_name == "Subject":
+            worksheet.column_dimensions[col_letter].width = 50
+            
+        # Data cells
+        for row_idx, val in enumerate(df[col_name], start=2):
+            cell = worksheet.cell(row=row_idx, column=col_idx)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            
+            # Apply our column-based colors
+            if col_name in styles:
+                cell.fill = PatternFill(start_color=styles[col_name]["bg"], end_color=styles[col_name]["bg"], fill_type="solid")
+                cell.font = Font(color=styles[col_name]["font"], bold=True)
+            elif col_name == "Pass %":
+                try:
+                    num_val = float(val)
+                    if num_val >= 50:
+                        cell.fill = PatternFill(start_color=pass_high_style["bg"], end_color=pass_high_style["bg"], fill_type="solid")
+                        cell.font = Font(color=pass_high_style["font"], bold=True)
+                    else:
+                        cell.fill = PatternFill(start_color=pass_low_style["bg"], end_color=pass_low_style["bg"], fill_type="solid")
+                        cell.font = Font(color=pass_low_style["font"], bold=True)
+                except ValueError:
+                    pass
+            elif row_idx % 2 == 1:
+                # Generic odd row coloring (matching dashboard table)
+                cell.fill = PatternFill(start_color="FFF3F4F6", end_color="FFF3F4F6", fill_type="solid")
+
+    writer.close()
+    output.seek(0)
+    
+    return dcc.send_bytes(output.getvalue(), "subject_level_performance.xlsx")
 
 @callback(
     Output("sa-legend-modal", "is_open"),

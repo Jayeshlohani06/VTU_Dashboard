@@ -588,7 +588,6 @@ def analyze_branches(n, file_contents, branch_names):
         ], style={"float": "right", "marginBottom": "10px"})
 
         subject_table = html.Div([
-            download_buttons,
             dash_table.DataTable(
                 data=table_data,
                 columns=columns,
@@ -615,9 +614,18 @@ def analyze_branches(n, file_contents, branch_names):
                     'maxWidth': '180px'
                 },
                 style_data_conditional=[
-                    {'if': {'row_index': 'odd'}, 'backgroundColor': '#f8fafc'},
-                    {'if': {'row_index': 'even'}, 'backgroundColor': '#ffffff'},
-                    {'if': {'column_id': 'STAT'}, 'fontWeight': 'bold', 'color': '#3b82f6'},
+                    # TOTAL row - light blue
+                    {'if': {'filter_query': '{Metric} = "TOTAL"'}, 'backgroundColor': '#EFF6FF', 'color': '#1E40AF', 'fontWeight': 'bold'},
+                    # APPEARED row - light green
+                    {'if': {'filter_query': '{Metric} = "APPEARED"'}, 'backgroundColor': '#ECFDF5', 'color': '#047857', 'fontWeight': 'bold'},
+                    # ABSENT row - light amber
+                    {'if': {'filter_query': '{Metric} = "ABSENT"'}, 'backgroundColor': '#FEF3C7', 'color': '#B45309', 'fontWeight': 'bold'},
+                    # PASSED row - green
+                    {'if': {'filter_query': '{Metric} = "PASSED"'}, 'backgroundColor': '#D1FAE5', 'color': '#059669', 'fontWeight': 'bold'},
+                    # FAILED row - red
+                    {'if': {'filter_query': '{Metric} = "FAILED"'}, 'backgroundColor': '#FEE2E2', 'color': '#DC2626', 'fontWeight': 'bold'},
+                    # PASS % row - light purple
+                    {'if': {'filter_query': '{Metric} = "PASS %"'}, 'backgroundColor': '#F5F3FF', 'color': '#7C3AED', 'fontWeight': 'bold'},
                 ],
                 sort_action="none",
                 page_action="none",
@@ -996,7 +1004,7 @@ def export_subjects(n, data):
         subj_code = subject.split(" - ")[0].strip() if " - " in subject else subject
         start_col = col
         for branch in branch_order:
-            ws.cell(row=1, column=col, value=subj_code)
+            ws.cell(row=1, column=col, value=subject)
             ws.cell(row=2, column=col, value=branch)
             col += 1
         if len(branch_order) > 1:
@@ -1011,26 +1019,73 @@ def export_subjects(n, data):
             cell.fill = header_fill
             cell.alignment = center_align
 
-    # Write data rows (one per metric)
+    # Color definitions for each metric row
+    from openpyxl.styles import Border, Side
+    thin_border = Border(
+        left=Side(style='thin', color='D1D5DB'),
+        right=Side(style='thin', color='D1D5DB'),
+        top=Side(style='thin', color='D1D5DB'),
+        bottom=Side(style='thin', color='D1D5DB')
+    )
+    metric_colors = {
+        "TOTAL":    PatternFill(start_color="EFF6FF", end_color="EFF6FF", fill_type="solid"),   # light blue
+        "APPEARED": PatternFill(start_color="ECFDF5", end_color="ECFDF5", fill_type="solid"),   # light green
+        "ABSENT":   PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid"),   # light amber
+        "PASSED":   PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid"),   # green
+        "FAILED":   PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid"),   # red
+        "PASS %":   PatternFill(start_color="F5F3FF", end_color="F5F3FF", fill_type="solid"),   # light purple
+    }
+    metric_fonts = {
+        "TOTAL":    Font(bold=True, color="1E40AF"),   # blue
+        "APPEARED": Font(bold=True, color="047857"),   # green
+        "ABSENT":   Font(bold=True, color="B45309"),   # amber
+        "PASSED":   Font(bold=True, color="059669"),   # green
+        "FAILED":   Font(bold=True, color="DC2626"),   # red
+        "PASS %":   Font(bold=True, color="7C3AED"),   # purple
+    }
+
+    # Write data rows (one per metric) with color coding
     for row_idx, metric in enumerate(metric_order, start=3):
-        ws.cell(row=row_idx, column=1, value=metric).font = Font(bold=True)
+        label_cell = ws.cell(row=row_idx, column=1, value=metric)
+        label_cell.font = metric_fonts.get(metric, Font(bold=True))
+        label_cell.fill = metric_colors.get(metric, PatternFill())
+        label_cell.border = thin_border
+        label_cell.alignment = center_align
+
         col_idx = 2
         for subject in subject_order:
             for branch in branch_order:
+                cell = ws.cell(row=row_idx, column=col_idx)
                 try:
                     val = pivoted.loc[branch, (metric, subject)]
                     if pd.notna(val):
-                        ws.cell(row=row_idx, column=col_idx, value=val)
+                        cell.value = val
                 except (KeyError, TypeError):
                     pass
+                cell.fill = metric_colors.get(metric, PatternFill())
+                cell.font = metric_fonts.get(metric, Font())
+                cell.alignment = center_align
+                cell.border = thin_border
                 col_idx += 1
 
-    # Auto-fit column widths
+    # Apply borders to header rows too
+    for col_idx in range(1, total_cols):
+        for row_idx in [1, 2]:
+            ws.cell(row=row_idx, column=col_idx).border = thin_border
+
+    # Auto-fit column widths based on header content (full subject names)
     from openpyxl.utils import get_column_letter
     for col_idx in range(1, total_cols):
         col_letter = get_column_letter(col_idx)
         max_len = max((len(str(ws.cell(row=r, column=col_idx).value or "")) for r in range(1, len(metric_order) + 3)), default=10)
-        ws.column_dimensions[col_letter].width = min(max_len + 2, 20)
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
+    # Wrap text in header row 1 so full subject names are always visible
+    wrap_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for col_idx in range(1, total_cols):
+        ws.cell(row=1, column=col_idx).alignment = wrap_align
+    # Set header row height to fit wrapped text
+    ws.row_dimensions[1].height = 45
+    ws.row_dimensions[2].height = 25
 
     output = BytesIO()
     wb.save(output)
