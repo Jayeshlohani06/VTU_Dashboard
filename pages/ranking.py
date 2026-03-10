@@ -128,34 +128,38 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
 
     result_cols = [c for c in df.columns if c.endswith('Result')]
     if result_cols:
+        # ── Pre-convert columns once (vectorized) to avoid N×M per-cell overhead in apply ──
+        _pre_converted = set()
+        for _rc in result_cols:
+            _bn = _rc.replace(' Result', '').replace('Result', '').strip()
+            e_col = f"{_bn} External"
+            if e_col in df.columns and e_col not in _pre_converted:
+                df[e_col] = pd.to_numeric(df[e_col], errors='coerce').fillna(0)
+                _pre_converted.add(e_col)
+            i_col = f"{_bn} Internal"
+            if i_col in df.columns and i_col not in _pre_converted:
+                df[i_col] = pd.to_numeric(df[i_col], errors='coerce')  # Keep NaN (no fillna)
+                _pre_converted.add(i_col)
+            # Pre-clean Result column to uppercase string
+            df[_rc] = df[_rc].astype(str).str.strip().str.upper()
+
         def calc_overall(row):
             subject_status = []
             failed_list = []
             for res_col in result_cols:
                 base_name = res_col.replace(' Result', '').replace('Result', '').strip()
-                
-                i_val = row.get(f"{base_name} Internal", 0)
-                e_val = row.get(f"{base_name} External", 0)
-                
-                i = pd.to_numeric(i_val, errors='coerce')
-                e = pd.to_numeric(e_val, errors='coerce')
-                
-                if pd.isna(e): e = 0
 
-                r = str(row.get(res_col, "")).strip().upper()
+                # Values are already numeric / cleaned from pre-conversion
+                i = row.get(f"{base_name} Internal", 0)
+                e = row.get(f"{base_name} External", 0)
+                r = row.get(res_col, '')
 
-                # 🔥 ABSENT RULE (Enhanced)
-                # If External is 0 and Result is Absent OR Empty -> Treat as Absent for that subject
                 if (e == 0) and (r in ['A', 'ABSENT', '']):
                     subject_status.append('A')
                 elif r in ['F', 'FAIL']:
                     subject_status.append('F')
                     failed_list.append(base_name)
                 else:
-                    # If Result is missing but Marks exist, check for pass/fail by marks
-                    # Assuming 35% is passing threshold (standard)
-                    # But Total_Total logic uses sum. Here we check individual component?
-                    # Let's rely on 'P' default only if score > 0
                     total_s = i + e
                     if r == '' and total_s < 35:
                          subject_status.append('F')
@@ -166,12 +170,11 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
             absent_count = subject_status.count('A')
             fail_count = subject_status.count('F')
 
-            # === OVERALL LOGIC ===
             if not subject_status: res = 'P'
             elif absent_count == len(subject_status): res = 'A'
             elif fail_count > 0 or absent_count > 0: res = 'F'
             else: res = 'P'
-            
+
             return pd.Series([res, absent_count, fail_count, ", ".join(failed_list)], index=['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Subject'])
 
         df[['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Subject']] = df.apply(calc_overall, axis=1)
@@ -211,8 +214,7 @@ def _section_key(section_ranges):
     except: return "None"
 
 def calculate_student_metrics(df):
-    """Calculates percentage based on attempted subjects for each student."""
-    # Identify all subject total columns (exclude aggregates)
+    """Calculates percentage based on attempted subjects for each student (vectorized)."""
     subject_total_cols = [
         c for c in df.columns
         if c.strip().endswith(' Total')
@@ -220,20 +222,18 @@ def calculate_student_metrics(df):
         and 'grand total' not in c.lower()
     ]
 
-    def _calc_row(row):
-        subjects_attempted = 0
-        for col in subject_total_cols:
-            value = pd.to_numeric(row.get(col), errors='coerce')
-            if pd.notna(value) and value > 0:
-                subjects_attempted += 1
-        
-        if subjects_attempted == 0:
-            return 0.0
-        
-        max_marks = subjects_attempted * 100
-        return round((row.get('Total_Marks', 0) / max_marks) * 100, 2)
+    if not subject_total_cols:
+        df['percentage'] = 0.0
+        return df
 
-    df['percentage'] = df.apply(_calc_row, axis=1)
+    # Vectorized: count subjects with marks > 0 per student
+    numeric_totals = df[subject_total_cols].apply(pd.to_numeric, errors='coerce')
+    subjects_attempted = (numeric_totals.notna() & (numeric_totals > 0)).sum(axis=1)
+    total_marks = pd.to_numeric(df.get('Total_Marks', 0), errors='coerce').fillna(0)
+    safe_max = subjects_attempted.clip(lower=1) * 100
+    pct = ((total_marks / safe_max) * 100).round(2)
+    pct[subjects_attempted == 0] = 0.0
+    df['percentage'] = pct
     return df
 
 

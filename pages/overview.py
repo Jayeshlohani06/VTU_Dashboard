@@ -1837,16 +1837,17 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
     from openpyxl.utils import get_column_letter
 
     try:
-        overview_df = _build_overview_sheet(df.copy(), selected_subjects, section_ranges, usn_mapping)
+        # Each builder creates its own internal copies — no need to copy here
+        overview_df = _build_overview_sheet(df, selected_subjects, section_ranges, usn_mapping)
         print(f"[DOWNLOAD] Overview: {len(overview_df)} rows")
-        ranking_df = _build_ranking_sheet(df.copy(), selected_subjects, section_ranges, usn_mapping)
+        ranking_df = _build_ranking_sheet(df, selected_subjects, section_ranges, usn_mapping)
         print(f"[DOWNLOAD] Ranking: {len(ranking_df)} rows")
-        subject_df = _build_subject_analysis_sheet(df.copy(), selected_subjects, section_ranges, usn_mapping)
+        subject_df = _build_subject_analysis_sheet(df, selected_subjects, section_ranges, usn_mapping)
         print(f"[DOWNLOAD] Subject Analysis: {len(subject_df)} rows")
-        category_df = _build_category_sheet(df.copy(), selected_subjects)
+        category_df = _build_category_sheet(df, selected_subjects)
         print(f"[DOWNLOAD] Category: {len(category_df)} rows")
         sgpa_df, sgpa_computed = _build_sgpa_sheet(
-            sgpa_json, df.copy(), selected_subjects,
+            sgpa_json, df, selected_subjects,
             section_ranges, usn_mapping, scheme_sem_data)
         print(f"[DOWNLOAD] SGPA computed: {sgpa_computed}")
     except Exception as e:
