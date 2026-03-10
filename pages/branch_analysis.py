@@ -217,9 +217,18 @@ def normalize_branch_data(df, branch_name):
             std_subjects = int(mode_series.iloc[0])
         else:
             std_subjects = 1
+        # Detect actual max marks per subject: ceil(column_max / 100) * 100
+        # Handles 200-mark subjects (e.g. projects/internships) correctly
+        import numpy as _np
+        _per_subj_max = {}
+        for col in total_cols:
+            col_numeric = pd.to_numeric(df[col], errors='coerce')
+            col_max = col_numeric.max()
+            _per_subj_max[col] = _np.ceil(max(col_max, 1) / 100) * 100 if pd.notna(col_max) else 100
     else:
         df['__Active_Subjects'] = 0
         std_subjects = 1
+        _per_subj_max = {}
     
     def calculate_student_percentage(row):
         active = row.get('__Active_Subjects', 0)
@@ -228,8 +237,20 @@ def normalize_branch_data(df, branch_name):
         
         if max_subjects == 0:
             return 0.0
-            
-        max_marks = max_subjects * 100
+        
+        # Sum actual max marks for attempted subjects
+        max_marks = 0
+        attempted = 0
+        for col in total_cols:
+            val = pd.to_numeric(row.get(col), errors='coerce')
+            if pd.notna(val) and val > 0:
+                max_marks += _per_subj_max.get(col, 100)
+                attempted += 1
+        # For subjects counted via result but not marks, use 100 as default
+        if attempted < max_subjects:
+            max_marks += (max_subjects - attempted) * 100
+        if max_marks == 0:
+            return 0.0
         return round((row.get('Total_Marks', 0) / max_marks) * 100, 2)
 
     df['Percentage'] = df.apply(calculate_student_percentage, axis=1)

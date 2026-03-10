@@ -2,6 +2,7 @@ import dash
 from dash import html, dcc, Input, Output, State, callback, dash_table, ALL
 import dash_bootstrap_components as dbc
 import pandas as pd
+import numpy as np
 import plotly.graph_objs as go
 import re
 from cache_config import cache
@@ -398,7 +399,7 @@ def generate_credit_inputs(n_clicks, scheme_sem_data, search_value, session_id, 
                         dbc.Col([
                             dcc.Dropdown(
                                 id={'type': 'credit-input-student', 'index': code_val},
-                                options=[{'label': f'{i} Credit{"s" if i != 1 else ""}', 'value': i} for i in range(0, 5)],
+                                options=[{'label': f'{i} Credit{"s" if i != 1 else ""}', 'value': i} for i in range(10, -1, -1)],
                                 value=default_credit,
                                 clearable=False,
                                 className="custom-dropdown",
@@ -580,16 +581,30 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
     student_series = df[student_mask].iloc[0]
 
     # ---------- SGPA using only positive-credit subjects ----------
-    total_credit_points, total_credits = 0, 0
+    # Pre-compute max marks per subject from data (handles 200-mark subjects)
+    _subj_max_marks = {}
+    for code in credit_dict_positive:
+        score_col = f"{code} {analysis_type}"
+        if score_col in df.columns:
+            col_max = pd.to_numeric(df[score_col], errors='coerce').max()
+            _subj_max_marks[code] = int(np.ceil(max(col_max, 1) / 100) * 100) if pd.notna(col_max) else 100
+        else:
+            _subj_max_marks[code] = 100
+
+    total_credit_points, total_credits, total_max_marks = 0, 0, 0
     for code, credit in credit_dict_positive.items():
-        grade_point = get_grade_point(student_series.get(f"{code} {analysis_type}", 0))
+        score = pd.to_numeric(student_series.get(f"{code} {analysis_type}", 0), errors='coerce') or 0
+        max_marks = _subj_max_marks.get(code, 100)
+        pct_score = (score / max_marks * 100) if max_marks > 0 else 0
+        grade_point = get_grade_point(pct_score)
         total_credit_points += grade_point * credit
         total_credits += credit
+        total_max_marks += max_marks
     sgpa = (total_credit_points / total_credits) if total_credits > 0 else 0.0
 
     # ---------- KPI Cards ----------
     total_marks_selected = student_series['Total_Marks_Selected']
-    percentage = sgpa * 10
+    percentage = (total_marks_selected / total_max_marks * 100) if total_max_marks > 0 else 0.0
     result_selected = student_series['Result_Selected']
 
     # Ranks pulled from the global (ranking-page) logic above:

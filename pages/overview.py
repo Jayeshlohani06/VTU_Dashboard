@@ -1599,8 +1599,12 @@ def _build_category_sheet(df, selected_subjects):
     for c in all_subj_total_cols:
         pass_df[c] = pd.to_numeric(pass_df[c], errors='coerce').fillna(0)
     pass_df['_Total'] = pass_df[all_subj_total_cols].sum(axis=1)
-    num_subj = len(all_subj_total_cols)
-    pass_df['_Pct'] = round((pass_df['_Total'] / (num_subj * 100)) * 100, 2) if num_subj > 0 else 0
+    # Detect actual max marks per subject: ceil(column_max / 100) * 100
+    # Handles 200-mark subjects (e.g. projects) correctly
+    import numpy as _np
+    _per_subj_max = _np.ceil(pass_df[all_subj_total_cols].max().clip(lower=1) / 100) * 100
+    _total_max = _per_subj_max.sum()
+    pass_df['_Pct'] = round((pass_df['_Total'] / _total_max) * 100, 2) if _total_max > 0 else 0
 
     def category(pct):
         if pct >= 70: return 'FCD (First Class Distinction)'
@@ -1707,6 +1711,17 @@ def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, schem
     if not resolved_credits:
         return None, False
 
+    # Pre-compute max marks per subject from data (handles 200-mark subjects)
+    import numpy as np
+    _subj_max_marks = {}
+    for code in resolved_credits:
+        total_col = f"{code} Total"
+        if total_col in base.columns:
+            col_max = pd.to_numeric(base[total_col], errors='coerce').max()
+            _subj_max_marks[code] = int(np.ceil(max(col_max, 1) / 100) * 100) if pd.notna(col_max) else 100
+        else:
+            _subj_max_marks[code] = 100
+
     # Now compute SGPA using ranking.py's exact same per-student loop (from calculate_sgpa_all)
     sgpa_rows = []
     for _, row in base.iterrows():
@@ -1722,6 +1737,12 @@ def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, schem
 
             res_val = str(row.get(f"{code} Result", "")).strip().upper()
 
+            # Skip subjects this student did NOT take
+            has_marks = (i > 0) or (e > 0) or (score > 0)
+            has_result = res_val in ('P', 'F')
+            if not has_marks and not has_result:
+                continue
+
             if res_val == 'P':
                 pass
             elif res_val == 'F':
@@ -1732,7 +1753,9 @@ def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, schem
                 if score < 35:
                     fail_flag = True
 
-            total_cp += rnk_grade_point(score) * credit
+            max_m = _subj_max_marks.get(code, 100)
+            pct = (score / max_m * 100) if max_m > 0 else 0
+            total_cp += rnk_grade_point(pct) * credit
             total_cre += credit
             total_marks += score
 

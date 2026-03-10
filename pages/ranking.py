@@ -3,6 +3,7 @@ from dash import html, dcc, Input, Output, State, callback, dash_table, no_updat
 import dash_bootstrap_components as dbc
 import pandas as pd
 import re
+import numpy as np
 from functools import lru_cache
 import ast
 from io import StringIO, BytesIO
@@ -214,7 +215,8 @@ def _section_key(section_ranges):
     except: return "None"
 
 def calculate_student_metrics(df):
-    """Calculates percentage based on attempted subjects for each student (vectorized)."""
+    """Calculates percentage based on attempted subjects for each student (vectorized).
+    Handles subjects with non-standard max marks (e.g. 200-mark projects)."""
     subject_total_cols = [
         c for c in df.columns
         if c.strip().endswith(' Total')
@@ -226,13 +228,19 @@ def calculate_student_metrics(df):
         df['percentage'] = 0.0
         return df
 
-    # Vectorized: count subjects with marks > 0 per student
+    # Vectorized: detect actual max marks per subject from data
     numeric_totals = df[subject_total_cols].apply(pd.to_numeric, errors='coerce')
-    subjects_attempted = (numeric_totals.notna() & (numeric_totals > 0)).sum(axis=1)
+    # Per-subject max marks: ceil(column_max / 100) * 100
+    # e.g. max=197 -> 200, max=95 -> 100
+    per_subject_max = np.ceil(numeric_totals.max().clip(lower=1) / 100) * 100
+
+    # For each student, sum the max marks of only subjects they attempted
+    attempted_mask = numeric_totals.notna() & (numeric_totals > 0)
+    max_marks_per_student = (attempted_mask * per_subject_max).sum(axis=1).clip(lower=1)
+
     total_marks = pd.to_numeric(df.get('Total_Marks', 0), errors='coerce').fillna(0)
-    safe_max = subjects_attempted.clip(lower=1) * 100
-    pct = ((total_marks / safe_max) * 100).round(2)
-    pct[subjects_attempted == 0] = 0.0
+    pct = ((total_marks / max_marks_per_student) * 100).round(2)
+    pct[max_marks_per_student <= 0] = 0.0
     df['percentage'] = pct
     return df
 
@@ -746,7 +754,7 @@ def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ran
             # Select dropdown for credits
             dbc.Select(
                 id={'type': 'credit-input', 'index': code}, 
-                options=[{'label': f'{i} Credits', 'value': str(i)} for i in [4,3,2,1,0]], 
+                options=[{'label': f'{i} Credits', 'value': str(i)} for i in range(10, -1, -1)], 
                 value=default_credit, 
                 className="form-select text-center flex-grow-1",
                 style={"minHeight": "45px", "fontSize": "14px"}
@@ -791,6 +799,16 @@ def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, cred
     if not credit_dict_positive:
         return no_update, dbc.Alert("Please assign at least one credit > 0", color="warning", dismissable=True)
 
+    # Pre-compute max marks per subject from data (handles 200-mark subjects)
+    _subj_max_marks = {}
+    for code in credit_dict_positive:
+        total_col = f"{code} Total"
+        if total_col in base.columns:
+            col_max = pd.to_numeric(base[total_col], errors='coerce').max()
+            _subj_max_marks[code] = int(np.ceil(max(col_max, 1) / 100) * 100) if pd.notna(col_max) else 100
+        else:
+            _subj_max_marks[code] = 100
+
     sgpa_rows = []
     for _, row in base.iterrows():
         total_cp, total_cre, total_marks, fail_flag = 0, 0, 0, False
@@ -805,32 +823,37 @@ def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, cred
             else:
                 score = (i + e) if (i and e) else (i or e or 0)
             
-            # 3. --- REVISED FAIL LOGIC (PRECISE) ---
-            # Priority 1: Trust the Result Column (P/F/A)
-            # Priority 2: If Result is missing, use Marks
+            # 3. Check Result column
             res_val = str(row.get(f"{code} Result", "")).strip().upper()
-            
+
+            # 4. Skip subjects this student did NOT take
+            #    (no marks at all AND no meaningful result like P/F)
+            has_marks = (i > 0) or (e > 0) or (score > 0)
+            has_result = res_val in ('P', 'F')
+            if not has_marks and not has_result:
+                continue
+
+            # 5. Fail logic
             if res_val == 'P':
-                pass # Do not reset fail_flag if already True
+                pass
             elif res_val == 'F':
                 fail_flag = True
             elif res_val == 'A':
-                 # Treated as fail for credit purposes (0 credits earned)
                  fail_flag = True
             else:
-                # Fallback when Result column is empty/unknown
-                # Only fail if score is explicitly low (< 35 standard passing)
-                # Do NOT fail based on Grade Point being 0 (as 35-39 might be passing but 0 GP)
                 if score < 35: 
                     fail_flag = True
-            # -----------------------------
 
-            total_cp += get_grade_point(score) * credit
+            max_m = _subj_max_marks.get(code, 100)
+            pct = (score / max_m * 100) if max_m > 0 else 0
+            gp = get_grade_point(pct)
+
+            total_cp += gp * credit
             total_cre += credit
             total_marks += score
             
         sgpa = (total_cp / total_cre) if total_cre > 0 else 0.0
-        
+
         ovr = str(row.get('Overall_Result', '')).strip().upper()
 
         if ovr in ['A', 'ABSENT']:
