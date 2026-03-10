@@ -1755,6 +1755,7 @@ def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, schem
 
         sgpa_rows.append({
             'Student_ID': row['Student_ID'],
+            'Name': row.get('Name', ''),
             'Section': row.get('Section', ''),
             'SGPA': round(sgpa, 2),
             'Total_Marks': round(total_marks, 2),
@@ -1778,7 +1779,14 @@ def _build_sgpa_sheet(sgpa_json_str, df=None, selected_subjects=None,
             from io import StringIO
             sgpa_df = pd.read_json(StringIO(sgpa_json_str), orient='split')
             if not sgpa_df.empty and 'SGPA' in sgpa_df.columns:
+                # Merge Name from base data if not present in sgpa-store
+                if 'Name' not in sgpa_df.columns and df is not None:
+                    meta_col = df.columns[0]
+                    name_map = df.set_index(meta_col)['Name'].to_dict() if 'Name' in df.columns else {}
+                    sgpa_df['Name'] = sgpa_df['Student_ID'].map(name_map).fillna('')
                 display_cols = ['Student_ID']
+                if 'Name' in sgpa_df.columns:
+                    display_cols.append('Name')
                 if 'Section' in sgpa_df.columns:
                     display_cols.append('Section')
                 display_cols += ['SGPA', 'Total_Marks_Selected', 'Result_Selected', 'SGPA_Class_Rank']
@@ -1848,7 +1856,40 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
 
     out = BytesIO()
     with pd.ExcelWriter(out, engine='openpyxl') as writer:
-        overview_df.to_excel(writer, sheet_name='Overview', index=False)
+        # ── Write Overview sheet with grouped 2-row headers (matching dashboard) ──
+        from openpyxl.utils import get_column_letter as _gcl
+        overview_df.to_excel(writer, sheet_name='Overview', index=False, startrow=1)
+        ws_ov = writer.sheets['Overview']
+
+        # Build grouped headers: subject cols get [Subject Name, Component], others get ["", colname]
+        components = ['Internal', 'External', 'Total', 'Result']
+        for col_idx, col_name in enumerate(overview_df.columns, 1):
+            top_val = ""
+            bot_val = col_name
+            for comp in components:
+                if col_name.endswith(f" {comp}"):
+                    top_val = col_name[:-len(comp)].strip()
+                    bot_val = comp
+                    break
+            ws_ov.cell(row=1, column=col_idx, value=top_val)
+            ws_ov.cell(row=2, column=col_idx, value=bot_val)
+
+        # Merge adjacent cells in row 1 that have the same subject group name
+        merge_start = 1
+        for col_idx in range(2, ws_ov.max_column + 2):
+            prev_val = str(ws_ov.cell(row=1, column=merge_start).value or '')
+            curr_val = str(ws_ov.cell(row=1, column=col_idx).value or '') if col_idx <= ws_ov.max_column else ''
+            if curr_val != prev_val or col_idx > ws_ov.max_column:
+                if merge_start < col_idx - 1 and prev_val:
+                    ws_ov.merge_cells(start_row=1, start_column=merge_start, end_row=1, end_column=col_idx - 1)
+                elif not prev_val:
+                    # Non-subject cols: merge row 1 and row 2 vertically
+                    for c in range(merge_start, col_idx):
+                        ws_ov.cell(row=1, column=c, value=ws_ov.cell(row=2, column=c).value)
+                        ws_ov.cell(row=2, column=c, value='')
+                        ws_ov.merge_cells(start_row=1, start_column=c, end_row=2, end_column=c)
+                merge_start = col_idx
+
         ranking_df.to_excel(writer, sheet_name='Ranking (Marks)', index=False)
         if sgpa_computed and sgpa_df is not None:
             sgpa_df.to_excel(writer, sheet_name='Ranking (SGPA)', index=False)
@@ -1911,11 +1952,27 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
                 if font:
                     ws.cell(row=row_idx, column=col_idx).font = font
 
-        # ── Style Overview sheet ──
+        # ── Style Overview sheet (2-row grouped header, data starts row 3) ──
         ws_ov = writer.sheets['Overview']
-        _style_headers(ws_ov)
-        res_ci = _find_col(ws_ov, 'Overall_Result')
-        for row_idx in range(2, ws_ov.max_row + 1):
+        # Style both header rows
+        for hdr_row in [1, 2]:
+            for col_idx in range(1, ws_ov.max_column + 1):
+                cell = ws_ov.cell(row=hdr_row, column=col_idx)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                max_len = max(len(str(cell.value or '')), 10)
+                ws_ov.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 4, 35)
+        # Find Overall_Result column (could be in row 1 for merged non-subject cols, or row 2 for subject cols)
+        res_ci = None
+        for col_idx in range(1, ws_ov.max_column + 1):
+            for hdr_row in [1, 2]:
+                if str(ws_ov.cell(row=hdr_row, column=col_idx).value or '').strip() == 'Overall_Result':
+                    res_ci = col_idx
+                    break
+            if res_ci:
+                break
+        for row_idx in range(3, ws_ov.max_row + 1):
             val = str(ws_ov.cell(row=row_idx, column=res_ci).value or '').strip().upper() if res_ci else ''
             if val in ['F', 'FAIL']:
                 _apply_row_fill(ws_ov, row_idx, fail_fill, fail_font)
