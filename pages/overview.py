@@ -1502,53 +1502,25 @@ def _build_overview_sheet(df, selected_subjects, section_ranges, usn_mapping):
 
 
 def _build_ranking_sheet(df, selected_subjects, section_ranges, usn_mapping):
-    """Build Marks-based Ranking sheet — filtered by selected subjects."""
-    meta_col = df.columns[0]
-    if meta_col != 'Student_ID':
-        df = df.rename(columns={meta_col: 'Student_ID'})
-    df['Section'] = df['Student_ID'].apply(lambda x: assign_section(str(x), section_ranges, usn_mapping))
+    """Build Marks-based Ranking sheet — uses the SAME logic as ranking.py dashboard."""
+    from pages.ranking import _normalize_df, calculate_student_metrics
 
-    subject_data_cols = _get_selected_subject_cols(df, selected_subjects)
+    df = _normalize_df(df.copy(), section_ranges, usn_mapping)
+    df = calculate_student_metrics(df)
 
-    # Convert ALL subject mark columns to numeric (preserve NaN for elective skip logic)
-    for c in subject_data_cols:
-        if any(k in c for k in ['Internal', 'External', 'Total']):
-            df[c] = pd.to_numeric(df[c], errors='coerce')
-
-    # Overall result FIRST — before any fillna so elective skip logic works
-    res_cols = [c for c in subject_data_cols if 'Result' in c]
-    if res_cols:
-        df['Overall_Result'] = df.apply(
-            lambda row: _calc_overall_result(row, res_cols, df), axis=1)
-    else:
-        df['Overall_Result'] = 'P'
-
-    # Now compute Total_Marks (fillna(0) only for the sum, not in-place)
-    total_cols = [c for c in subject_data_cols if c.strip().endswith(' Total')]
-    valid_total_cols = [c for c in total_cols if df[c].max() > 0]
-
-    if valid_total_cols:
-        df['Total_Marks'] = df[valid_total_cols].fillna(0).sum(axis=1)
-        num_subjects = len(valid_total_cols)
-    else:
-        df['Total_Marks'] = 0
-        num_subjects = 0
-
+    # Rank only passing students (same as build_views in ranking.py)
     pass_mask = df['Overall_Result'] == 'P'
     df['Class_Rank'] = pd.NA
     df.loc[pass_mask, 'Class_Rank'] = df.loc[pass_mask, 'Total_Marks'].rank(method='min', ascending=False).astype('Int64')
 
-    if num_subjects > 0:
-        df['Percentage'] = round((df['Total_Marks'] / (num_subjects * 100)) * 100, 2)
-    else:
-        df['Percentage'] = 0
-
     display_cols = ['Student_ID']
     if 'Name' in df.columns:
         display_cols.append('Name')
-    display_cols += ['Section', 'Total_Marks', 'Percentage', 'Overall_Result', 'Class_Rank']
+    display_cols += ['Section', 'Total_Marks', 'percentage', 'Overall_Result', 'Class_Rank']
     display_cols = [c for c in display_cols if c in df.columns]
-    return df[display_cols].sort_values('Class_Rank', na_position='last')
+    out = df[display_cols].sort_values('Class_Rank', na_position='last')
+    out = out.rename(columns={'percentage': 'Percentage'})
+    return out
 
 
 def _build_subject_analysis_sheet(df, selected_subjects, section_ranges, usn_mapping):
@@ -1661,9 +1633,11 @@ def _get_grade_point(score):
 
 
 def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, scheme_sem_data):
-    """Auto-compute SGPA using the credit database — no need to visit Ranking page."""
-    from services.credit_service import extract_course_number
+    """Auto-compute SGPA using ranking.py's exact same logic — reuses calculate_sgpa_all pipeline."""
+    from services.credit_service import extract_course_number, load_credit_map
+    from pages.ranking import _normalize_df, get_grade_point as rnk_grade_point
     import json as _json
+    import os as _os
 
     scheme = None
     semester = None
@@ -1676,29 +1650,24 @@ def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, schem
         for code in selected_subjects:
             num = extract_course_number(code)
             if num and len(num) == 3:
-                semester = int(num[0])  # e.g. '301' → 3
+                semester = int(num[0])
                 break
     if not semester:
-        semester = 5  # ultimate fallback
+        semester = 5
 
-    # Default scheme
     if not scheme:
         scheme = '2022'
 
     print(f"[SGPA] Auto-detected scheme={scheme}, semester={semester}")
 
-    # Load credit map directly (bypass cache to avoid stale results)
-    import os as _os
     credit_path = _os.path.join(
         _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
         'utils', 'credit_database', f'{scheme}_scheme', f'sem{semester}.json')
-    print(f"[SGPA] Credit file path: {credit_path}, exists={_os.path.exists(credit_path)}")
     if not _os.path.exists(credit_path):
         print(f"[SGPA] Credit file not found!")
         return None, False
     with open(credit_path, 'r') as _f:
         credit_map = _json.load(_f)
-    print(f"[SGPA] Credit map loaded: {credit_map}")
 
     # Build credit dict for selected subjects
     credit_dict = {}
@@ -1711,75 +1680,78 @@ def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, schem
     if not credit_dict:
         return None, False
 
-    meta_col = df.columns[0]
-    if meta_col != 'Student_ID':
-        df = df.rename(columns={meta_col: 'Student_ID'})
-    df['Section'] = df['Student_ID'].apply(lambda x: assign_section(str(x), section_ranges, usn_mapping))
+    # Use ranking.py's _normalize_df to get the exact same base data as the dashboard
+    base = _normalize_df(df.copy(), section_ranges, usn_mapping)
 
-    # Convert mark columns to numeric
-    for code in credit_dict:
-        for suffix in ['Internal', 'External', 'Total']:
-            col = next((c for c in df.columns if c.startswith(f"{code} ") and c.endswith(f" {suffix}")), None)
-            if not col:
-                col = next((c for c in df.columns if c.startswith(f"{code} - ") and c.endswith(f" {suffix}")), None)
-            if col:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+    # Resolve subject codes to actual column prefixes (e.g., "BPEK359" -> "BPEK359 - PHYSICAL EDUCATION")
+    # This matches exactly how ranking.py's generate_credit_panel extracts codes from columns.
+    col_prefixes = set()
+    for col in base.columns:
+        m = re.match(r'^(.*?)\s+(Internal|External|Total|Result)$', col, flags=re.IGNORECASE)
+        if m:
+            col_prefixes.add(m.group(1).strip())
 
-    # Compute Overall_Result first
-    subject_data_cols = _get_selected_subject_cols(df, selected_subjects)
-    res_cols = [c for c in subject_data_cols if 'Result' in c]
-    if res_cols:
-        df['Overall_Result'] = df.apply(
-            lambda row: _calc_overall_result(row, res_cols, df), axis=1)
-    else:
-        df['Overall_Result'] = 'P'
+    # Map each selected subject code to its full column prefix
+    resolved_credits = {}
+    for code, credit in credit_dict.items():
+        # Try exact match first (e.g., "BPEK359 Internal" exists)
+        if f"{code} Internal" in base.columns or f"{code} Total" in base.columns:
+            resolved_credits[code] = credit
+        else:
+            # Look for "CODE - NAME" prefix pattern
+            for prefix in col_prefixes:
+                if prefix.startswith(f"{code} - ") or prefix == code:
+                    resolved_credits[prefix] = credit
+                    break
 
+    if not resolved_credits:
+        return None, False
+
+    # Now compute SGPA using ranking.py's exact same per-student loop (from calculate_sgpa_all)
     sgpa_rows = []
-    for _, row in df.iterrows():
+    for _, row in base.iterrows():
         total_cp, total_cre, total_marks, fail_flag = 0, 0, 0, False
-        for code, credit in credit_dict.items():
-            # Find the actual column names for this subject
-            i_col = next((c for c in df.columns if (c.startswith(f"{code} ") or c.startswith(f"{code} - ")) and c.endswith(' Internal')), None)
-            e_col = next((c for c in df.columns if (c.startswith(f"{code} ") or c.startswith(f"{code} - ")) and c.endswith(' External')), None)
-            t_col = next((c for c in df.columns if (c.startswith(f"{code} ") or c.startswith(f"{code} - ")) and c.endswith(' Total')), None)
-            r_col = next((c for c in df.columns if (c.startswith(f"{code} ") or c.startswith(f"{code} - ")) and 'Result' in c), None)
+        for code, credit in resolved_credits.items():
+            i = pd.to_numeric(row.get(f"{code} Internal"), errors='coerce') or 0
+            e = pd.to_numeric(row.get(f"{code} External"), errors='coerce') or 0
 
-            i_val = pd.to_numeric(row.get(i_col), errors='coerce') if i_col else 0
-            e_val = pd.to_numeric(row.get(e_col), errors='coerce') if e_col else 0
-            if pd.isna(i_val): i_val = 0
-            if pd.isna(e_val): e_val = 0
-
-            if t_col and t_col in df.columns:
-                score = pd.to_numeric(row.get(t_col), errors='coerce')
-                if pd.isna(score): score = 0
+            if f"{code} Total" in base.columns:
+                score = pd.to_numeric(row.get(f"{code} Total"), errors='coerce') or 0
             else:
-                score = i_val + e_val
+                score = (i + e) if (i and e) else (i or e or 0)
 
-            res_val = str(row.get(r_col, '')).strip().upper() if r_col else ''
+            res_val = str(row.get(f"{code} Result", "")).strip().upper()
 
-            # Skip subjects the student didn't take at all
-            if pd.isna(row.get(r_col)) and score == 0 and i_val == 0 and e_val == 0:
-                continue
-
-            if res_val in ['F', 'FAIL']:
+            if res_val == 'P':
+                pass
+            elif res_val == 'F':
                 fail_flag = True
-            elif res_val in ['A', 'ABSENT'] or (e_val == 0 and res_val in ['A', 'ABSENT', '']):
+            elif res_val == 'A':
                 fail_flag = True
-            elif score < 35:
-                fail_flag = True
+            else:
+                if score < 35:
+                    fail_flag = True
 
-            total_cp += _get_grade_point(score) * credit
+            total_cp += rnk_grade_point(score) * credit
             total_cre += credit
             total_marks += score
 
         sgpa = (total_cp / total_cre) if total_cre > 0 else 0.0
+
         ovr = str(row.get('Overall_Result', '')).strip().upper()
         if ovr in ['A', 'ABSENT']:
             res = 'Absent'
-        elif ovr in ['F', 'FAIL'] or fail_flag:
+        elif ovr in ['F', 'FAIL']:
             res = 'Fail'
-        else:
+        elif ovr in ['P', 'PASS']:
             res = 'Pass'
+        else:
+            res = 'Pass' if (not fail_flag and total_cre > 0) else 'Fail'
+
+        if fail_flag and res != 'Pass' and res != 'Absent':
+            res = 'Fail'
+        if ovr in ['F', 'FAIL']:
+            res = 'Fail'
 
         sgpa_rows.append({
             'Student_ID': row['Student_ID'],
