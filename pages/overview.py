@@ -336,7 +336,8 @@ layout = dbc.Container([
                             'borderWidth': '2px', 'borderStyle': 'dashed', 'borderRadius': '10px', 
                             'textAlign': 'center', 'backgroundColor': '#fbfcfc', 'cursor': 'pointer'
                         }
-                    )
+                    ),
+                    html.Div(id='upload-status-feedback'),
                 ], style={"overflow": "visible"}),
             ], className="mb-4 border-0 shadow-sm", style={"overflow": "visible"}),
 
@@ -453,14 +454,21 @@ layout = dbc.Container([
                     html.Div(id='usn-upload-status', className="small text-muted mt-2 fw-bold"),
 
                     html.Hr(className="my-3"),
-                    dbc.Button(
-                        [html.I(className="bi bi-file-earmark-spreadsheet me-2"), "Download Complete Report"],
-                        id="universal-download-btn",
-                        color="dark",
-                        className="w-100 fw-bold shadow-sm",
-                        size="sm",
-                    ),
-                    html.Small("Exports Overview, Ranking, Subject Analysis & Category data into one Excel file.", className="text-muted d-block mt-1", style={"fontSize": "0.72rem"}),
+                    html.Div([
+                        dbc.Button(
+                            [
+                                html.I(className="bi bi-download me-2", style={"fontSize": "1.1rem"}),
+                                html.Span("Download Complete Report", style={"verticalAlign": "middle"}),
+                            ],
+                            id="universal-download-btn",
+                            className="w-100 fw-bold download-report-btn",
+                            size="lg",
+                        ),
+                        html.Div([
+                            html.I(className="bi bi-file-earmark-excel me-1"),
+                            html.Span("Overview · Ranking · Subject Analysis · Category Breakdown"),
+                        ], className="text-center mt-2", style={"fontSize": "0.7rem", "color": "#6b7280", "letterSpacing": "0.02em"}),
+                    ]),
                     dcc.Download(id="universal-download-excel"),
                 ], style={"overflow": "visible", "position": "relative"}),
             ], className="border-0 shadow-sm", style={"overflow": "visible"})
@@ -739,15 +747,17 @@ def toggle_config_mode(mode):
     Output('subject-options-store', 'data'),
     Output('usn-mapping-store', 'data', allow_duplicate=True),
     Output('section-data', 'data', allow_duplicate=True),
+    Output('upload-status-feedback', 'children'),
     Input('upload-data', 'contents'),
+    Input('upload-data', 'filename'),
     Input('subject-options-store', 'data'),
     Input('url', 'pathname'),
     State('overview-selected-subjects', 'data'),
     prevent_initial_call='initial_duplicate'
 )
-def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
+def manage_subjects(upload_contents, upload_filename, stored_options, pathname, stored_subjects):
     if pathname != "/" and pathname is not None:
-        return no_update, no_update, no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
     ctx_id = ctx.triggered_id
 
@@ -755,7 +765,11 @@ def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
     if ctx_id == 'upload-data' and upload_contents:
         df = process_uploaded_excel(upload_contents)
         if df.empty:
-            return [], [], None, None, None, None, None
+            err_msg = dbc.Alert(
+                [html.I(className="bi bi-exclamation-triangle-fill me-2"), "Upload failed — file is empty or invalid."],
+                color="danger", className="mt-2 mb-0 py-2 px-3 small fw-bold", dismissable=True,
+            )
+            return [], [], None, None, None, None, None, err_msg
 
         subjects = get_subject_codes(df)
         options = [{'label': s, 'value': s} for s in subjects]
@@ -764,16 +778,30 @@ def manage_subjects(upload_contents, stored_options, pathname, stored_subjects):
         session_id = str(uuid.uuid4())
         cache.set(session_id, df)
         
+        # Build success feedback
+        fname = upload_filename or "file"
+        success_msg = dbc.Alert([
+            html.Div([
+                html.I(className="bi bi-check-circle-fill me-2", style={"fontSize": "1.1rem"}),
+                html.Span("Data uploaded successfully!", style={"fontWeight": "700"}),
+            ]),
+            html.Div([
+                html.Span(f"📄 {fname}", className="me-3"),
+                html.Span(f"👥 {len(df)} students", className="me-3"),
+                html.Span(f"📚 {len(subjects)} subjects"),
+            ], className="mt-1", style={"fontSize": "0.8rem"}),
+        ], color="success", className="mt-2 mb-0 py-2 px-3 small", dismissable=True)
+        
         # Clear section and usn mappings because it is a new upload
-        return options, subjects, session_id, subjects, options, {}, {}
+        return options, subjects, session_id, subjects, options, {}, {}, success_msg
 
     # 2️⃣ If data already exists in session (Navigation / Restore)
     if stored_options:
         safe_subjects = stored_subjects if isinstance(stored_subjects, list) else []
-        return stored_options, safe_subjects, no_update, no_update, no_update, no_update, no_update
+        return stored_options, safe_subjects, no_update, no_update, no_update, no_update, no_update, no_update
 
     # 3️⃣ Default empty state
-    return [], [], no_update, no_update, no_update, no_update, no_update
+    return [], [], no_update, no_update, no_update, no_update, no_update, no_update
 
 @callback(
     Output('scheme-selector', 'value'),
@@ -1577,20 +1605,9 @@ def _build_category_sheet(df, selected_subjects):
     if not res_cols:
         return pd.DataFrame()
 
-    def overall_result(row):
-        statuses = []
-        for rc in res_cols:
-            r = str(row.get(rc, '')).strip().upper()
-            if r in ['F', 'FAIL']: statuses.append('F')
-            elif r in ['A', 'ABSENT']: statuses.append('A')
-            elif r in ['P', 'PASS']: statuses.append('P')
-        if not statuses: return 'P'
-        if all(s == 'A' for s in statuses): return 'A'
-        if 'F' in statuses or 'A' in statuses: return 'F'
-        return 'P'
-
     df_cat = df.copy()
-    df_cat['_Result'] = df_cat.apply(overall_result, axis=1)
+    df_cat['_Result'] = df_cat.apply(
+        lambda row: _calc_overall_result(row, res_cols, df_cat), axis=1)
     pass_df = df_cat[df_cat['_Result'] == 'P'].copy()
 
     if pass_df.empty or not all_subj_total_cols:
@@ -1603,8 +1620,10 @@ def _build_category_sheet(df, selected_subjects):
     # Handles 200-mark subjects (e.g. projects) correctly
     import numpy as _np
     _per_subj_max = _np.ceil(pass_df[all_subj_total_cols].max().clip(lower=1) / 100) * 100
-    _total_max = _per_subj_max.sum()
-    pass_df['_Pct'] = round((pass_df['_Total'] / _total_max) * 100, 2) if _total_max > 0 else 0
+    # Per-student: only count max marks for subjects the student actually attempted
+    _attempted = pass_df[all_subj_total_cols] > 0
+    _student_total_max = (_attempted * _per_subj_max.values).sum(axis=1).clip(lower=1)
+    pass_df['_Pct'] = ((pass_df['_Total'] / _student_total_max) * 100).round(2)
 
     def category(pct):
         if pct >= 70: return 'FCD (First Class Distinction)'
