@@ -442,7 +442,7 @@ layout = dbc.Container([
         html.Div([
             html.H6([html.I(className="bi bi-activity me-2 text-primary"), "Performance Metrics"], className="fw-bold mb-0 text-primary"),
             dbc.Button(
-                [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download KPI Details"], 
+                [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Performance Summary"], 
                 id="export-all-kpis", size="sm", color="primary", outline=True, className="fw-bold shadow-sm"
             )
         ], className="d-flex justify-content-between align-items-center mb-3 mt-2 px-1"),
@@ -594,7 +594,7 @@ layout = dbc.Container([
 
                 html.H6("🖱️ Interactive Features", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li([html.Strong("Click a KPI card: "), "Opens a detailed list of students in that category (e.g., all FCD students). You can download the list as Excel."]),
+                    html.Li([html.Strong("Click a performance card: "), "Opens a detailed list of students in that category (e.g., all FCD students). You can download the list as Excel."]),
                     html.Li([html.Strong("Click a table row: "), "Opens a Student Profile modal showing all subject marks, result, percentage, and rank."]),
                     html.Li([html.Strong("Filters: "), "Use the dropdowns at the top to filter by Result (Pass/Fail/Absent), Section, or search by USN/Name."]),
                     html.Li([html.Strong("Dark/Light Mode: "), "Toggle the theme switch for your preferred viewing experience."]),
@@ -1710,12 +1710,12 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
     # Overview Calculation
     overview_data = []
     for sheet_name, df_kpi in kpi_definitions:
-        overview_data.append({"KPI Metric": sheet_name, "Count": len(df_kpi)})
+        overview_data.append({"Metric": sheet_name, "Count": len(df_kpi)})
         
     total_app = len(scope_calc[~is_absent_mask])
     pass_cnt = len(scope_calc[is_pass_mask])
     pass_perc = round((pass_cnt / total_app * 100) if total_app > 0 else 0, 2)
-    overview_data.insert(5, {"KPI Metric": "Pass % (Appeared)", "Count": f"{pass_perc}%"})
+    overview_data.insert(5, {"Metric": "Pass % (Appeared)", "Count": f"{pass_perc}%"})
     
     overview_df = pd.DataFrame(overview_data)
 
@@ -1723,7 +1723,7 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
     writer = pd.ExcelWriter(out, engine='openpyxl')
     
     # Write Overview as the first sheet
-    overview_df.to_excel(writer, sheet_name="KPI Overview", index=False)
+    overview_df.to_excel(writer, sheet_name="Performance Overview", index=False)
     
     has_sheets = True
     for sheet_name, df in kpi_definitions:
@@ -1753,7 +1753,7 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
     writer.close()
     out.seek(0)
     
-    return dcc.send_bytes(out.read(), "Consolidated_KPI_Report.xlsx")
+    return dcc.send_bytes(out.read(), "Consolidated_Performance_Report.xlsx")
 
 # ==================== Download Reports ====================
 

@@ -412,8 +412,8 @@ layout = dbc.Container([
 
                 html.H6("📊 Dashboard Outputs", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li([html.Strong("Overall Summary Tab: "), "Aggregated KPIs across all branches — Total Students, Appeared, Passed, Failed, Pass %, and Best Branch."]),
-                    html.Li([html.Strong("Per-Branch Tabs: "), "Individual KPIs for each branch — Total, Appeared, Passed, Failed, Pass %, and Branch Topper."]),
+                    html.Li([html.Strong("Overall Summary Tab: "), "Aggregated performance metrics across all branches — Total Students, Appeared, Passed, Failed, Pass %, and Best Branch."]),
+                    html.Li([html.Strong("Per-Branch Tabs: "), "Individual performance metrics for each branch — Total, Appeared, Passed, Failed, Pass %, and Branch Topper."]),
                     html.Li([html.Strong("Pass Rate Bar Chart: "), "Visual comparison of pass % across all branches."]),
                     html.Li([html.Strong("Category Pie Chart: "), "Student distribution by VTU categories (FCD/FC/SC/Pass/Fail/Absent)."]),
                 ], className="small"),
@@ -421,7 +421,7 @@ layout = dbc.Container([
 
                 html.H6("📋 Tables Generated", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li([html.Strong("Branch KPI Summary: "), "Total, Appeared, Absent, Passed, Failed, Pass %, Avg %, FCD count, Topper name and % for each branch."]),
+                    html.Li([html.Strong("Branch Performance Summary: "), "Total, Appeared, Absent, Passed, Failed, Pass %, Avg %, FCD count, Topper name and % for each branch."]),
                     html.Li([html.Strong("Subject Performance Matrix: "), "Shows Total, Appeared, Absent, Passed, Failed, Pass % per subject per branch — great for identifying weak subjects."]),
                     html.Li([html.Strong("University Top Rankers: "), "Ranked list of top students across all branches by percentage."]),
                 ], className="small"),
@@ -438,7 +438,7 @@ layout = dbc.Container([
 
                 html.H6("📤 Export Options", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li("Download Branch KPIs, Top Rankers, and Subject Performance as Excel."),
+                    html.Li("Download Branch Performance Summary, Top Rankers, and Subject Performance as Excel."),
                     html.Li("Print the entire dashboard as PDF using the Print button."),
                 ], className="small"),
                 html.Hr(),
@@ -969,9 +969,9 @@ def analyze_branches(n, file_contents, branch_names):
             dbc.Card([
                 dbc.CardHeader([
                     html.Div([
-                        html.Span([html.I(className="bi bi-grid-3x3-gap me-2"), "Branch-wise KPI Summary"]),
+                        html.Span([html.I(className="bi bi-grid-3x3-gap me-2"), "Branch-wise Performance Summary"]),
                         dbc.Button(
-                            [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Branch KPIs"], 
+                            [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Branch Performance Summary"], 
                             id="export-kpi-btn", size="sm", color="success", outline=True, className="fw-bold"
                         )
                     ], className="d-flex justify-content-between align-items-center w-100")
@@ -1057,7 +1057,7 @@ def export_kpi(n, data):
         index_flag = True
     else:
         index_flag = False
-    return dcc.send_data_frame(df.to_excel, "Branch_KPI_Summary.xlsx", index=index_flag)
+    return dcc.send_data_frame(df.to_excel, "Branch_Performance_Summary.xlsx", index=index_flag)
 
 @callback(
     Output("download-rankers-excel", "data"),

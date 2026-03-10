@@ -276,7 +276,7 @@ layout = dbc.Container([
             html.Div([
                 html.H6([html.I(className="bi bi-activity me-2 text-primary"), "Performance Metrics"], className="fw-bold mb-0 text-primary"),
                 dbc.Button(
-                    [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download KPI Details"], 
+                    [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Performance Summary"], 
                     id="sa-export-all-kpis", size="sm", color="primary", outline=True, className="fw-bold shadow-sm"
                 )
             ], className="d-flex justify-content-between align-items-center mb-3"),

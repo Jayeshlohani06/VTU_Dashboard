@@ -554,7 +554,7 @@ layout = dbc.Container([
                 html.Hr(),
 
                 # --- KPIs ---
-                html.H6("📊 Understanding the KPI Cards", className="fw-bold text-dark"),
+                html.H6("📊 Understanding the Performance Cards", className="fw-bold text-dark"),
                 html.Ul([
                     html.Li([html.Strong("Total: "), "Total number of students in the uploaded result file."]),
                     html.Li([html.Strong("Appeared: "), "Students who appeared for at least one selected subject (Total minus fully Absent)."]),
@@ -566,7 +566,7 @@ layout = dbc.Container([
                 dbc.Alert([
                     html.I(className="bi bi-hand-index-thumb me-2"),
                     html.Strong("Clickable! "),
-                    "Click any KPI card to see the detailed student list for that category. You can also download the list as Excel."
+                    "Click any performance card to see the detailed student list for that category. You can also download the list as Excel."
                 ], color="info", className="small py-2 mb-2"),
                 html.Hr(),
 
@@ -588,7 +588,7 @@ layout = dbc.Container([
                 # --- Dashboard Pages ---
                 html.H6("🗂️ Dashboard Pages Overview", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li([html.Strong("Overview (this page): "), "Upload data, configure sections, view summary KPIs and data preview."]),
+                    html.Li([html.Strong("Overview (this page): "), "Upload data, configure sections, view performance summary and data preview."]),
                     html.Li([html.Strong("Ranking: "), "View student rankings with SGPA, class rank, and performance tiers."]),
                     html.Li([html.Strong("Branch Analysis: "), "Analyze branch-level performance — upload a single branch result file for deep analytics."]),
                     html.Li([html.Strong("Subject Analysis: "), "Drill down into individual subject performance — pass rates, score distributions, and comparisons."]),

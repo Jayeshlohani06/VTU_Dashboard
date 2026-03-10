@@ -207,7 +207,7 @@ layout = dbc.Container([
                 ], className="small"),
                 html.Hr(),
 
-                html.H6("📋 KPI Cards", className="fw-bold text-dark"),
+                html.H6("📋 Performance Cards", className="fw-bold text-dark"),
                 html.Ul([
                     html.Li([html.Strong("Total Marks: "), "Sum of marks across selected subjects."]),
                     html.Li([html.Strong("Percentage: "), "Calculated from selected subjects."]),
