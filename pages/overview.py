@@ -1856,6 +1856,52 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
 
     out = BytesIO()
     with pd.ExcelWriter(out, engine='openpyxl') as writer:
+        # ── Compute KPI metrics from overview_df ──
+        _kpi_total = len(overview_df)
+        _kpi_absent = int((overview_df['Overall_Result'] == 'A').sum()) if 'Overall_Result' in overview_df.columns else 0
+        _kpi_appeared = _kpi_total - _kpi_absent
+        _kpi_passed = int((overview_df['Overall_Result'] == 'P').sum()) if 'Overall_Result' in overview_df.columns else 0
+        _kpi_failed = int((overview_df['Overall_Result'] == 'F').sum()) if 'Overall_Result' in overview_df.columns else 0
+        _kpi_pass_pct = round((_kpi_passed / _kpi_appeared) * 100, 2) if _kpi_appeared > 0 else 0
+
+        # ── Write Summary (KPI) sheet as first sheet ──
+        kpi_data = {
+            'Metric': ['Total', 'Appeared', 'Passed', 'Failed', 'Absent', 'Pass %'],
+            'Value': [_kpi_total, _kpi_appeared, _kpi_passed, _kpi_failed, _kpi_absent, f"{_kpi_pass_pct}%"]
+        }
+        kpi_df = pd.DataFrame(kpi_data)
+        kpi_df.to_excel(writer, sheet_name='Summary', index=False)
+
+        ws_kpi = writer.sheets['Summary']
+        # Style header row
+        kpi_header_fill = PatternFill(start_color='FF1F2937', end_color='FF1F2937', fill_type='solid')
+        kpi_header_font = Font(bold=True, color='FFFFFFFF', size=12)
+        for col_idx in range(1, 3):
+            cell = ws_kpi.cell(row=1, column=col_idx)
+            cell.fill = kpi_header_fill
+            cell.font = kpi_header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        ws_kpi.column_dimensions['A'].width = 20
+        ws_kpi.column_dimensions['B'].width = 20
+
+        # Style data rows with distinct colors per metric
+        kpi_styles = {
+            'Total':    (PatternFill(start_color='FFE0E7FF', end_color='FFE0E7FF', fill_type='solid'), Font(color='FF3730A3', bold=True, size=11)),
+            'Appeared': (PatternFill(start_color='FFDBEAFE', end_color='FFDBEAFE', fill_type='solid'), Font(color='FF1E40AF', bold=True, size=11)),
+            'Passed':   (PatternFill(start_color='FFD1FAE5', end_color='FFD1FAE5', fill_type='solid'), Font(color='FF065F46', bold=True, size=11)),
+            'Failed':   (PatternFill(start_color='FFFEE2E2', end_color='FFFEE2E2', fill_type='solid'), Font(color='FF991B1B', bold=True, size=11)),
+            'Absent':   (PatternFill(start_color='FFFEF3C7', end_color='FFFEF3C7', fill_type='solid'), Font(color='FF92400E', bold=True, size=11)),
+            'Pass %':   (PatternFill(start_color='FFF5F3FF', end_color='FFF5F3FF', fill_type='solid'), Font(color='FF7C3AED', bold=True, size=11)),
+        }
+        for row_idx in range(2, 8):
+            metric = str(ws_kpi.cell(row=row_idx, column=1).value or '')
+            if metric in kpi_styles:
+                fill, font = kpi_styles[metric]
+                for col_idx in range(1, 3):
+                    ws_kpi.cell(row=row_idx, column=col_idx).fill = fill
+                    ws_kpi.cell(row=row_idx, column=col_idx).font = font
+                    ws_kpi.cell(row=row_idx, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
+
         # ── Write Overview sheet with grouped 2-row headers (matching dashboard) ──
         from openpyxl.utils import get_column_letter as _gcl
         overview_df.to_excel(writer, sheet_name='Overview', index=False, startrow=1)
