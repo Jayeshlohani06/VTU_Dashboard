@@ -390,7 +390,7 @@ layout = dbc.Container([
                     dbc.Input(id="search-input", placeholder="Search ID / Name...", type="text")
                 ], className="shadow-sm"), md=3, xs=12),
                 dbc.Col(dbc.ButtonGroup([
-                    dbc.Button("ℹ️ Info", id="open-legend", color="info", outline=True),
+                    dbc.Button("📖 Rules & Guidelines", id="open-legend", color="info", outline=True),
                     dbc.Button("Reset", id="reset-btn", color="secondary", outline=True),
                 ], className="w-100 d-flex justify-content-end"), md=3, xs=12),
             ], className="g-2 rnk-controls mb-3"),
@@ -521,28 +521,77 @@ layout = dbc.Container([
     ], id="student-modal", is_open=False, size="lg", style={"zIndex": 10500}),
 
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("📊 Dashboard Logic & Legends")),
+        dbc.ModalHeader(dbc.ModalTitle("📊 Ranking Page — Rules & Guidelines")),
         dbc.ModalBody(
             html.Div([
-                html.H6("📝 Subject & Student Status", className="text-primary fw-bold"),
+                html.H5("🚀 Getting Started", className="text-primary fw-bold mb-2"),
+                html.P("This page ranks students based on marks or SGPA. Data is loaded from the Overview page — upload your result file there first.", className="text-muted small mb-3"),
+
+                html.H6("🔀 Ranking Modes", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li([html.Strong("Absent (Subject):"), " External Marks = 0  AND  Result = 'A'"]),
-                    html.Li([html.Strong("Fail (Subject):"), " Result = 'F' (or Marks < 18 if Result unavailable)"]),
-                    html.Li([html.Strong("Pass (Student):"), " Passed in ALL subjects"]),
-                    html.Li([html.Strong("Absent (Student):"), " Absent in ALL subjects"]),
-                    html.Li([html.Strong("Fail (Student):"), " Failed in ANY subject OR Absent in ANY subject (but appeared for others)"]),
-                ]),
+                    html.Li([html.Strong("Marks Based: "), "Ranks students by total marks across selected subjects. You can also switch the metric to compare Internal or External marks only."]),
+                    html.Li([html.Strong("SGPA Based: "), "Ranks students by SGPA (Semester Grade Point Average). Requires scheme & semester to be configured on the Overview page for automatic credit mapping."]),
+                ], className="small"),
                 html.Hr(),
-                html.H6("🏆 Ranking Logic", className="text-primary fw-bold"),
-                html.P("Ranking is calculated ONLY for students with Overall Result = 'Pass'. Failed students are excluded from rank list.", className="text-muted small"),
+
+                html.H6("📝 Pass / Fail / Absent — Per Subject", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Absent (Subject): "), "External Marks = 0 AND Result = 'A' or blank."]),
+                    html.Li([html.Strong("Fail (Subject): "), "Result = 'F', or marks below pass threshold when Result is unavailable."]),
+                    html.Li([html.Strong("Pass (Subject): "), "Result = 'P' or passing grade."]),
+                ], className="small"),
                 html.Hr(),
-                html.H6("🎓 VTU Class Categories (from %)", className="text-primary fw-bold"),
+
+                html.H6("📝 Overall Student Result", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Pass: "), "Student has passed ALL enrolled subjects."]),
+                    html.Li([html.Strong("Absent: "), "Student is absent in ALL subjects."]),
+                    html.Li([html.Strong("Fail: "), "Student has failed or is absent in ANY subject (but appeared for others)."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🏆 Ranking Rules", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Rankings are calculated ONLY for students with Overall Result = 'Pass'."),
+                    html.Li("Failed and absent students are excluded from the rank list."),
+                    html.Li([html.Strong("Class Rank: "), "Position among all passed students across all sections."]),
+                    html.Li([html.Strong("Section Rank: "), "Position among passed students within the same section."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📊 Percentage Calculation", className="fw-bold text-dark"),
+                html.P([html.Strong("Formula: "), "(Total Marks ÷ (Number of Active Subjects × 100)) × 100"], className="small bg-light p-2 rounded border"),
+                html.Ul([
+                    html.Li("Active subjects = subjects where the student has marks > 0."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🎓 VTU Class Categories", className="fw-bold text-dark"),
                 html.Ul([
                     html.Li([html.Span("First Class Distinction (FCD):", className="fw-bold text-success"), " ≥ 70%"]),
-                    html.Li([html.Span("First Class (FC):", className="fw-bold text-info"), " 60%  –  69.99%"]),
-                    html.Li([html.Span("Second Class (SC):", className="fw-bold text-warning"), " 50%  –  59.99%"]),
+                    html.Li([html.Span("First Class (FC):", className="fw-bold text-info"), " 60% – 69.99%"]),
+                    html.Li([html.Span("Second Class (SC):", className="fw-bold text-warning"), " 50% – 59.99%"]),
                     html.Li([html.Span("Pass Class:", className="fw-bold text-danger"), " < 50%"]),
-                ], className="mb-0")
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🧮 SGPA Calculation", className="fw-bold text-dark"),
+                html.P([html.Strong("Formula: "), "SGPA = Σ(Grade Point × Credit) ÷ Σ(Credit)"], className="small bg-light p-2 rounded border"),
+                html.Ul([
+                    html.Li("Grade Points: 90-100 → 10, 80-89 → 9, 70-79 → 8, 60-69 → 7, 55-59 → 6, 50-54 → 5, 40-49 → 4, <40 → 0"),
+                    html.Li("Only subjects with credit > 0 are included."),
+                    html.Li("SGPA is computed only for passing students."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🖱️ Interactive Features", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Click a KPI card: "), "Opens a detailed list of students in that category (e.g., all FCD students). You can download the list as Excel."]),
+                    html.Li([html.Strong("Click a table row: "), "Opens a Student Profile modal showing all subject marks, result, percentage, and rank."]),
+                    html.Li([html.Strong("Filters: "), "Use the dropdowns at the top to filter by Result (Pass/Fail/Absent), Section, or search by USN/Name."]),
+                    html.Li([html.Strong("Dark/Light Mode: "), "Toggle the theme switch for your preferred viewing experience."]),
+                    html.Li([html.Strong("Download: "), "Export the full ranking table or category reports as Excel."]),
+                ], className="small mb-0"),
             ])
         ),
         dbc.ModalFooter(dbc.Button("Got it!", id="close-legend", className="ms-auto", color="primary"))
@@ -579,7 +628,6 @@ layout = dbc.Container([
     dcc.Download(id="download-xlsx"),
     dcc.Download(id="download-category-report"),
     dcc.Download(id="download-all-kpis"),
-    dcc.Store(id='sgpa-store', storage_type='session'),
 ], fluid=True, className="pb-5")
 
 
@@ -639,12 +687,12 @@ def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ran
     if ranking_type != 'sgpa': return html.Div()
     if not session_id: return ""
     
-    # Extract scheme/sem or default
+    # Extract scheme/sem from store if available
     scheme = "2022"
-    semester = 5
+    semester = None
     if scheme_sem_data:
         scheme = scheme_sem_data.get('scheme', '2022')
-        semester = scheme_sem_data.get('semester', 5)
+        semester = scheme_sem_data.get('semester')
     
     df = cache.get(session_id)
     if df is None: return ""
@@ -657,7 +705,19 @@ def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ran
     if not codes: return dbc.Alert("No recognizable subject columns found.", color='info')
     codes = sorted(codes)
     
-    # Load credit map using the stored scheme and semester
+    # Auto-detect semester from subject codes if not provided
+    if semester is None:
+        for code in codes:
+            subj_code = code.split(" - ")[0].strip() if " - " in code else code.strip()
+            sem_match = re.search(r'(\d)\d{2}', subj_code)
+            if sem_match:
+                semester = int(sem_match.group(1))
+                print(f"[RankingCredits] Auto-detected semester={semester} from {subj_code}")
+                break
+        if semester is None:
+            semester = 5  # ultimate fallback
+    
+    # Load credit map using the stored/detected scheme and semester
     credit_map = load_credit_map(scheme, semester)
     
     grid_items = []

@@ -252,7 +252,7 @@ layout = dbc.Container([
                         dbc.Button("CSV", id="sa-export-csv", color="primary", outline=True, className="me-1"),
                         dbc.Button("Excel", id="sa-export-xlsx", color="success", outline=True, className="me-1"),
                         dbc.Button("PDF", id="sa-export-pdf", color="danger", outline=True, className="me-1"),
-                        dbc.Button("ℹ️", id="sa-open-legend", color="info", outline=True),
+                        dbc.Button("📖", id="sa-open-legend", color="info", outline=True, title="Rules & Guidelines"),
                     ], className="w-100", style={"height": "45px"}),
                 ], xs=12, lg=3), 
             ], className="g-3 align-items-start"),
@@ -347,26 +347,66 @@ layout = dbc.Container([
     ]),
 
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("📊 Analysis Logic & Legends")),
+        dbc.ModalHeader(dbc.ModalTitle("📊 Subject Analysis — Rules & Guidelines")),
         dbc.ModalBody(
             html.Div([
-                html.H6("📝 Student Status Logic", className="text-primary fw-bold"),
+                html.H5("🚀 Getting Started", className="text-primary fw-bold mb-2"),
+                html.P("This page lets you analyze performance at the subject level — see pass/fail distributions, average marks, and drill down into individual subjects. Data is loaded from the Overview page.", className="text-muted small mb-3"),
+
+                html.H6("🎯 Subject Selection", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li([html.Strong("Pass:"), " Student has passed in ALL selected subjects."]),
-                    html.Li([html.Strong("Fail:"), " Student has failed or is absent in AT LEAST ONE selected subject."]),
-                    html.Li([html.Strong("Absent:"), " Student is absent in ALL selected subjects."]),
-                ]),
+                    html.Li([html.Strong("Multi-select: "), "Choose one or more subjects from the dropdown to analyze."]),
+                    html.Li([html.Strong("Select All: "), "Use the 'Select All' option to include every detected subject."]),
+                    html.Li([html.Strong("Remove All: "), "Quickly clear your selection to start fresh."]),
+                    html.Li("Subject codes and full names (when available) are displayed for easy identification."),
+                ], className="small"),
                 html.Hr(),
-                html.H6("📚 Subject Status Logic", className="text-primary fw-bold"),
+
+                html.H6("🔍 Filters", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li([html.Strong("Based on Result Column:"), " The dashboard uses the 'Result' column (P/F/A) from the uploaded data."]),
-                    html.Li([html.Strong("P / Pass:"), " Considered as Passed."]),
-                    html.Li([html.Strong("F / Fail:"), " Considered as Failed."]),
-                    html.Li([html.Strong("A / Absent:"), " Considered as Absent."]), 
-                ]),
-                html.Div(
-                    dbc.Alert("Note: This page focuses on subject-wise performance. For SGPA/ranks and Class Categories (FCD, FC, etc.), please visit the Ranking page.", color="info", className="mt-3 small")
-                )
+                    html.Li([html.Strong("Section Filter: "), "Narrow results to a specific section or view all sections."]),
+                    html.Li([html.Strong("Result Filter: "), "View All Students, or filter to show only Passed / Failed / Absent students."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📝 Per-Subject Status Logic", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Pass: "), "Result column = 'P' or passing grade."]),
+                    html.Li([html.Strong("Fail: "), "Result column = 'F' or marks below passing threshold."]),
+                    html.Li([html.Strong("Absent: "), "External Marks = 0 AND Result = 'A' or blank."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📝 Overall Student Status (across selected subjects)", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Pass: "), "Passed in ALL selected subjects."]),
+                    html.Li([html.Strong("Fail: "), "Failed or absent in AT LEAST ONE selected subject."]),
+                    html.Li([html.Strong("Absent: "), "Absent in ALL selected subjects."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📊 Charts & Visualizations", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Pass vs Fail Distribution (Pie): "), "Shows the proportion of students passing vs failing across selected subjects."]),
+                    html.Li([html.Strong("Average Marks & Performance (Bar): "), "Compares average marks per subject side by side."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📋 Subject Performance Table", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Shows per-subject summary: Total Students, Appeared, Absent, Passed, Failed, and Pass %."),
+                    html.Li("Detailed breakdown table shows each student's Internal, External, Total, and Result per subject."),
+                    html.Li("Tables support sorting and filtering for quick lookups."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🖱️ Interactive Features", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Click KPI cards: "), "Opens a modal with a detailed student list for that category. Download as Excel."]),
+                    html.Li([html.Strong("Export: "), "Use the CSV, Excel, or PDF buttons to download the full report."]),
+                ], className="small"),
+
+                dbc.Alert("Tip: For SGPA, rankings, and VTU class categories (FCD, FC, etc.), visit the Ranking page.", color="info", className="small py-2 mb-0")
             ])
         ),
         dbc.ModalFooter(dbc.Button("Got it!", id="sa-close-legend", className="ms-auto", color="primary"))

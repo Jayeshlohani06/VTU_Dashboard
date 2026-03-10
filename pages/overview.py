@@ -92,8 +92,8 @@ def process_uploaded_excel(contents):
         header_row_count = 2 # Default
         for i, row in df_preview.iterrows():
             row_str = row.astype(str).str.lower().tolist()
-            has_internal = any(x in str(rv) for rv in row_str for x in ["internal", "ia", "cie", "int"])
-            has_external = any(x in str(rv) for rv in row_str for x in ["external", "ea", "see", "ext"])
+            has_internal = any("internal" in x for x in row_str)
+            has_external = any("external" in x for x in row_str)
             
             if has_internal and has_external:
                 # Detected the component row. Its index + 1 is the header count.
@@ -310,7 +310,7 @@ layout = dbc.Container([
     html.Div([
         html.H2("Student Performance Dashboard", className="fw-bold text-white mb-1"),
         html.P("Analyze university results with custom section filtering", className="text-white-50 mb-0"),
-        dbc.Button("ℹ️ Logic & Legends", id="open-legend-overview", color="light", size="sm", className="mt-3 fw-bold", outline=True)
+        dbc.Button("📖 Rules & Guidelines", id="open-legend-overview", color="light", size="sm", className="mt-3 fw-bold", outline=True)
     ], style={
         "background": "linear-gradient(135deg, #2c3e50 0%, #4ca1af 100%)", 
         "padding": "2.0rem 1rem", 
@@ -388,6 +388,12 @@ layout = dbc.Container([
 
                     html.Label("Filter Subjects", className="small fw-bold mb-1"),
                     html.Div([
+                        dbc.ButtonGroup([
+                            dbc.Button("Select All", id="subject-select-all-btn", color="primary", size="sm", outline=True, className="fw-bold"),
+                            dbc.Button("Remove All", id="subject-remove-all-btn", color="danger", size="sm", outline=True, className="fw-bold"),
+                        ], size="sm", className="mb-2 w-100"),
+                    ]),
+                    html.Div([
                         dcc.Dropdown(
                             id='subject-selector', 
                             multi=True, 
@@ -445,6 +451,17 @@ layout = dbc.Container([
                     ], id="upload-section-container", style={"display": "none"}),
 
                     html.Div(id='usn-upload-status', className="small text-muted mt-2 fw-bold"),
+
+                    html.Hr(className="my-3"),
+                    dbc.Button(
+                        [html.I(className="bi bi-file-earmark-spreadsheet me-2"), "Download Complete Report"],
+                        id="universal-download-btn",
+                        color="dark",
+                        className="w-100 fw-bold shadow-sm",
+                        size="sm",
+                    ),
+                    html.Small("Exports Overview, Ranking, Subject Analysis & Category data into one Excel file.", className="text-muted d-block mt-1", style={"fontSize": "0.72rem"}),
+                    dcc.Download(id="universal-download-excel"),
                 ], style={"overflow": "visible", "position": "relative"}),
             ], className="border-0 shadow-sm", style={"overflow": "visible"})
         ], lg=4, md=5, style={"overflow": "visible"}),
@@ -480,32 +497,107 @@ layout = dbc.Container([
     ], style={"overflow": "visible"}),
 
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("📊 Dashboard Usage Guide")),
+        dbc.ModalHeader(dbc.ModalTitle("📊 Dashboard Rules & Guidelines")),
         dbc.ModalBody(
             html.Div([
-                html.H6("📥 1. Data Extraction", className="text-primary fw-bold"),
-                html.P("Upload the raw VTU result Excel file to initialize the dashboard.", className="text-muted small mb-2"),
+                # --- Getting Started ---
+                html.H5("🚀 Getting Started", className="text-primary fw-bold mb-2"),
+                html.P("Welcome! This dashboard helps you analyze VTU semester results with section-wise filtering, subject-wise analytics, rankings, and more. Follow these steps to get started:", className="text-muted small mb-3"),
+
+                # --- Step 1: Upload ---
+                html.H6("📥 Step 1 — Upload Result File", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li([html.Strong("File Format:"), " .xlsx or .xls file."]),
-                    html.Li([html.Strong("Structure:"), " Multi-row header format (standard VTU result sheet)."]),
-                    html.Li("Must contain 'USN' (or 'Student ID') and 'Name' columns."),
-                    html.Li("Subject columns should clearly indicate 'Internal', 'External', and 'Total'."),
-                ]),
+                    html.Li([html.Strong("Accepted Format: "), ".xlsx or .xls (standard VTU result Excel sheet)."]),
+                    html.Li([html.Strong("Header Structure: "), "The file must have multi-row headers — either 2-row (Subject Code → Component) or 3-row (Subject Code → Subject Name → Component). Both formats are auto-detected."]),
+                    html.Li([html.Strong("Required Columns: "), "Must contain a 'USN' (or 'University Seat Number') column and a 'Name' column."]),
+                    html.Li([html.Strong("Subject Columns: "), "Each subject should have 'Internal', 'External', 'Total', and 'Result' sub-columns."]),
+                    html.Li([html.Strong("Tip: "), "Click 'View Sample' above the upload box to see the expected format."]),
+                ], className="small"),
                 html.Hr(),
-                html.H6("⚙️ 2. Section Configuration", className="text-primary fw-bold"),
-                html.P("Map students to their respective classrooms/sections:", className="text-muted small mb-2"),
+
+                # --- Step 2: Scheme & Semester ---
+                html.H6("📐 Step 2 — Select Scheme & Semester", className="fw-bold text-dark"),
                 html.Ul([
-                     html.Li([html.Strong("Manual Ranges:"), " Use for sequential USNs. Define start/end numbers (e.g., 001-060 = Section A)."]),
-                     html.Li([html.Strong("Upload Mapping:"), " Use for non-sequential lists. Upload a CSV/Excel with 'USN' and 'Section' columns."]),
-                ]),
+                    html.Li("Select the correct Scheme Year (2018 / 2021 / 2022 / 2025) and Semester from the dropdowns."),
+                    html.Li([html.Strong("Why? "), "This maps subject codes to their credit values, enabling automatic SGPA calculation across all pages."]),
+                    html.Li("Click 'Submit Mapping for SGPA' to confirm. The red alert banner will disappear once configured."),
+                    html.Li([html.Strong("Note: "), "If scheme/semester is not set, SGPA-related features will not be available."]),
+                ], className="small"),
                 html.Hr(),
-                html.H6("📊 3. Analytics & Outputs", className="text-primary fw-bold"),
+
+                # --- Step 3: Subject Filter ---
+                html.H6("🎯 Step 3 — Filter Subjects", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li("Real-time extraction of unique subjects found in the file."),
-                    html.Li("Instant calculation of Pass Rate, Total Count, and Attendance."),
-                    html.Li("Preview of the processed data table with filtering options."),
-                    html.Li("Data persists across pages (Ranking, Analysis) once loaded."),
-                ], className="mb-0")
+                    html.Li("After upload, all detected subject codes appear in the 'Filter Subjects' dropdown."),
+                    html.Li("By default, all subjects are selected. You can deselect subjects to exclude them from analysis."),
+                    html.Li([html.Strong("Elective Handling: "), "If a student has not taken a particular subject (all marks blank), that subject is automatically skipped in their pass/fail calculation — it will NOT count as a fail or absent."]),
+                ], className="small"),
+                html.Hr(),
+
+                # --- Step 4: Sections ---
+                html.H6("⚙️ Step 4 — Configure Sections", className="fw-bold text-dark"),
+                html.P("Map students to their classroom sections using one of two methods:", className="text-muted small mb-2"),
+                html.Ul([
+                    html.Li([html.Strong("Manual Ranges: "), "For sequential USNs. Enter section name + start/end USN (e.g., Section A: 001 to 060). Click 'Apply Ranges'."]),
+                    html.Li([html.Strong("Upload Mapping Files: "), "For non-sequential USN lists. Upload a CSV/Excel file per section with a 'USN' column listing students in that section."]),
+                    html.Li([html.Strong("Note: "), "Students not matching any section range or mapping will appear as 'Unassigned'."]),
+                    html.Li([html.Strong("Tip: "), "If USNs from the mapping file are not found in the result data, a warning will list the missing USNs."]),
+                ], className="small"),
+                html.Hr(),
+
+                # --- KPIs ---
+                html.H6("📊 Understanding the KPI Cards", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Total: "), "Total number of students in the uploaded result file."]),
+                    html.Li([html.Strong("Appeared: "), "Students who appeared for at least one selected subject (Total minus fully Absent)."]),
+                    html.Li([html.Strong("Passed: "), "Students who passed ALL selected subjects they were enrolled in."]),
+                    html.Li([html.Strong("Failed: "), "Students who failed or were absent in one or more selected subjects."]),
+                    html.Li([html.Strong("Absent: "), "Students marked absent in ALL selected subjects (External = 0 and Result is blank/A)."]),
+                    html.Li([html.Strong("Pass %: "), "Passed ÷ Appeared × 100 (fully absent students are excluded from this denominator)."]),
+                ], className="small"),
+                dbc.Alert([
+                    html.I(className="bi bi-hand-index-thumb me-2"),
+                    html.Strong("Clickable! "),
+                    "Click any KPI card to see the detailed student list for that category. You can also download the list as Excel."
+                ], color="info", className="small py-2 mb-2"),
+                html.Hr(),
+
+                # --- Pass/Fail Logic ---
+                html.H6("✅ Pass / Fail / Absent — Classification Rules", className="fw-bold text-dark"),
+                html.P("For each selected subject, a student is classified per-subject first, then an overall result is computed:", className="text-muted small mb-2"),
+                html.Ul([
+                    html.Li([html.Strong("Pass (P): "), "Result column contains 'P' or a passing grade."]),
+                    html.Li([html.Strong("Fail (F): "), "Result column contains 'F' or 'FAIL', OR total marks < 35 with no result grade."]),
+                    html.Li([html.Strong("Absent (A): "), "External marks = 0 AND Result is blank, 'A', or 'ABSENT'."]),
+                    html.Li([html.Strong("Skipped (Elective): "), "If Internal, External, Total are all blank AND Result is blank — the subject is completely ignored for that student."]),
+                ], className="small"),
+                html.P([
+                    html.Strong("Overall Result: "),
+                    "A student Passes overall only if they pass every enrolled subject. If even one subject is Failed or Absent, the overall result is Fail."
+                ], className="small bg-light p-2 rounded border"),
+                html.Hr(),
+
+                # --- Dashboard Pages ---
+                html.H6("🗂️ Dashboard Pages Overview", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Overview (this page): "), "Upload data, configure sections, view summary KPIs and data preview."]),
+                    html.Li([html.Strong("Ranking: "), "View student rankings with SGPA, class rank, and performance tiers."]),
+                    html.Li([html.Strong("Branch Analysis: "), "Analyze branch-level performance — upload a single branch result file for deep analytics."]),
+                    html.Li([html.Strong("Subject Analysis: "), "Drill down into individual subject performance — pass rates, score distributions, and comparisons."]),
+                    html.Li([html.Strong("Student Detail: "), "Look up individual student performance across all subjects with detailed breakdowns."]),
+                    html.Li([html.Strong("Branch Intelligence: "), "Multi-branch comparative analysis and insights."]),
+                ], className="small"),
+                html.Hr(),
+
+                # --- Important Notes ---
+                html.H6("⚠️ Important Notes & Tips", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Data uploaded on the Overview page is shared across all other pages — no need to re-upload."),
+                    html.Li("If the session expires (e.g., server restart), you will need to re-upload the file."),
+                    html.Li("The dashboard auto-detects VTU subject codes in the format: 2+ letters followed by 3 digits and an optional letter (e.g., BCS501, BAIL504A)."),
+                    html.Li("For best results, use the original unmodified VTU result Excel file — avoid renaming columns or restructuring the sheet."),
+                    html.Li("Section configuration and scheme/semester selection are preserved as you navigate between pages."),
+                ], className="small mb-0"),
             ])
         ),
         dbc.ModalFooter(dbc.Button("Got it!", id="close-legend-overview", className="ms-auto", color="primary"))
@@ -727,6 +819,21 @@ def hide_alert_on_load(store_data):
     return True
 
 @callback(
+    Output('subject-selector', 'value', allow_duplicate=True),
+    Input('subject-select-all-btn', 'n_clicks'),
+    Input('subject-remove-all-btn', 'n_clicks'),
+    State('subject-selector', 'options'),
+    prevent_initial_call=True
+)
+def select_or_remove_all_subjects(select_clicks, remove_clicks, options):
+    trigger = ctx.triggered_id
+    if trigger == 'subject-select-all-btn' and options:
+        return [o['value'] if isinstance(o, dict) else o for o in options]
+    if trigger == 'subject-remove-all-btn':
+        return []
+    return no_update
+
+@callback(
     Output('overview-selected-subjects', 'data', allow_duplicate=True),
     Input('subject-selector', 'value'),
     prevent_initial_call=True
@@ -933,10 +1040,10 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
     
     df_filtered = pd.concat([df_filtered, df[subject_data_cols]], axis=1)
 
-    # 2. Convert Mark columns to Numeric
+    # 2. Convert Mark columns to Numeric (keep NaN for subjects student didn't take)
     for c in subject_data_cols:
         if any(k in c for k in ['Internal', 'External', 'Total']):
-            df_filtered[c] = pd.to_numeric(df_filtered[c], errors='coerce').fillna(0)
+            df_filtered[c] = pd.to_numeric(df_filtered[c], errors='coerce')
 
     # 3. Robust Pass Logic (Matching Ranking Page Logic)
     res_cols = [c for c in subject_data_cols if "Result" in c]
@@ -945,40 +1052,39 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
         def calc_overall(row):
             subject_status = []
             for res_col in res_cols:
-                # Identify components for this subject
-                # Assumption: Column name format is like "SUBCODE Result"
-                # And components are "SUBCODE Internal", "SUBCODE External"
                 base_name = res_col.rsplit(' Result', 1)[0].rsplit('Result', 1)[0].strip()
                 
-                # Try specific suffixes first as seen in ranking.py
                 i_col = f"{base_name} Internal"
                 e_col = f"{base_name} External"
-                
-                # If not found, try to look for columns that start with base_name
-                if i_col not in df_filtered.columns:
-                     # Fallback logic if needed, but strict naming is preferred
-                     pass
+                t_col = f"{base_name} Total"
 
-                i_val = row.get(i_col, 0)
-                e_val = row.get(e_col, 0)
-                
-                try: i = float(i_val)
+                i_raw = row.get(i_col) if i_col in df_filtered.columns else None
+                e_raw = row.get(e_col) if e_col in df_filtered.columns else None
+                t_raw = row.get(t_col) if t_col in df_filtered.columns else None
+                r_raw = row.get(res_col, None)
+
+                # Skip subject entirely if student has no data for it (elective not taken)
+                i_na = pd.isna(i_raw)
+                e_na = pd.isna(e_raw)
+                t_na = pd.isna(t_raw)
+                r_empty = pd.isna(r_raw) or str(r_raw).strip() == ''
+                if i_na and e_na and t_na and r_empty:
+                    continue
+
+                try: i = float(i_raw) if not i_na else 0
                 except: i = 0
-                try: e = float(e_val) 
+                try: e = float(e_raw) if not e_na else 0
                 except: e = 0
                 
-                r = str(row.get(res_col, "")).strip().upper()
+                r = str(r_raw).strip().upper() if not pd.isna(r_raw) else ''
 
-                # 🔥 ABSENT RULE (Enhanced)
-                # If External is 0 and Result is Absent OR Empty -> Treat as Absent for that subject
                 if (e == 0) and (r in ['A', 'ABSENT', '']):
                     subject_status.append('A')
                 elif r in ['F', 'FAIL']:
                     subject_status.append('F')
                 else:
-                    # If Result is missing but Marks exist, check for pass/fail by marks
                     total_s = i + e
-                    if r == '' and total_s < 35: # Assuming 35 is fail threshold
+                    if r == '' and total_s < 35:
                          subject_status.append('F')
                     else:
                          subject_status.append('P')
@@ -1217,7 +1323,7 @@ def handle_overview_kpi_click(kpi_clicks, c1, c2, session_id, selected_subjects,
 
     for c in subject_data_cols:
         if any(k in c for k in ['Internal', 'External', 'Total']):
-            df_filtered[c] = pd.to_numeric(df_filtered[c], errors='coerce').fillna(0)
+            df_filtered[c] = pd.to_numeric(df_filtered[c], errors='coerce')
 
     res_cols = [c for c in subject_data_cols if "Result" in c]
     
@@ -1226,15 +1332,28 @@ def handle_overview_kpi_click(kpi_clicks, c1, c2, session_id, selected_subjects,
             subject_status = []
             for res_col in res_cols:
                 base_name = res_col.rsplit(' Result', 1)[0].rsplit('Result', 1)[0].strip()
-                i_val = row.get(f"{base_name} Internal", 0)
-                e_val = row.get(f"{base_name} External", 0)
-                
-                try: i = float(i_val)
+                i_col = f"{base_name} Internal"
+                e_col = f"{base_name} External"
+                t_col = f"{base_name} Total"
+
+                i_raw = row.get(i_col) if i_col in df_filtered.columns else None
+                e_raw = row.get(e_col) if e_col in df_filtered.columns else None
+                t_raw = row.get(t_col) if t_col in df_filtered.columns else None
+                r_raw = row.get(res_col, None)
+
+                # Skip subject entirely if student has no data for it
+                i_na = pd.isna(i_raw)
+                e_na = pd.isna(e_raw)
+                t_na = pd.isna(t_raw)
+                r_empty = pd.isna(r_raw) or str(r_raw).strip() == ''
+                if i_na and e_na and t_na and r_empty:
+                    continue
+
+                try: i = float(i_raw) if not i_na else 0
                 except: i = 0
-                try: e = float(e_val) 
+                try: e = float(e_raw) if not e_na else 0
                 except: e = 0
-                
-                r = str(row.get(res_col, "")).strip().upper()
+                r = str(r_raw).strip().upper() if not pd.isna(r_raw) else ''
 
                 if (e == 0) and (r in ['A', 'ABSENT', '']): subject_status.append('A')
                 elif r in ['F', 'FAIL']: subject_status.append('F')
@@ -1301,3 +1420,692 @@ def download_overview_modal_excel(n_clicks_bottom, n_clicks_top, table_data, tit
         safe_title = re.sub(r'[^A-Za-z0-9_]', '_', clean_str)
         
     return dcc.send_data_frame(df.to_excel, f"{safe_title}_Report.xlsx", index=False)
+
+
+# ==================== UNIVERSAL DOWNLOAD ====================
+
+def _get_selected_subject_cols(df, selected_subjects):
+    """Get columns belonging to selected subjects only."""
+    cols = []
+    for c in df.columns:
+        for s in selected_subjects:
+            if c.startswith(f"{s} ") or c.startswith(f"{s} - "):
+                cols.append(c)
+                break
+    return cols
+
+
+def _calc_overall_result(row, res_cols, df_ref):
+    """Shared pass/fail/absent logic matching the dashboard exactly."""
+    subject_status = []
+    for res_col in res_cols:
+        base_name = res_col.rsplit(' Result', 1)[0].rsplit('Result', 1)[0].strip()
+        e_col = f"{base_name} External"
+        i_col = f"{base_name} Internal"
+        t_col = f"{base_name} Total"
+        e_raw = row.get(e_col) if e_col in df_ref.columns else None
+        i_raw = row.get(i_col) if i_col in df_ref.columns else None
+        t_raw = row.get(t_col) if t_col in df_ref.columns else None
+        r_raw = row.get(res_col, None)
+        # Skip electives not taken
+        if all(pd.isna(x) or str(x).strip() == '' for x in [i_raw, e_raw, t_raw, r_raw]):
+            continue
+        try: e = float(e_raw) if not pd.isna(e_raw) else 0
+        except: e = 0
+        try: i = float(i_raw) if not pd.isna(i_raw) else 0
+        except: i = 0
+        r = str(r_raw).strip().upper() if not pd.isna(r_raw) else ''
+        if (e == 0) and (r in ['A', 'ABSENT', '']):
+            subject_status.append('A')
+        elif r in ['F', 'FAIL']:
+            subject_status.append('F')
+        else:
+            if r == '' and (i + e) < 35:
+                subject_status.append('F')
+            else:
+                subject_status.append('P')
+    if not subject_status: return 'P'
+    elif subject_status.count('A') == len(subject_status): return 'A'
+    elif subject_status.count('F') > 0 or subject_status.count('A') > 0: return 'F'
+    return 'P'
+
+
+def _build_overview_sheet(df, selected_subjects, section_ranges, usn_mapping):
+    """Build the Overview sheet data."""
+    meta_col = 'University Seat Number'
+    if meta_col not in df.columns:
+        usn_candidates = [c for c in df.columns if 'USN' in str(c).upper()]
+        meta_col = usn_candidates[0] if usn_candidates else df.columns[0]
+
+    all_subject_codes = get_subject_codes(df)
+    info_cols = [c for c in df.columns if not any(s in c for s in all_subject_codes)]
+    df_filtered = df[info_cols].copy()
+
+    subject_data_cols = _get_selected_subject_cols(df, selected_subjects)
+    df_filtered = pd.concat([df_filtered, df[subject_data_cols]], axis=1)
+
+    for c in subject_data_cols:
+        if any(k in c for k in ['Internal', 'External', 'Total']):
+            df_filtered[c] = pd.to_numeric(df_filtered[c], errors='coerce')
+
+    res_cols = [c for c in subject_data_cols if 'Result' in c]
+    if res_cols:
+        df_filtered['Overall_Result'] = df_filtered.apply(
+            lambda row: _calc_overall_result(row, res_cols, df_filtered), axis=1)
+    else:
+        df_filtered['Overall_Result'] = 'P'
+
+    if section_ranges or usn_mapping:
+        df_filtered['Section'] = df_filtered[meta_col].apply(lambda x: assign_section(x, section_ranges, usn_mapping))
+
+    return df_filtered
+
+
+def _build_ranking_sheet(df, selected_subjects, section_ranges, usn_mapping):
+    """Build Marks-based Ranking sheet — filtered by selected subjects."""
+    meta_col = df.columns[0]
+    if meta_col != 'Student_ID':
+        df = df.rename(columns={meta_col: 'Student_ID'})
+    df['Section'] = df['Student_ID'].apply(lambda x: assign_section(str(x), section_ranges, usn_mapping))
+
+    subject_data_cols = _get_selected_subject_cols(df, selected_subjects)
+
+    # Convert ALL subject mark columns to numeric (preserve NaN for elective skip logic)
+    for c in subject_data_cols:
+        if any(k in c for k in ['Internal', 'External', 'Total']):
+            df[c] = pd.to_numeric(df[c], errors='coerce')
+
+    # Overall result FIRST — before any fillna so elective skip logic works
+    res_cols = [c for c in subject_data_cols if 'Result' in c]
+    if res_cols:
+        df['Overall_Result'] = df.apply(
+            lambda row: _calc_overall_result(row, res_cols, df), axis=1)
+    else:
+        df['Overall_Result'] = 'P'
+
+    # Now compute Total_Marks (fillna(0) only for the sum, not in-place)
+    total_cols = [c for c in subject_data_cols if c.strip().endswith(' Total')]
+    valid_total_cols = [c for c in total_cols if df[c].max() > 0]
+
+    if valid_total_cols:
+        df['Total_Marks'] = df[valid_total_cols].fillna(0).sum(axis=1)
+        num_subjects = len(valid_total_cols)
+    else:
+        df['Total_Marks'] = 0
+        num_subjects = 0
+
+    pass_mask = df['Overall_Result'] == 'P'
+    df['Class_Rank'] = pd.NA
+    df.loc[pass_mask, 'Class_Rank'] = df.loc[pass_mask, 'Total_Marks'].rank(method='min', ascending=False).astype('Int64')
+
+    if num_subjects > 0:
+        df['Percentage'] = round((df['Total_Marks'] / (num_subjects * 100)) * 100, 2)
+    else:
+        df['Percentage'] = 0
+
+    display_cols = ['Student_ID']
+    if 'Name' in df.columns:
+        display_cols.append('Name')
+    display_cols += ['Section', 'Total_Marks', 'Percentage', 'Overall_Result', 'Class_Rank']
+    display_cols = [c for c in display_cols if c in df.columns]
+    return df[display_cols].sort_values('Class_Rank', na_position='last')
+
+
+def _build_subject_analysis_sheet(df, selected_subjects, section_ranges, usn_mapping):
+    """Build per-subject pass/fail/absent stats."""
+    first_col = df.columns[0]
+    rows = []
+    for subj in selected_subjects:
+        subj_cols = [c for c in df.columns if c.startswith(f"{subj} ") or c.startswith(f"{subj} - ")]
+        res_col = next((c for c in subj_cols if 'Result' in c), None)
+        ext_col = next((c for c in subj_cols if 'External' in c), None)
+        if not res_col:
+            continue
+        valid = df[df[res_col].notna() & (df[res_col].astype(str).str.strip() != '')].copy()
+        if valid.empty:
+            rows.append({'Subject': subj, 'Total': 0, 'Appeared': 0, 'Absent': 0, 'Passed': 0, 'Failed': 0, 'Pass %': 0})
+            continue
+        valid[res_col] = valid[res_col].astype(str).str.strip().str.upper()
+        if ext_col:
+            valid[ext_col] = pd.to_numeric(valid[ext_col], errors='coerce').fillna(0)
+        def status(row):
+            r = row[res_col]
+            e = row[ext_col] if ext_col else 0
+            try: e = float(e)
+            except: e = 0
+            if r in ['A', 'ABSENT'] and e == 0: return 'Absent'
+            elif r in ['F', 'FAIL']: return 'Fail'
+            elif r in ['P', 'PASS']: return 'Pass'
+            return 'Ignore'
+        valid['_status'] = valid.apply(status, axis=1)
+        valid = valid[valid['_status'] != 'Ignore']
+        total = len(valid)
+        absent = (valid['_status'] == 'Absent').sum()
+        appeared = total - absent
+        passed = (valid['_status'] == 'Pass').sum()
+        failed = (valid['_status'] == 'Fail').sum()
+        pass_pct = round((passed / appeared) * 100, 2) if appeared > 0 else 0
+        rows.append({'Subject': subj, 'Total': total, 'Appeared': appeared, 'Absent': absent, 'Passed': passed, 'Failed': failed, 'Pass %': pass_pct})
+    return pd.DataFrame(rows)
+
+
+def _build_category_sheet(df, selected_subjects):
+    """Build FCD/FC/SC/Pass Class category breakdown."""
+    first_col = df.columns[0]
+    all_subj_total_cols = []
+    for subj in selected_subjects:
+        subj_cols = [c for c in df.columns if (c.startswith(f"{subj} ") or c.startswith(f"{subj} - ")) and c.strip().endswith(' Total')]
+        all_subj_total_cols.extend(subj_cols)
+
+    res_cols = []
+    for subj in selected_subjects:
+        rc = [c for c in df.columns if (c.startswith(f"{subj} ") or c.startswith(f"{subj} - ")) and 'Result' in c]
+        res_cols.extend(rc)
+
+    if not res_cols:
+        return pd.DataFrame()
+
+    def overall_result(row):
+        statuses = []
+        for rc in res_cols:
+            r = str(row.get(rc, '')).strip().upper()
+            if r in ['F', 'FAIL']: statuses.append('F')
+            elif r in ['A', 'ABSENT']: statuses.append('A')
+            elif r in ['P', 'PASS']: statuses.append('P')
+        if not statuses: return 'P'
+        if all(s == 'A' for s in statuses): return 'A'
+        if 'F' in statuses or 'A' in statuses: return 'F'
+        return 'P'
+
+    df_cat = df.copy()
+    df_cat['_Result'] = df_cat.apply(overall_result, axis=1)
+    pass_df = df_cat[df_cat['_Result'] == 'P'].copy()
+
+    if pass_df.empty or not all_subj_total_cols:
+        return pd.DataFrame(columns=[first_col, 'Name', 'Total_Marks', 'Percentage', 'Category'])
+
+    for c in all_subj_total_cols:
+        pass_df[c] = pd.to_numeric(pass_df[c], errors='coerce').fillna(0)
+    pass_df['_Total'] = pass_df[all_subj_total_cols].sum(axis=1)
+    num_subj = len(all_subj_total_cols)
+    pass_df['_Pct'] = round((pass_df['_Total'] / (num_subj * 100)) * 100, 2) if num_subj > 0 else 0
+
+    def category(pct):
+        if pct >= 70: return 'FCD (First Class Distinction)'
+        elif pct >= 60: return 'First Class'
+        elif pct >= 50: return 'Second Class'
+        return 'Pass Class'
+
+    pass_df['Category'] = pass_df['_Pct'].apply(category)
+    out_cols = [first_col]
+    if 'Name' in pass_df.columns:
+        out_cols.append('Name')
+    out_cols += ['_Total', '_Pct', 'Category']
+    result = pass_df[out_cols].rename(columns={'_Total': 'Total_Marks', '_Pct': 'Percentage'})
+    return result.sort_values('Percentage', ascending=False)
+
+
+def _get_grade_point(score):
+    """VTU grade-point mapping (same as ranking.py)."""
+    s = pd.to_numeric(score, errors='coerce')
+    if pd.isna(s): return 0
+    s = float(s)
+    if 90 <= s <= 100: return 10
+    elif 80 <= s < 90: return 9
+    elif 70 <= s < 80: return 8
+    elif 60 <= s < 70: return 7
+    elif 55 <= s < 60: return 6
+    elif 50 <= s < 55: return 5
+    elif 40 <= s < 50: return 4
+    return 0
+
+
+def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, scheme_sem_data):
+    """Auto-compute SGPA using the credit database — no need to visit Ranking page."""
+    from services.credit_service import extract_course_number
+    import json as _json
+
+    scheme = None
+    semester = None
+    if scheme_sem_data:
+        scheme = scheme_sem_data.get('scheme')
+        semester = scheme_sem_data.get('semester')
+
+    # Auto-detect semester from subject codes if not provided
+    if not semester and selected_subjects:
+        for code in selected_subjects:
+            num = extract_course_number(code)
+            if num and len(num) == 3:
+                semester = int(num[0])  # e.g. '301' → 3
+                break
+    if not semester:
+        semester = 5  # ultimate fallback
+
+    # Default scheme
+    if not scheme:
+        scheme = '2022'
+
+    print(f"[SGPA] Auto-detected scheme={scheme}, semester={semester}")
+
+    # Load credit map directly (bypass cache to avoid stale results)
+    import os as _os
+    credit_path = _os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+        'utils', 'credit_database', f'{scheme}_scheme', f'sem{semester}.json')
+    print(f"[SGPA] Credit file path: {credit_path}, exists={_os.path.exists(credit_path)}")
+    if not _os.path.exists(credit_path):
+        print(f"[SGPA] Credit file not found!")
+        return None, False
+    with open(credit_path, 'r') as _f:
+        credit_map = _json.load(_f)
+    print(f"[SGPA] Credit map loaded: {credit_map}")
+
+    # Build credit dict for selected subjects
+    credit_dict = {}
+    for code in selected_subjects:
+        num = extract_course_number(code)
+        cr = credit_map.get(num, 0) if num else 0
+        if cr > 0:
+            credit_dict[code] = cr
+
+    if not credit_dict:
+        return None, False
+
+    meta_col = df.columns[0]
+    if meta_col != 'Student_ID':
+        df = df.rename(columns={meta_col: 'Student_ID'})
+    df['Section'] = df['Student_ID'].apply(lambda x: assign_section(str(x), section_ranges, usn_mapping))
+
+    # Convert mark columns to numeric
+    for code in credit_dict:
+        for suffix in ['Internal', 'External', 'Total']:
+            col = next((c for c in df.columns if c.startswith(f"{code} ") and c.endswith(f" {suffix}")), None)
+            if not col:
+                col = next((c for c in df.columns if c.startswith(f"{code} - ") and c.endswith(f" {suffix}")), None)
+            if col:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # Compute Overall_Result first
+    subject_data_cols = _get_selected_subject_cols(df, selected_subjects)
+    res_cols = [c for c in subject_data_cols if 'Result' in c]
+    if res_cols:
+        df['Overall_Result'] = df.apply(
+            lambda row: _calc_overall_result(row, res_cols, df), axis=1)
+    else:
+        df['Overall_Result'] = 'P'
+
+    sgpa_rows = []
+    for _, row in df.iterrows():
+        total_cp, total_cre, total_marks, fail_flag = 0, 0, 0, False
+        for code, credit in credit_dict.items():
+            # Find the actual column names for this subject
+            i_col = next((c for c in df.columns if (c.startswith(f"{code} ") or c.startswith(f"{code} - ")) and c.endswith(' Internal')), None)
+            e_col = next((c for c in df.columns if (c.startswith(f"{code} ") or c.startswith(f"{code} - ")) and c.endswith(' External')), None)
+            t_col = next((c for c in df.columns if (c.startswith(f"{code} ") or c.startswith(f"{code} - ")) and c.endswith(' Total')), None)
+            r_col = next((c for c in df.columns if (c.startswith(f"{code} ") or c.startswith(f"{code} - ")) and 'Result' in c), None)
+
+            i_val = pd.to_numeric(row.get(i_col), errors='coerce') if i_col else 0
+            e_val = pd.to_numeric(row.get(e_col), errors='coerce') if e_col else 0
+            if pd.isna(i_val): i_val = 0
+            if pd.isna(e_val): e_val = 0
+
+            if t_col and t_col in df.columns:
+                score = pd.to_numeric(row.get(t_col), errors='coerce')
+                if pd.isna(score): score = 0
+            else:
+                score = i_val + e_val
+
+            res_val = str(row.get(r_col, '')).strip().upper() if r_col else ''
+
+            # Skip subjects the student didn't take at all
+            if pd.isna(row.get(r_col)) and score == 0 and i_val == 0 and e_val == 0:
+                continue
+
+            if res_val in ['F', 'FAIL']:
+                fail_flag = True
+            elif res_val in ['A', 'ABSENT'] or (e_val == 0 and res_val in ['A', 'ABSENT', '']):
+                fail_flag = True
+            elif score < 35:
+                fail_flag = True
+
+            total_cp += _get_grade_point(score) * credit
+            total_cre += credit
+            total_marks += score
+
+        sgpa = (total_cp / total_cre) if total_cre > 0 else 0.0
+        ovr = str(row.get('Overall_Result', '')).strip().upper()
+        if ovr in ['A', 'ABSENT']:
+            res = 'Absent'
+        elif ovr in ['F', 'FAIL'] or fail_flag:
+            res = 'Fail'
+        else:
+            res = 'Pass'
+
+        sgpa_rows.append({
+            'Student_ID': row['Student_ID'],
+            'Section': row.get('Section', ''),
+            'SGPA': round(sgpa, 2),
+            'Total_Marks': round(total_marks, 2),
+            'Overall_Result': res,
+        })
+
+    sgpa_df = pd.DataFrame(sgpa_rows)
+    pass_mask = sgpa_df['Overall_Result'] == 'Pass'
+    sgpa_df['SGPA_Rank'] = pd.NA
+    sgpa_df.loc[pass_mask, 'SGPA_Rank'] = sgpa_df.loc[pass_mask, 'SGPA'].rank(
+        method='min', ascending=False).astype('Int64')
+    return sgpa_df.sort_values('SGPA_Rank', na_position='last'), True
+
+
+def _build_sgpa_sheet(sgpa_json_str, df=None, selected_subjects=None,
+                      section_ranges=None, usn_mapping=None, scheme_sem_data=None):
+    """Build SGPA-based ranking sheet. Uses stored data if available, otherwise auto-computes."""
+    # Try stored SGPA data first
+    if sgpa_json_str:
+        try:
+            from io import StringIO
+            sgpa_df = pd.read_json(StringIO(sgpa_json_str), orient='split')
+            if not sgpa_df.empty and 'SGPA' in sgpa_df.columns:
+                display_cols = ['Student_ID']
+                if 'Section' in sgpa_df.columns:
+                    display_cols.append('Section')
+                display_cols += ['SGPA', 'Total_Marks_Selected', 'Result_Selected', 'SGPA_Class_Rank']
+                display_cols = [c for c in display_cols if c in sgpa_df.columns]
+                out = sgpa_df[display_cols].copy()
+                out = out.rename(columns={
+                    'Total_Marks_Selected': 'Total_Marks',
+                    'Result_Selected': 'Overall_Result',
+                    'SGPA_Class_Rank': 'SGPA_Rank',
+                })
+                return out.sort_values('SGPA_Rank', na_position='last'), True
+        except Exception:
+            pass
+
+    # Auto-compute SGPA if we have the data
+    if df is not None and selected_subjects:
+        return _auto_compute_sgpa(df.copy(), selected_subjects, section_ranges, usn_mapping, scheme_sem_data)
+
+    return None, False
+
+
+@callback(
+    Output('universal-download-excel', 'data'),
+    Input('universal-download-btn', 'n_clicks'),
+    State('stored-data', 'data'),
+    State('subject-selector', 'value'),
+    State('section-data', 'data'),
+    State('usn-mapping-store', 'data'),
+    State('sgpa-store', 'data'),
+    State('scheme-semester-store', 'data'),
+    prevent_initial_call=True
+)
+def universal_download(n_clicks, session_id, selected_subjects, section_ranges, usn_mapping, sgpa_json, scheme_sem_data):
+    print(f"[DOWNLOAD] ENTERED. n_clicks={n_clicks}, session_id={session_id}, subjects_len={len(selected_subjects) if selected_subjects else 0}")
+    if not n_clicks or not session_id or not selected_subjects:
+        print(f"[DOWNLOAD] PreventUpdate: n_clicks={bool(n_clicks)}, session_id={bool(session_id)}, subjects={bool(selected_subjects)}")
+        raise PreventUpdate
+
+    print(f"[DOWNLOAD] Triggered. session_id={session_id}, subjects={selected_subjects}")
+
+    df = cache.get(session_id)
+    if df is None:
+        print("[DOWNLOAD] Cache miss - session expired")
+        raise PreventUpdate
+
+    from io import BytesIO
+    from openpyxl.styles import PatternFill, Font, Alignment
+    from openpyxl.utils import get_column_letter
+
+    try:
+        overview_df = _build_overview_sheet(df.copy(), selected_subjects, section_ranges, usn_mapping)
+        print(f"[DOWNLOAD] Overview: {len(overview_df)} rows")
+        ranking_df = _build_ranking_sheet(df.copy(), selected_subjects, section_ranges, usn_mapping)
+        print(f"[DOWNLOAD] Ranking: {len(ranking_df)} rows")
+        subject_df = _build_subject_analysis_sheet(df.copy(), selected_subjects, section_ranges, usn_mapping)
+        print(f"[DOWNLOAD] Subject Analysis: {len(subject_df)} rows")
+        category_df = _build_category_sheet(df.copy(), selected_subjects)
+        print(f"[DOWNLOAD] Category: {len(category_df)} rows")
+        sgpa_df, sgpa_computed = _build_sgpa_sheet(
+            sgpa_json, df.copy(), selected_subjects,
+            section_ranges, usn_mapping, scheme_sem_data)
+        print(f"[DOWNLOAD] SGPA computed: {sgpa_computed}")
+    except Exception as e:
+        print(f"[DOWNLOAD ERROR] Building sheets failed: {e}")
+        import traceback; traceback.print_exc()
+        raise PreventUpdate
+
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine='openpyxl') as writer:
+        overview_df.to_excel(writer, sheet_name='Overview', index=False)
+        ranking_df.to_excel(writer, sheet_name='Ranking (Marks)', index=False)
+        if sgpa_computed and sgpa_df is not None:
+            sgpa_df.to_excel(writer, sheet_name='Ranking (SGPA)', index=False)
+        else:
+            # Write a message sheet explaining SGPA is not calculated
+            msg_df = pd.DataFrame({'Note': [
+                'SGPA Ranking could not be calculated.',
+                'Possible reasons:',
+                '1. No credit mapping found for the selected scheme/semester',
+                '2. Scheme and semester were not selected on the overview page',
+                'Ensure you select the correct Scheme and Semester before downloading.',
+            ]})
+            msg_df.to_excel(writer, sheet_name='Ranking (SGPA)', index=False)
+        if not subject_df.empty:
+            subject_df.to_excel(writer, sheet_name='Subject Analysis', index=False)
+        if not category_df.empty:
+            category_df.to_excel(writer, sheet_name='Category Breakdown', index=False)
+
+        # --- Color definitions ---
+        header_fill = PatternFill(start_color='FF1F2937', end_color='FF1F2937', fill_type='solid')
+        header_font = Font(bold=True, color='FFFFFFFF')
+        pass_fill = PatternFill(start_color='FFECFDF5', end_color='FFECFDF5', fill_type='solid')
+        pass_font = Font(color='FF065F46')
+        fail_fill = PatternFill(start_color='FFFEF2F2', end_color='FFFEF2F2', fill_type='solid')
+        fail_font = Font(color='FF991B1B')
+        absent_fill = PatternFill(start_color='FFFFFBEB', end_color='FFFFFBEB', fill_type='solid')
+        absent_font = Font(color='FFB45309', bold=True)
+        fcd_fill = PatternFill(start_color='FFF5F3FF', end_color='FFF5F3FF', fill_type='solid')
+        fcd_font = Font(color='FF7C3AED', bold=True)
+        fc_fill = PatternFill(start_color='FFF0F9FF', end_color='FFF0F9FF', fill_type='solid')
+        fc_font = Font(color='FF075985')
+        sc_fill = PatternFill(start_color='FFFFFBF0', end_color='FFFFFBF0', fill_type='solid')
+        sc_font = Font(color='FFB45309')
+        rank1_fill = PatternFill(start_color='FFFFFBEB', end_color='FFFFFBEB', fill_type='solid')
+        rank1_font = Font(color='FF92400E', bold=True)
+        rank2_fill = PatternFill(start_color='FFF0F9FF', end_color='FFF0F9FF', fill_type='solid')
+        rank2_font = Font(color='FF075985', bold=True)
+        rank3_fill = PatternFill(start_color='FFFFF7ED', end_color='FFFFF7ED', fill_type='solid')
+        rank3_font = Font(color='FF9A3412', bold=True)
+        odd_fill = PatternFill(start_color='FFF9FAFB', end_color='FFF9FAFB', fill_type='solid')
+
+        def _style_headers(ws):
+            for col_idx in range(1, ws.max_column + 1):
+                cell = ws.cell(row=1, column=col_idx)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                max_len = max(len(str(cell.value or '')), 10)
+                ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 4, 35)
+
+        def _find_col(ws, name):
+            for col_idx in range(1, ws.max_column + 1):
+                if str(ws.cell(row=1, column=col_idx).value or '').strip() == name:
+                    return col_idx
+            return None
+
+        def _apply_row_fill(ws, row_idx, fill, font=None):
+            for col_idx in range(1, ws.max_column + 1):
+                ws.cell(row=row_idx, column=col_idx).fill = fill
+                if font:
+                    ws.cell(row=row_idx, column=col_idx).font = font
+
+        # ── Style Overview sheet ──
+        ws_ov = writer.sheets['Overview']
+        _style_headers(ws_ov)
+        res_ci = _find_col(ws_ov, 'Overall_Result')
+        for row_idx in range(2, ws_ov.max_row + 1):
+            val = str(ws_ov.cell(row=row_idx, column=res_ci).value or '').strip().upper() if res_ci else ''
+            if val in ['F', 'FAIL']:
+                _apply_row_fill(ws_ov, row_idx, fail_fill, fail_font)
+            elif val in ['A', 'ABSENT']:
+                _apply_row_fill(ws_ov, row_idx, absent_fill, absent_font)
+            elif val in ['P', 'PASS']:
+                _apply_row_fill(ws_ov, row_idx, pass_fill, pass_font)
+            elif row_idx % 2 == 1:
+                _apply_row_fill(ws_ov, row_idx, odd_fill)
+
+        # ── Style Ranking (Marks) sheet ──
+        ws_rk = writer.sheets['Ranking (Marks)']
+        _style_headers(ws_rk)
+        res_ci = _find_col(ws_rk, 'Overall_Result')
+        rank_ci = _find_col(ws_rk, 'Class_Rank')
+        for row_idx in range(2, ws_rk.max_row + 1):
+            val = str(ws_rk.cell(row=row_idx, column=res_ci).value or '').strip().upper() if res_ci else ''
+            rk = None
+            if rank_ci:
+                try: rk = int(ws_rk.cell(row=row_idx, column=rank_ci).value)
+                except: rk = None
+            if val in ['F', 'FAIL']:
+                _apply_row_fill(ws_rk, row_idx, fail_fill, fail_font)
+            elif val in ['A', 'ABSENT']:
+                _apply_row_fill(ws_rk, row_idx, absent_fill, absent_font)
+            elif rk == 1:
+                _apply_row_fill(ws_rk, row_idx, rank1_fill, rank1_font)
+            elif rk == 2:
+                _apply_row_fill(ws_rk, row_idx, rank2_fill, rank2_font)
+            elif rk == 3:
+                _apply_row_fill(ws_rk, row_idx, rank3_fill, rank3_font)
+            elif val in ['P', 'PASS']:
+                _apply_row_fill(ws_rk, row_idx, pass_fill, pass_font)
+            elif row_idx % 2 == 1:
+                _apply_row_fill(ws_rk, row_idx, odd_fill)
+
+        # ── Style Ranking (SGPA) sheet ──
+        ws_sgpa = writer.sheets['Ranking (SGPA)']
+        _style_headers(ws_sgpa)
+        if sgpa_computed and sgpa_df is not None:
+            sgpa_res_ci = _find_col(ws_sgpa, 'Overall_Result')
+            sgpa_rank_ci = _find_col(ws_sgpa, 'SGPA_Rank')
+            for row_idx in range(2, ws_sgpa.max_row + 1):
+                val = str(ws_sgpa.cell(row=row_idx, column=sgpa_res_ci).value or '').strip().upper() if sgpa_res_ci else ''
+                rk = None
+                if sgpa_rank_ci:
+                    try: rk = int(ws_sgpa.cell(row=row_idx, column=sgpa_rank_ci).value)
+                    except: rk = None
+                if val in ['FAIL']:
+                    _apply_row_fill(ws_sgpa, row_idx, fail_fill, fail_font)
+                elif val in ['ABSENT']:
+                    _apply_row_fill(ws_sgpa, row_idx, absent_fill, absent_font)
+                elif rk == 1:
+                    _apply_row_fill(ws_sgpa, row_idx, rank1_fill, rank1_font)
+                elif rk == 2:
+                    _apply_row_fill(ws_sgpa, row_idx, rank2_fill, rank2_font)
+                elif rk == 3:
+                    _apply_row_fill(ws_sgpa, row_idx, rank3_fill, rank3_font)
+                elif val in ['PASS']:
+                    _apply_row_fill(ws_sgpa, row_idx, pass_fill, pass_font)
+                elif row_idx % 2 == 1:
+                    _apply_row_fill(ws_sgpa, row_idx, odd_fill)
+        else:
+            # Style the info message sheet
+            info_fill = PatternFill(start_color='FFFFF7ED', end_color='FFFFF7ED', fill_type='solid')
+            info_font = Font(color='FF9A3412', italic=True)
+            for row_idx in range(2, ws_sgpa.max_row + 1):
+                _apply_row_fill(ws_sgpa, row_idx, info_fill, info_font)
+
+        # ── Style Subject Analysis sheet ──
+        if 'Subject Analysis' in writer.sheets:
+            ws_sa = writer.sheets['Subject Analysis']
+            _style_headers(ws_sa)
+            # Find column indices for cell-level coloring
+            sa_passed_ci = _find_col(ws_sa, 'Passed')
+            sa_failed_ci = _find_col(ws_sa, 'Failed')
+            sa_absent_ci = _find_col(ws_sa, 'Absent')
+            sa_appeared_ci = _find_col(ws_sa, 'Appeared')
+            sa_total_ci = _find_col(ws_sa, 'Total')
+            sa_pp_ci = _find_col(ws_sa, 'Pass %')
+
+            # Cell-level fills for value columns
+            passed_cell_fill = PatternFill(start_color='FFD1FAE5', end_color='FFD1FAE5', fill_type='solid')
+            passed_cell_font = Font(color='FF065F46', bold=True)
+            failed_cell_fill = PatternFill(start_color='FFFEE2E2', end_color='FFFEE2E2', fill_type='solid')
+            failed_cell_font = Font(color='FF991B1B', bold=True)
+            absent_cell_fill = PatternFill(start_color='FFFEF3C7', end_color='FFFEF3C7', fill_type='solid')
+            absent_cell_font = Font(color='FF92400E', bold=True)
+            appeared_cell_fill = PatternFill(start_color='FFDBEAFE', end_color='FFDBEAFE', fill_type='solid')
+            appeared_cell_font = Font(color='FF1E40AF', bold=True)
+            total_cell_fill = PatternFill(start_color='FFE0E7FF', end_color='FFE0E7FF', fill_type='solid')
+            total_cell_font = Font(color='FF3730A3', bold=True)
+            pp_high_fill = PatternFill(start_color='FFA7F3D0', end_color='FFA7F3D0', fill_type='solid')
+            pp_high_font = Font(color='FF065F46', bold=True)
+            pp_mid_fill = PatternFill(start_color='FFFEF9C3', end_color='FFFEF9C3', fill_type='solid')
+            pp_mid_font = Font(color='FF854D0E', bold=True)
+            pp_low_fill = PatternFill(start_color='FFFECACA', end_color='FFFECACA', fill_type='solid')
+            pp_low_font = Font(color='FF991B1B', bold=True)
+
+            for row_idx in range(2, ws_sa.max_row + 1):
+                if row_idx % 2 == 1:
+                    _apply_row_fill(ws_sa, row_idx, odd_fill)
+                # Color individual value cells by column
+                if sa_passed_ci:
+                    c = ws_sa.cell(row=row_idx, column=sa_passed_ci)
+                    c.fill = passed_cell_fill
+                    c.font = passed_cell_font
+                if sa_failed_ci:
+                    c = ws_sa.cell(row=row_idx, column=sa_failed_ci)
+                    c.fill = failed_cell_fill
+                    c.font = failed_cell_font
+                if sa_absent_ci:
+                    c = ws_sa.cell(row=row_idx, column=sa_absent_ci)
+                    c.fill = absent_cell_fill
+                    c.font = absent_cell_font
+                if sa_appeared_ci:
+                    c = ws_sa.cell(row=row_idx, column=sa_appeared_ci)
+                    c.fill = appeared_cell_fill
+                    c.font = appeared_cell_font
+                if sa_total_ci:
+                    c = ws_sa.cell(row=row_idx, column=sa_total_ci)
+                    c.fill = total_cell_fill
+                    c.font = total_cell_font
+                if sa_pp_ci:
+                    c = ws_sa.cell(row=row_idx, column=sa_pp_ci)
+                    try: pct = float(c.value)
+                    except: pct = 0
+                    if pct >= 70:
+                        c.fill = pp_high_fill
+                        c.font = pp_high_font
+                    elif pct >= 50:
+                        c.fill = pp_mid_fill
+                        c.font = pp_mid_font
+                    else:
+                        c.fill = pp_low_fill
+                        c.font = pp_low_font
+
+        # ── Style Category Breakdown sheet ──
+        if 'Category Breakdown' in writer.sheets:
+            ws_cb = writer.sheets['Category Breakdown']
+            _style_headers(ws_cb)
+            cat_ci = _find_col(ws_cb, 'Category')
+            # Distinct colors per category
+            pc_fill = PatternFill(start_color='FFECFDF5', end_color='FFECFDF5', fill_type='solid')
+            pc_font = Font(color='FF065F46')
+            fcd_row_fill = PatternFill(start_color='FFEDE9FE', end_color='FFEDE9FE', fill_type='solid')
+            fcd_row_font = Font(color='FF6D28D9', bold=True)
+            fc_row_fill = PatternFill(start_color='FFDBEAFE', end_color='FFDBEAFE', fill_type='solid')
+            fc_row_font = Font(color='FF1E40AF', bold=True)
+            sc_row_fill = PatternFill(start_color='FFFEF3C7', end_color='FFFEF3C7', fill_type='solid')
+            sc_row_font = Font(color='FF92400E', bold=True)
+            for row_idx in range(2, ws_cb.max_row + 1):
+                cat = str(ws_cb.cell(row=row_idx, column=cat_ci).value or '').strip() if cat_ci else ''
+                if 'FCD' in cat or 'Distinction' in cat:
+                    _apply_row_fill(ws_cb, row_idx, fcd_row_fill, fcd_row_font)
+                elif 'First' in cat:
+                    _apply_row_fill(ws_cb, row_idx, fc_row_fill, fc_row_font)
+                elif 'Second' in cat:
+                    _apply_row_fill(ws_cb, row_idx, sc_row_fill, sc_row_font)
+                elif 'Pass' in cat:
+                    _apply_row_fill(ws_cb, row_idx, pc_fill, pc_font)
+                elif row_idx % 2 == 1:
+                    _apply_row_fill(ws_cb, row_idx, odd_fill)
+
+    return dcc.send_bytes(out.getvalue(), 'Complete_Report.xlsx')

@@ -1,11 +1,12 @@
 import json
 import os
 import re
-from cache_config import cache
 
-BASE_PATH = os.path.join("utils", "credit_database")
+# Use absolute path based on this file's location so it works regardless of CWD
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_PATH = os.path.join(_PROJECT_ROOT, "utils", "credit_database")
 
-@cache.memoize(timeout=86400) # Cache for 1 day
+
 def load_credit_map(scheme, semester):
     """
     Load credit JSON file for given scheme and semester
@@ -13,11 +14,13 @@ def load_credit_map(scheme, semester):
     path = os.path.join(BASE_PATH, f"{scheme}_scheme", f"sem{semester}.json")
 
     if not os.path.exists(path):
-        print(f"Credit file not found: {path} - Returning empty map.")
+        print(f"[CreditService] Credit file not found: {path}")
         return {}
 
     with open(path, "r") as f:
-        return json.load(f)
+        data = json.load(f)
+        print(f"[CreditService] Loaded {len(data)} credits from sem{semester}.json")
+        return data
 
 
 def extract_course_number(subject_code):

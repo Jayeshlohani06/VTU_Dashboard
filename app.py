@@ -253,13 +253,13 @@ feedback_modal = dbc.Modal(
                                         ),
                                         html.Div([
                                             html.H6("Send an Email", className="fw-bold mb-0"),
-                                            html.Small("jayeshlohani06@gmail.com", className="text-muted")
+                                            html.Small("dashboardhelpdesk06@gmail.com", className="text-muted")
                                         ])
                                     ], className="d-flex align-items-center gap-3"),
                                     html.I(className="bi bi-arrow-right", style={"fontSize": "1.2rem", "color": "#9ca3af"})
                                 ], className="d-flex align-items-center justify-content-between")
                             ], className="contact-card"),
-                            href="mailto:jayeshlohani06@gmail.com?subject=VTU%20Dashboard%20Query",
+                            href="mailto:dashboardhelpdesk06@gmail.com?subject=VTU%20Dashboard%20Query",
                             target="_blank",
                             style={"textDecoration": "none"}
                         ),
@@ -341,6 +341,7 @@ app.layout = html.Div([
             dcc.Store(id="usn-mapping-store", storage_type="session"),
             dcc.Store(id="subject-options-store", storage_type="session"),
             dcc.Store(id="scheme-semester-store", storage_type="session"),
+            dcc.Store(id="sgpa-store", storage_type="session"),
 
             # PAGE CONTENT
             html.Div(
