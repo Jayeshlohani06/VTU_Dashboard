@@ -45,37 +45,7 @@ PAGE_CSS_LIGHT = r"""
 .overview-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
 """
 
-PAGE_CSS_DARK = r"""
-:root{
-  --bg: #0f172a;
-  --card: #1e293b;
-  --text: #f8fafc;
-  --muted:#94a3b8;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-  --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
-  --k1:#451a03; --k2:#172554; --k3:#431407; --k45:#334155;
-  --pass-bg:#064e3b; --pass-text:#a7f3d0;
-  --fail-bg:#7f1d1d; --fail-text:#fecaca;
-}
-.rnk-wrap{ background: var(--bg); padding: 20px; border-radius: 16px; }
-.rnk-card{
-  background: var(--card); border: 0 !important; border-radius: 12px !important;
-  box-shadow: var(--shadow); transition: all 0.3s ease; color: var(--text);
-}
-.rnk-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }
-.kpi-card{ border-left: 4px solid transparent; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-.kpi-label{ color: var(--muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value{ font-weight: 800; font-size: 2.2rem; line-height: 1.2; }
-.rank-chip{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; font-weight:700; font-size:0.9rem; margin-right:8px; }
-.rank-1{ background:var(--k1); color:#fbbf24; border:1px solid #78350f; }
-.rank-2{ background:var(--k2); color:#60a5fa; border:1px solid #1e3a8a; }
-.rank-3{ background:var(--k3); color:#fb923c; border:1px solid #7c2d12; }
-.rank-4,.rank-5{ background:var(--k45); color:#cbd5e1; border:1px solid #475569; }
-.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
-.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
-.overview-kpi-clickable:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.6) !important; cursor: pointer; }
-.overview-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
-"""
+
 
 # ---------- HELPER FUNCTIONS ----------
 
@@ -278,7 +248,7 @@ def kpi_card(title, value, id_val, icon, color, bg_color):
                 # Icon Box
                 html.Div(
                     html.I(className=f"bi {icon}", style={"color": color, "fontSize": "1.4rem"}),
-                    className="d-flex align-items-center justify-content-center",
+                    className="kpi-icon-box d-flex align-items-center justify-content-center",
                     style={
                         "minWidth": "44px", "width": "44px", "height": "44px", 
                         "borderRadius": "10px", "backgroundColor": bg_color
@@ -287,7 +257,7 @@ def kpi_card(title, value, id_val, icon, color, bg_color):
                 # Text Content
                 html.Div([
                     html.H6(title, className="text-muted text-uppercase fw-bold mb-0 text-truncate", style={"fontSize": "0.7rem", "letterSpacing": "0.5px", "maxWidth": "100px"}),
-                    html.H3(children=value, id=f"{id_val}-text", className="fw-bold mb-0", style={"color": color, "fontSize": "1.6rem"})
+                    html.H3(children=value, id=f"{id_val}-text", className="kpi-val fw-bold mb-0", style={"color": color, "fontSize": "1.6rem"})
                 ], className="ms-2")
             ], className="d-flex align-items-center h-100"),
             # Text Cue for Clickability

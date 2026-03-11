@@ -298,67 +298,12 @@ PAGE_CSS_LIGHT = r"""
 .rnk-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
 """
 
-PAGE_CSS_DARK = r"""
-:root{
-  --bg: #0f172a;
-  --card: #1e293b;
-  --text: #f8fafc;
-  --muted:#94a3b8;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-  --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
-  --k1:#451a03; --k2:#172554; --k3:#431407; --k45:#334155;
-  --pass-bg:#064e3b; --pass-text:#a7f3d0;
-  --fail-bg:#7f1d1d; --fail-text:#fecaca;
-}
-.rnk-wrap{ background: var(--bg); padding: 20px; border-radius: 16px; }
-.rnk-card{
-  background: var(--card); border: 0 !important; border-radius: 12px !important;
-  box-shadow: var(--shadow); transition: all 0.3s ease; color: var(--text);
-}
-.rnk-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }
-.kpi-card{ border-left: 4px solid transparent; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-.kpi-label{ color: var(--muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value{ font-weight: 800; font-size: 2.2rem; line-height: 1.2; }
-.rank-chip{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; font-weight:700; font-size:0.9rem; margin-right:8px; }
-.rank-1{ background:var(--k1); color:#fbbf24; border:1px solid #78350f; }
-.rank-2{ background:var(--k2); color:#60a5fa; border:1px solid #1e3a8a; }
-.rank-3{ background:var(--k3); color:#fb923c; border:1px solid #7c2d12; }
-.rank-4,.rank-5{ background:var(--k45); color:#cbd5e1; border:1px solid #475569; }
-.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
-.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
-.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td{ border-color: #334155 !important; background-color: #1e293b !important; color: #f8fafc !important; }
-.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{ border-color: #475569 !important; background-color: #0f172a !important; color: #f8fafc !important; }
-.accordion-button:not(.collapsed){ background-color: #172554; color: #60a5fa; }
-.accordion-button{ color: #f8fafc; background-color: #1e293b; border-color: #334155; }
-.table { margin-bottom: 0; color: #f8fafc; }
-.table tbody tr { border-bottom-color: #334155; }
-.table tbody tr:hover { background-color: #334155 !important; }
-.table thead { border-top-color: #475569; background-color: #0f172a; }
-.table thead th { color: #f8fafc; }
 
-/* Modal Print Specifics */
-@media print {
-  @page { size: landscape !important; margin: 1cm !important; }
-  body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: #0f172a !important; margin: 0 !important; padding: 0 !important; }
-  body.modal-open .pb-5 > *:not(.modal) { display: none !important; }
-  body.modal-open .modal { display: block !important; position: static !important; opacity: 1 !important; background: transparent !important; }
-  body.modal-open .modal-dialog { max-width: 100% !important; width: 100% !important; margin: 0 !important; }
-  body.modal-open .modal-content { border: none !important; box-shadow: none !important; }
-  body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
-}
-.rnk-kpi-clickable:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.6) !important; cursor: pointer; }
-.rnk-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
-"""
-
-def themed_style_block(theme: str):
-    css = PAGE_CSS_DARK if theme == "dark" else PAGE_CSS_LIGHT
-    return dcc.Markdown(f"<style>{css}</style>", dangerously_allow_html=True)
 
 
 # ==================== Layout ====================
 
 layout = dbc.Container([
-    html.Div(id="theme-style"),
     dcc.Markdown(f"<style>{PAGE_CSS_LIGHT}</style>", dangerously_allow_html=True),
     html.Link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"),
 
@@ -404,9 +349,6 @@ layout = dbc.Container([
             ], className="g-2 rnk-controls mb-3"),
 
             dbc.Row([
-                dbc.Col(dbc.Checklist(
-                    id="theme-toggle", options=[{"label": "🌙 Dark Mode", "value": "dark"}], value=[], switch=True,
-                ), width="auto", className="d-flex align-items-center"),
                 dbc.Col(html.Div([
                     # New Metric Selector
                     html.Div([
@@ -649,8 +591,6 @@ layout = dbc.Container([
 )
 def toggle_legend(n1, n2, is_open): return not is_open if n1 or n2 else is_open
 
-@callback(Output("theme-style", "children"), Input("theme-toggle", "value"))
-def apply_theme(v): return themed_style_block("dark" if "dark" in (v or []) else "light")
 
 @callback(
     Output('section-dropdown', 'options'), 
@@ -1130,12 +1070,12 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
                     html.Div([
                         html.Div(
                             html.I(className=f"bi {icon_map.get(x['id'], 'bi-graph-up-arrow')}", style={"color": x["color"], "fontSize": "1.4rem"}),
-                             className="d-flex align-items-center justify-content-center",
+                             className="kpi-icon-box d-flex align-items-center justify-content-center",
                              style={"minWidth": "42px", "width": "42px", "height": "42px", "borderRadius": "10px", "backgroundColor": x["bg"]}
                         ),
                         html.Div([
                             html.H6(x["label"], className="text-muted text-uppercase fw-bold mb-0", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
-                            html.H3(str(x["value"]), className="fw-bold mb-0", style={"color": x["color"], "fontSize": "1.6rem"})
+                            html.H3(str(x["value"]), className="kpi-val fw-bold mb-0", style={"color": x["color"], "fontSize": "1.6rem"})
                         ], className="ms-3")
                     ], className="d-flex align-items-center h-100"),
                     html.Div("👆 Click for details", className="kpi-hover-hint text-muted text-end mt-1", style={"fontSize": "0.6rem", "opacity": "0.8", "position": "absolute", "bottom": "8px", "right": "12px", "display": "none", "transition": "opacity 0.2s ease"}),

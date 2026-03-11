@@ -971,7 +971,7 @@ def update_analysis(selected_subjects, result_filter, section_filter, chart_tab,
                             # Text on the Right
                             html.Div([
                                 html.H6(k["label"], className="subject-kpi-label"),
-                                html.H3(str(k["value"]), className="subject-kpi-value", style={"color": k["color"]})
+                                html.H3(str(k["value"]), className="kpi-val subject-kpi-value", style={"color": k["color"]})
                             ], className="subject-kpi-text-box"),
                         ], className="subject-kpi-content-wrapper"),
                         

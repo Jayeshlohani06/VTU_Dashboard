@@ -50,9 +50,16 @@ navbar = dbc.Navbar(
                     dbc.NavLink("Subject Analysis", href="/subject_analysis", active="exact", className="nav-pill"),
                     dbc.NavLink("Student Detail", href="/student_detail", active="exact", className="nav-pill"),
                     dbc.NavLink("Branch Analysis", href="/branch-analysis", active="exact", className="nav-pill"),
+                    html.Button(
+                        html.I(className="bi bi-moon-fill", id="theme-icon"),
+                        id="theme-toggle-btn",
+                        className="theme-toggle-btn ms-3",
+                        title="Toggle Dark Mode",
+                        n_clicks=0,
+                    ),
                 ],
                 pills=True,
-                className="ms-auto",
+                className="ms-auto align-items-center",
             ),
         ],
         fluid=True
@@ -310,6 +317,7 @@ app.layout = html.Div([
         [
 
             dcc.Location(id="url", refresh=False),
+            dcc.Store(id="theme-store", storage_type="local", data="light"),
 
             # NAVBAR
             navbar,
@@ -346,6 +354,7 @@ app.layout = html.Div([
             # PAGE CONTENT
             html.Div(
                 dash.page_container,
+                id="page-content-wrapper",
                 style={
                     "background": "white",
                     "padding": "20px",
@@ -364,6 +373,7 @@ app.layout = html.Div([
                         html.Br(),
                         html.Span("Under the Guidance of Professor Arun K H, Assistant Professor Acharya Institute of Technology", className="fw-bold mt-2 d-inline-block")
                     ],
+                    id="footer-content",
                     className="text-center",
                     style={
                         "fontSize": "1rem", 
@@ -379,6 +389,7 @@ app.layout = html.Div([
 
         ],
         fluid=True,
+        id="main-container",
         className="d-flex flex-column",
         style={
             "backgroundColor": "#f3f4f6",
@@ -498,6 +509,35 @@ def submit_feedback(n, name, email, ftype, message, rating):
 
 # ----------------- Server -----------------
 server = app.server
+
+# ----------------- Dark Mode Toggle (Clientside) -----------------
+app.clientside_callback(
+    """
+    function(n_clicks, currentTheme) {
+        if (!n_clicks) {
+            // On initial load, apply saved theme
+            var theme = currentTheme || "light";
+            document.documentElement.setAttribute("data-theme", theme);
+            var icon = document.getElementById("theme-icon");
+            if (icon) {
+                icon.className = theme === "dark" ? "bi bi-sun-fill" : "bi bi-moon-fill";
+            }
+            return window.dash_clientside.no_update;
+        }
+        var newTheme = currentTheme === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", newTheme);
+        var icon = document.getElementById("theme-icon");
+        if (icon) {
+            icon.className = newTheme === "dark" ? "bi bi-sun-fill" : "bi bi-moon-fill";
+        }
+        return newTheme;
+    }
+    """,
+    Output("theme-store", "data"),
+    Input("theme-toggle-btn", "n_clicks"),
+    State("theme-store", "data"),
+    prevent_initial_call=False
+)
 
 # ----------------- Tour Trigger (Clientside) -----------------
 app.clientside_callback(
