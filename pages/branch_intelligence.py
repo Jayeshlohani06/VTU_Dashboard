@@ -43,6 +43,10 @@ layout = dbc.Container([
         "Advanced analytics across branches, subjects and student performance.",
         className="text-center text-muted"
     ),
+    html.Div(
+        dbc.Button("📖 Rules & Guidelines", id="bi-open-legend", color="primary", size="sm", className="fw-bold", outline=True),
+        className="text-center mb-2"
+    ),
     html.Hr(),
 
     # ---------- BASIC KPIs ----------
@@ -269,10 +273,77 @@ layout = dbc.Container([
             html.H4("📚 Subject Overview"),
             html.Div(id="bi-subject-summary")
         ], style={"overflow": "visible"})
-    ], className="shadow-sm mb-4", style={"overflow": "visible"})
+    ], className="shadow-sm mb-4", style={"overflow": "visible"}),
+
+    # --- Rules & Guidelines Modal ---
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("🧠 Branch Intelligence — Rules & Guidelines")),
+        dbc.ModalBody(
+            html.Div([
+                html.H5("🚀 Getting Started", className="text-primary fw-bold mb-2"),
+                html.P("This page provides cross-branch comparative analytics. It reads data from the Branch Analysis page — you must upload and analyze branch files there first.", className="text-muted small mb-3"),
+
+                html.H6("📥 Prerequisites", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Go to the Branch Analysis page and upload result files for each branch."),
+                    html.Li("Click 'Analyze & Generate Dashboard' on that page."),
+                    html.Li("Once analyzed, the branch data is automatically available here."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🔍 Filters", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Branch Selector: "), "Choose one or more branches to include in the analysis. Use 'Select All' or 'Clear' for quick selection."]),
+                    html.Li([html.Strong("Subject Selector: "), "Filter analytics to specific subjects across the selected branches."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📊 KPI Cards", className="fw-bold text-dark"),
+                html.P("The top section shows 8 intelligence metrics:", className="text-muted small mb-2"),
+                html.Ul([
+                    html.Li([html.Strong("Total Students: "), "Combined student count across all selected branches."]),
+                    html.Li([html.Strong("Branches Loaded: "), "Number of branches available for analysis."]),
+                    html.Li([html.Strong("Subjects Detected: "), "Total unique subjects found across all branches."]),
+                    html.Li([html.Strong("Overall Pass %: "), "Aggregate pass rate across all selected branches."]),
+                    html.Li([html.Strong("Best Branch: "), "Branch with the highest pass rate."]),
+                    html.Li([html.Strong("Weak Branch: "), "Branch with the lowest pass rate."]),
+                    html.Li([html.Strong("Hardest Subject: "), "Subject with the highest fail rate across all branches."]),
+                    html.Li([html.Strong("Easiest Subject: "), "Subject with the lowest fail rate across all branches."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📋 Tables", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Branch Performance: "), "Shows Students, Passed, and Failed counts per branch with color-coded rows."]),
+                    html.Li([html.Strong("Subject Overview: "), "Shows Students, Pass, and Fail counts per subject — filtered by selected branches and subjects."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("⚠️ Important Notes", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("This page is read-only — all data comes from the Branch Analysis page."),
+                    html.Li("If no data appears, ensure you have uploaded and analyzed branches on the Branch Analysis page first."),
+                    html.Li("All KPIs and tables update in real-time as you change branch/subject filters."),
+                    html.Li("'Best/Weak Branch' and 'Hardest/Easiest Subject' are computed dynamically based on your current filter selection."),
+                ], className="small mb-0"),
+            ])
+        ),
+        dbc.ModalFooter(dbc.Button("Got it!", id="bi-close-legend", className="ms-auto", color="primary"))
+    ], id="bi-legend-modal", is_open=False, size="lg", style={"zIndex": 10500}),
 
 ], fluid=True)
 
+
+# --------------------------------------------------
+# TOGGLE LEGEND MODAL
+# --------------------------------------------------
+@callback(
+    Output("bi-legend-modal", "is_open"),
+    [Input("bi-open-legend", "n_clicks"), Input("bi-close-legend", "n_clicks")],
+    [State("bi-legend-modal", "is_open")],
+    prevent_initial_call=True
+)
+def toggle_bi_legend(n1, n2, is_open): return not is_open if n1 or n2 else is_open
 
 # --------------------------------------------------
 # SELECT ALL / CLEAR (BRANCHES)

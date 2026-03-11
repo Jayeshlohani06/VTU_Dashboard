@@ -1,0 +1,714 @@
+/* ══════════════════════════════════════════════
+   UNIVERSAL DARK MODE — triggered by [data-theme="dark"] on <html>
+   ══════════════════════════════════════════════ */
+
+/* ─── Theme Toggle Button (Navbar) ─── */
+.theme-toggle-btn {
+    background: transparent !important;
+    border: 2px solid rgba(255,255,255,0.3) !important;
+    border-radius: 50% !important;
+    width: 38px !important;
+    height: 38px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    color: #fbbf24 !important;
+    font-size: 1.1rem !important;
+    transition: all 0.3s ease !important;
+    padding: 0 !important;
+}
+
+.theme-toggle-btn:hover {
+    background: rgba(255,255,255,0.1) !important;
+    border-color: rgba(255,255,255,0.5) !important;
+    transform: rotate(20deg) scale(1.1) !important;
+}
+
+/* ─── Smooth transition ─── */
+html[data-theme="dark"] *,
+html[data-theme="dark"] *::before,
+html[data-theme="dark"] *::after {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* ══════════════════════════════════════════════
+   DARK MODE OVERRIDES
+   ══════════════════════════════════════════════ */
+
+/* --- CSS Variables (override PAGE_CSS_LIGHT :root vars) --- */
+html[data-theme="dark"] {
+    --bg: #0f172a !important;
+    --card: #1e293b !important;
+    --text: #f1f5f9 !important;
+    --muted: #94a3b8 !important;
+    --shadow: 0 4px 6px -1px rgba(0,0,0,0.5) !important;
+    --shadow-hover: 0 10px 15px -3px rgba(0,0,0,0.6) !important;
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.3) !important;
+    --k1: #451a03 !important;
+    --k2: #172554 !important;
+    --k3: #431407 !important;
+    --k45: #334155 !important;
+    --pass-bg: #064e3b !important;
+    --pass-text: #a7f3d0 !important;
+    --fail-bg: #7f1d1d !important;
+    --fail-text: #fecaca !important;
+}
+
+/* ═══════════════════════════════════════
+   1. GLOBAL / BODY / MAIN CONTAINERS
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] body {
+    background-color: #0b1120 !important;
+    color: #f1f5f9 !important;
+}
+
+/* Main app container (has inline bg #f3f4f6) */
+html[data-theme="dark"] #main-container {
+    background-color: #0f172a !important;
+}
+
+/* Page title header (has inline bg white) */
+html[data-theme="dark"] #page-title-display {
+    background: #1e293b !important;
+    color: #f1f5f9 !important;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3) !important;
+}
+
+html[data-theme="dark"] #page-title-display h3,
+html[data-theme="dark"] #page-title-display h2 {
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] #page-title-display p {
+    color: #94a3b8 !important;
+}
+
+/* Page content wrapper (has inline bg white) */
+html[data-theme="dark"] #page-content-wrapper {
+    background: #0f172a !important;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3) !important;
+}
+
+/* Footer (has inline bg/color) */
+html[data-theme="dark"] #footer-content {
+    background-color: #1e293b !important;
+    color: #94a3b8 !important;
+    border-color: #334155 !important;
+}
+
+/* ═══════════════════════════════════════
+   2. CARDS
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .rnk-card,
+html[data-theme="dark"] .overview-card,
+html[data-theme="dark"] .sa-card {
+    background: #1e293b !important;
+    color: #f1f5f9 !important;
+    border-color: #334155 !important;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5) !important;
+}
+
+html[data-theme="dark"] .card-body,
+html[data-theme="dark"] .card-header {
+    background: transparent !important;
+    color: #f1f5f9 !important;
+}
+
+/* Ranking / overview wrappers */
+html[data-theme="dark"] .rnk-wrap {
+    background: #0f172a !important;
+}
+
+/* ═══════════════════════════════════════
+   3. KPI CARDS (Overview, Ranking, Subject)
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .kpi-card,
+html[data-theme="dark"] .subject-kpi-card {
+    background: #1e293b !important;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5) !important;
+}
+
+html[data-theme="dark"] .kpi-label,
+html[data-theme="dark"] .subject-kpi-label {
+    color: #94a3b8 !important;
+}
+
+/* Icon boxes: replace light pastel bg with dark tinted bg */
+html[data-theme="dark"] .kpi-icon-box,
+html[data-theme="dark"] .subject-kpi-icon-box {
+    background-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* KPI value text — fix gradient text from kpi_modern.css */
+html[data-theme="dark"] .kpi-val,
+html[data-theme="dark"] .kpi-value,
+html[data-theme="dark"] .subject-kpi-value {
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    background-clip: unset !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+html[data-theme="dark"] .kpi-hover-hint {
+    color: #64748b !important;
+}
+
+/* ═══════════════════════════════════════
+   4. BADGES & RANK CHIPS
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .badge-pass {
+    background: #064e3b !important;
+    color: #a7f3d0 !important;
+}
+
+html[data-theme="dark"] .badge-fail {
+    background: #7f1d1d !important;
+    color: #fecaca !important;
+}
+
+html[data-theme="dark"] .rank-1 { background: #451a03 !important; color: #fbbf24 !important; border-color: #78350f !important; }
+html[data-theme="dark"] .rank-2 { background: #172554 !important; color: #60a5fa !important; border-color: #1e3a8a !important; }
+html[data-theme="dark"] .rank-3 { background: #431407 !important; color: #fb923c !important; border-color: #7c2d12 !important; }
+html[data-theme="dark"] .rank-4,
+html[data-theme="dark"] .rank-5 { background: #334155 !important; color: #cbd5e1 !important; border-color: #475569 !important; }
+
+/* ═══════════════════════════════════════
+   5. TEXT
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .text-dark {
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .text-muted {
+    color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] h1, html[data-theme="dark"] h2,
+html[data-theme="dark"] h3, html[data-theme="dark"] h4,
+html[data-theme="dark"] h5, html[data-theme="dark"] h6 {
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] p,
+html[data-theme="dark"] span,
+html[data-theme="dark"] label,
+html[data-theme="dark"] small,
+html[data-theme="dark"] .fw-bold,
+html[data-theme="dark"] .fw-semibold,
+html[data-theme="dark"] .fw-medium {
+    color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .text-primary { color: #60a5fa !important; }
+html[data-theme="dark"] .text-success { color: #4ade80 !important; }
+html[data-theme="dark"] .text-danger  { color: #f87171 !important; }
+html[data-theme="dark"] .text-warning { color: #fbbf24 !important; }
+html[data-theme="dark"] .text-info    { color: #38bdf8 !important; }
+
+/* ═══════════════════════════════════════
+   6. DROPDOWNS (Dash dcc.Dropdown)
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .Select-control,
+html[data-theme="dark"] div[class*="__control"] {
+    background-color: #1e293b !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .Select-value-label,
+html[data-theme="dark"] div[class*="__single-value"],
+html[data-theme="dark"] .Select-placeholder,
+html[data-theme="dark"] div[class*="__placeholder"] {
+    color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .Select-input input,
+html[data-theme="dark"] div[class*="__input"] input {
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .Select-menu-outer,
+html[data-theme="dark"] div[class*="__menu"] {
+    background-color: #1e293b !important;
+    border-color: #475569 !important;
+}
+
+html[data-theme="dark"] .Select-option,
+html[data-theme="dark"] div[class*="__option"] {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+    border-bottom-color: #334155 !important;
+}
+
+html[data-theme="dark"] .Select-option:hover,
+html[data-theme="dark"] div[class*="__option--is-focused"] {
+    background-color: #334155 !important;
+    color: #fff !important;
+}
+
+html[data-theme="dark"] div[class*="__option--is-selected"] {
+    background-color: #3b82f6 !important;
+    color: #fff !important;
+}
+
+html[data-theme="dark"] div[class*="__indicator"] svg {
+    fill: #94a3b8 !important;
+}
+
+html[data-theme="dark"] div[class*="__multi-value"] {
+    background-color: #334155 !important;
+}
+
+html[data-theme="dark"] div[class*="__multi-value__label"] {
+    color: #e2e8f0 !important;
+}
+
+/* ═══════════════════════════════════════
+   7. FORM CONTROLS
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .form-select,
+html[data-theme="dark"] input[type="text"],
+html[data-theme="dark"] input[type="number"],
+html[data-theme="dark"] textarea {
+    background-color: #1e293b !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .form-control::placeholder,
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+    color: #64748b !important;
+}
+
+html[data-theme="dark"] .input-group-text {
+    background-color: #334155 !important;
+    border-color: #475569 !important;
+    color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .form-check-input {
+    background-color: #334155 !important;
+    border-color: #475569 !important;
+}
+
+html[data-theme="dark"] .form-check-input:checked {
+    background-color: #3b82f6 !important;
+    border-color: #3b82f6 !important;
+}
+
+html[data-theme="dark"] .form-check-label {
+    color: #e2e8f0 !important;
+}
+
+/* ═══════════════════════════════════════
+   8. BUTTONS
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .btn-outline-info {
+    color: #38bdf8 !important;
+    border-color: #38bdf8 !important;
+}
+
+html[data-theme="dark"] .btn-outline-info:hover {
+    background-color: #0c4a6e !important;
+    color: #fff !important;
+}
+
+html[data-theme="dark"] .btn-outline-secondary {
+    color: #94a3b8 !important;
+    border-color: #475569 !important;
+}
+
+html[data-theme="dark"] .btn-outline-secondary:hover {
+    background-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .btn-outline-primary {
+    color: #60a5fa !important;
+    border-color: #60a5fa !important;
+}
+
+html[data-theme="dark"] .btn-outline-primary:hover {
+    background-color: #1e3a8a !important;
+    color: #fff !important;
+}
+
+html[data-theme="dark"] .btn-outline-success {
+    color: #4ade80 !important;
+    border-color: #4ade80 !important;
+}
+
+html[data-theme="dark"] .btn-outline-success:hover {
+    background-color: #14532d !important;
+    color: #fff !important;
+}
+
+/* ═══════════════════════════════════════
+   9. DATA TABLES (Dash DataTable)
+   All inline styles from style_cell, style_data,
+   style_data_conditional are overridden here.
+   ═══════════════════════════════════════ */
+
+/* Table cells */
+html[data-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+    border-color: #334155 !important;
+}
+
+/* Odd rows */
+html[data-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr:nth-child(odd) td {
+    background-color: #1a2535 !important;
+}
+
+/* Table header */
+html[data-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
+    background-color: #0f172a !important;
+    color: #f1f5f9 !important;
+    border-color: #475569 !important;
+}
+
+/* Hover row */
+html[data-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td {
+    background-color: #334155 !important;
+}
+
+/* Filter inputs */
+html[data-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner .dash-filter input {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+    border-color: #475569 !important;
+}
+
+/* Active/selected cell */
+html[data-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td.focused {
+    background-color: #334155 !important;
+    outline-color: #3b82f6 !important;
+}
+
+/* General input inside table */
+html[data-theme="dark"] .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner input {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+}
+
+/* ═══════════════════════════════════════
+   10. BOOTSTRAP TABLES (.table)
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .table {
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .table thead {
+    background-color: #0f172a !important;
+}
+
+html[data-theme="dark"] .table thead th {
+    color: #f1f5f9 !important;
+    background-color: #0f172a !important;
+    border-color: #475569 !important;
+}
+
+html[data-theme="dark"] .table tbody tr {
+    border-bottom-color: #334155 !important;
+}
+
+html[data-theme="dark"] .table tbody tr:hover {
+    background-color: #334155 !important;
+}
+
+html[data-theme="dark"] .table td {
+    color: #e2e8f0 !important;
+}
+
+/* ═══════════════════════════════════════
+   11. PLOTLY CHARTS (CSS part)
+   JS in dark_mode.js handles relayout for fonts/axes.
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .js-plotly-plot .plotly .main-svg {
+    background: transparent !important;
+}
+
+html[data-theme="dark"] .js-plotly-plot {
+    background: #1e293b !important;
+    border-radius: 8px;
+}
+
+/* Plotly modebar icons */
+html[data-theme="dark"] .js-plotly-plot .modebar .modebar-btn path {
+    fill: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .js-plotly-plot .modebar .modebar-btn:hover path {
+    fill: #f1f5f9 !important;
+}
+
+/* ═══════════════════════════════════════
+   12. ACCORDIONS
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .accordion-item {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .accordion-button {
+    color: #f1f5f9 !important;
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .accordion-button:not(.collapsed) {
+    background-color: #172554 !important;
+    color: #60a5fa !important;
+}
+
+html[data-theme="dark"] .accordion-button::after {
+    filter: invert(1) !important;
+}
+
+html[data-theme="dark"] .accordion-body {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+}
+
+/* ═══════════════════════════════════════
+   13. MODALS
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .modal-content {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .modal-header {
+    border-bottom-color: #334155 !important;
+}
+
+html[data-theme="dark"] .modal-footer {
+    border-top-color: #334155 !important;
+}
+
+html[data-theme="dark"] .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%) !important;
+}
+
+html[data-theme="dark"] .modal-body li,
+html[data-theme="dark"] .modal-body p,
+html[data-theme="dark"] .modal-body span,
+html[data-theme="dark"] .modal-body h6 {
+    color: #e2e8f0 !important;
+}
+
+/* ═══════════════════════════════════════
+   14. TABS (Bootstrap + Dash dcc.Tabs)
+   ═══════════════════════════════════════ */
+
+/* --- Bootstrap nav-tabs --- */
+html[data-theme="dark"] .nav-tabs .nav-link {
+    color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .nav-tabs .nav-link.active {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+    border-color: #334155 !important;
+}
+
+/* --- Dash dcc.Tabs --- */
+html[data-theme="dark"] .tab-container {
+    background-color: transparent !important;
+}
+
+html[data-theme="dark"] .tab-parent {
+    background-color: #1e293b !important;
+    border-bottom: 2px solid #334155 !important;
+}
+
+html[data-theme="dark"] .tab {
+    background-color: #1e293b !important;
+    color: #94a3b8 !important;
+    border: 1px solid transparent !important;
+    border-bottom: none !important;
+}
+
+html[data-theme="dark"] .tab:hover {
+    background-color: #334155 !important;
+    color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .tab--selected {
+    background-color: #0f172a !important;
+    color: #f1f5f9 !important;
+    border: 1px solid #334155 !important;
+    border-bottom: 2px solid #3b82f6 !important;
+}
+
+html[data-theme="dark"] .tab-content {
+    background-color: transparent !important;
+    color: #f1f5f9 !important;
+}
+
+/* ═══════════════════════════════════════
+   15. ALERTS
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .alert-success {
+    background-color: #064e3b !important;
+    color: #a7f3d0 !important;
+    border-color: #065f46 !important;
+}
+
+html[data-theme="dark"] .alert-warning {
+    background-color: #713f12 !important;
+    color: #fde68a !important;
+    border-color: #854d0e !important;
+}
+
+html[data-theme="dark"] .alert-danger {
+    background-color: #7f1d1d !important;
+    color: #fecaca !important;
+    border-color: #991b1b !important;
+}
+
+html[data-theme="dark"] .alert-info {
+    background-color: #0c4a6e !important;
+    color: #bae6fd !important;
+    border-color: #075985 !important;
+}
+
+/* ═══════════════════════════════════════
+   16. UPLOAD AREA
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .dash-upload,
+html[data-theme="dark"] [id*="upload"] {
+    border-color: #475569 !important;
+    background-color: #1e293b !important;
+    color: #94a3b8 !important;
+}
+
+/* ═══════════════════════════════════════
+   17. MISC UTILITY OVERRIDES
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-light {
+    background-color: #1e293b !important;
+}
+
+html[data-theme="dark"] .border {
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .border.rounded-pill {
+    border-color: #475569 !important;
+    color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .shadow-sm,
+html[data-theme="dark"] .shadow {
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5) !important;
+}
+
+html[data-theme="dark"] hr {
+    border-color: #334155 !important;
+}
+
+/* Radio Items / Checklist pills */
+html[data-theme="dark"] .dcc-checklist label,
+html[data-theme="dark"] .dash-checklist label {
+    color: #e2e8f0 !important;
+}
+
+/* Bootstrap icons — let them inherit naturally from parent text color.
+   KPI icons have inline color set, which we want to preserve,
+   so we do NOT force color: inherit with !important globally. */
+
+/* Loading spinner */
+html[data-theme="dark"] .dash-spinner {
+    border-color: #3b82f6 !important;
+}
+
+/* ═══════════════════════════════════════
+   18. SCROLLBAR
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #475569, #64748b) !important;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-track {
+    background: #0f172a !important;
+}
+
+/* ═══════════════════════════════════════
+   19. FEEDBACK MODAL
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .feedback-input {
+    background-color: #0f172a !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .feedback-tab-pane {
+    background-color: #1e293b !important;
+}
+
+html[data-theme="dark"] .contact-card {
+    background-color: #0f172a !important;
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .contact-card .card-body {
+    color: #e2e8f0 !important;
+}
+
+/* ═══════════════════════════════════════
+   20. TOUR POPOVER
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .dashboard-tour-popover {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .dashboard-tour-popover .driver-popover-title {
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .dashboard-tour-popover .driver-popover-description {
+    color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .dashboard-tour-popover .driver-popover-description b {
+    color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .dashboard-tour-popover .driver-popover-prev-btn {
+    background: #334155 !important;
+    color: #e2e8f0 !important;
+    border-color: #475569 !important;
+}
+
+/* ═══════════════════════════════════════
+   21. dcc.Markdown
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .dash-markdown p,
+html[data-theme="dark"] .dash-markdown li,
+html[data-theme="dark"] .dash-markdown span {
+    color: #e2e8f0 !important;
+}
+
+/* ═══════════════════════════════════════
+   22. PAGE-SPECIFIC WRAPPERS
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .sa-wrap {
+    background: #0f172a !important;
+}
+
+/* ═══════════════════════════════════════
+   23. TOOLTIP
+   ═══════════════════════════════════════ */
+html[data-theme="dark"] .tooltip-custom:hover::after {
+    background: rgba(255,255,255,0.9) !important;
+    color: #0f172a !important;
+}

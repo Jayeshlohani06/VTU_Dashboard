@@ -2,6 +2,7 @@ import dash
 from dash import html, dcc, Input, Output, State, callback, dash_table, ALL
 import dash_bootstrap_components as dbc
 import pandas as pd
+import numpy as np
 import plotly.graph_objs as go
 import re
 from cache_config import cache
@@ -56,7 +57,11 @@ layout = dbc.Container([
             dbc.Badge("📊 Analytics", color="light", className="me-2", style={"padding": "0.5rem 1rem"}),
             dbc.Badge("🎯 SGPA Calculator", color="light", className="me-2", style={"padding": "0.5rem 1rem"}),
             dbc.Badge("📈 Live Updates", color="light", style={"padding": "0.5rem 1rem"})
-        ], className="text-center mt-3")
+        ], className="text-center mt-3"),
+        html.Div(
+            dbc.Button("📖 Rules & Guidelines", id="sd-open-legend", color="light", size="sm", className="mt-3 fw-bold", outline=True),
+            className="text-center"
+        )
     ], style={
         "background": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
         "padding": "3rem 1rem",
@@ -169,8 +174,90 @@ layout = dbc.Container([
             html.Div(id='student-detail-content', className="fade-in")
         ], width=12)
     ]),
+
+    # --- Rules & Guidelines Modal ---
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("📊 Student Detail — Rules & Guidelines")),
+        dbc.ModalBody(
+            html.Div([
+                html.H5("🚀 Getting Started", className="text-primary fw-bold mb-2"),
+                html.P("This page provides a detailed performance profile for an individual student, including SGPA calculation and comparative analytics. Data is loaded from the Overview page.", className="text-muted small mb-3"),
+
+                html.H6("🔍 Searching for a Student", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("By USN: "), "Enter the full University Seat Number (e.g., 1XX20CS001)."]),
+                    html.Li([html.Strong("By Name: "), "Enter the student's name — partial matches are supported."]),
+                    html.Li("After searching, the student's complete profile loads automatically."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🎯 Subject Selection", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Use the Subject Codes dropdown to filter which subjects to include in the analysis."),
+                    html.Li("'Select All' includes every detected subject."),
+                    html.Li("Only selected subjects are used for SGPA and percentage calculations."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📊 Analysis Type", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Total Marks (default): "), "Shows combined Internal + External marks per subject."]),
+                    html.Li([html.Strong("Internal Marks: "), "Shows only Internal/CIE component marks."]),
+                    html.Li([html.Strong("External Marks: "), "Shows only External/SEE component marks."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📋 Performance Cards", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Total Marks: "), "Sum of marks across selected subjects."]),
+                    html.Li([html.Strong("Percentage: "), "Calculated from selected subjects."]),
+                    html.Li([html.Strong("Result: "), "Pass or Fail — based on per-subject thresholds."]),
+                    html.Li([html.Strong("Class Rank: "), "Position among all passed students (from Ranking page data)."]),
+                    html.Li([html.Strong("Section Rank: "), "Position within the student's section."]),
+                    html.Li([html.Strong("Section: "), "The assigned section based on Overview page configuration."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🧮 SGPA Calculation", className="fw-bold text-dark"),
+                html.P([html.Strong("Formula: "), "SGPA = Σ(Grade Point × Credit) ÷ Σ(Credit)"], className="small bg-light p-2 rounded border"),
+                html.Ul([
+                    html.Li("Credits are assigned per subject using the credit cards below the search area."),
+                    html.Li("Credits auto-map from the scheme/semester configured on the Overview page."),
+                    html.Li("You can manually adjust credits using the dropdown on each subject card (0-4)."),
+                    html.Li("Grade Points: 90-100 → 10, 80-89 → 9, 70-79 → 8, 60-69 → 7, 55-59 → 6, 50-54 → 5, 40-49 → 4, <40 → 0"),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📈 Charts & Insights", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Subject-wise Performance Bar: "), "Marks per subject with color-coded bars."]),
+                    html.Li([html.Strong("Student vs Class Avg vs Highest: "), "Grouped bar chart comparing the student's marks against class average and class highest."]),
+                    html.Li([html.Strong("Performance Distribution Donut: "), "Categorizes subjects as Strong (75+), Average (50-75), or Weak (<50)."]),
+                    html.Li([html.Strong("Top/Bottom Subjects: "), "Cards showing the 3 highest and 3 lowest scoring subjects."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("⚠️ Important Notes", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Data must be uploaded on the Overview page first — this page reads from the shared session."),
+                    html.Li("Class Rank and Section Rank are derived from the Ranking page calculations (passed students only)."),
+                    html.Li("SGPA updates live as you adjust credit values."),
+                ], className="small mb-0"),
+            ])
+        ),
+        dbc.ModalFooter(dbc.Button("Got it!", id="sd-close-legend", className="ms-auto", color="primary"))
+    ], id="sd-legend-modal", is_open=False, size="lg", style={"zIndex": 10500}),
     
 ], fluid=True, className="py-4", style={"background": "#f8f9fa", "minHeight": "100vh"})
+
+# ---------- Toggle Legend Modal ----------
+@callback(
+    Output("sd-legend-modal", "is_open"),
+    [Input("sd-open-legend", "n_clicks"), Input("sd-close-legend", "n_clicks")],
+    [State("sd-legend-modal", "is_open")],
+    prevent_initial_call=True
+)
+def toggle_sd_legend(n1, n2, is_open): return not is_open if n1 or n2 else is_open
 
 # ---------- Populate Subject Dropdown ----------
 @callback(
@@ -312,7 +399,7 @@ def generate_credit_inputs(n_clicks, scheme_sem_data, search_value, session_id, 
                         dbc.Col([
                             dcc.Dropdown(
                                 id={'type': 'credit-input-student', 'index': code_val},
-                                options=[{'label': f'{i} Credit{"s" if i != 1 else ""}', 'value': i} for i in range(0, 5)],
+                                options=[{'label': f'{i} Credit{"s" if i != 1 else ""}', 'value': i} for i in range(10, -1, -1)],
                                 value=default_credit,
                                 clearable=False,
                                 className="custom-dropdown",
@@ -494,16 +581,30 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
     student_series = df[student_mask].iloc[0]
 
     # ---------- SGPA using only positive-credit subjects ----------
-    total_credit_points, total_credits = 0, 0
+    # Pre-compute max marks per subject from data (handles 200-mark subjects)
+    _subj_max_marks = {}
+    for code in credit_dict_positive:
+        score_col = f"{code} {analysis_type}"
+        if score_col in df.columns:
+            col_max = pd.to_numeric(df[score_col], errors='coerce').max()
+            _subj_max_marks[code] = int(np.ceil(max(col_max, 1) / 100) * 100) if pd.notna(col_max) else 100
+        else:
+            _subj_max_marks[code] = 100
+
+    total_credit_points, total_credits, total_max_marks = 0, 0, 0
     for code, credit in credit_dict_positive.items():
-        grade_point = get_grade_point(student_series.get(f"{code} {analysis_type}", 0))
+        score = pd.to_numeric(student_series.get(f"{code} {analysis_type}", 0), errors='coerce') or 0
+        max_marks = _subj_max_marks.get(code, 100)
+        pct_score = (score / max_marks * 100) if max_marks > 0 else 0
+        grade_point = get_grade_point(pct_score)
         total_credit_points += grade_point * credit
         total_credits += credit
+        total_max_marks += max_marks
     sgpa = (total_credit_points / total_credits) if total_credits > 0 else 0.0
 
     # ---------- KPI Cards ----------
     total_marks_selected = student_series['Total_Marks_Selected']
-    percentage = sgpa * 10
+    percentage = (total_marks_selected / total_max_marks * 100) if total_max_marks > 0 else 0.0
     result_selected = student_series['Result_Selected']
 
     # Ranks pulled from the global (ranking-page) logic above:

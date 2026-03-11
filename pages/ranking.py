@@ -3,6 +3,7 @@ from dash import html, dcc, Input, Output, State, callback, dash_table, no_updat
 import dash_bootstrap_components as dbc
 import pandas as pd
 import re
+import numpy as np
 from functools import lru_cache
 import ast
 from io import StringIO, BytesIO
@@ -128,34 +129,38 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
 
     result_cols = [c for c in df.columns if c.endswith('Result')]
     if result_cols:
+        # ── Pre-convert columns once (vectorized) to avoid N×M per-cell overhead in apply ──
+        _pre_converted = set()
+        for _rc in result_cols:
+            _bn = _rc.replace(' Result', '').replace('Result', '').strip()
+            e_col = f"{_bn} External"
+            if e_col in df.columns and e_col not in _pre_converted:
+                df[e_col] = pd.to_numeric(df[e_col], errors='coerce').fillna(0)
+                _pre_converted.add(e_col)
+            i_col = f"{_bn} Internal"
+            if i_col in df.columns and i_col not in _pre_converted:
+                df[i_col] = pd.to_numeric(df[i_col], errors='coerce')  # Keep NaN (no fillna)
+                _pre_converted.add(i_col)
+            # Pre-clean Result column to uppercase string
+            df[_rc] = df[_rc].astype(str).str.strip().str.upper()
+
         def calc_overall(row):
             subject_status = []
             failed_list = []
             for res_col in result_cols:
                 base_name = res_col.replace(' Result', '').replace('Result', '').strip()
-                
-                i_val = row.get(f"{base_name} Internal", 0)
-                e_val = row.get(f"{base_name} External", 0)
-                
-                i = pd.to_numeric(i_val, errors='coerce')
-                e = pd.to_numeric(e_val, errors='coerce')
-                
-                if pd.isna(e): e = 0
 
-                r = str(row.get(res_col, "")).strip().upper()
+                # Values are already numeric / cleaned from pre-conversion
+                i = row.get(f"{base_name} Internal", 0)
+                e = row.get(f"{base_name} External", 0)
+                r = row.get(res_col, '')
 
-                # 🔥 ABSENT RULE (Enhanced)
-                # If External is 0 and Result is Absent OR Empty -> Treat as Absent for that subject
                 if (e == 0) and (r in ['A', 'ABSENT', '']):
                     subject_status.append('A')
                 elif r in ['F', 'FAIL']:
                     subject_status.append('F')
                     failed_list.append(base_name)
                 else:
-                    # If Result is missing but Marks exist, check for pass/fail by marks
-                    # Assuming 35% is passing threshold (standard)
-                    # But Total_Total logic uses sum. Here we check individual component?
-                    # Let's rely on 'P' default only if score > 0
                     total_s = i + e
                     if r == '' and total_s < 35:
                          subject_status.append('F')
@@ -166,12 +171,11 @@ def _normalize_df(df, section_ranges, usn_mapping=None):
             absent_count = subject_status.count('A')
             fail_count = subject_status.count('F')
 
-            # === OVERALL LOGIC ===
             if not subject_status: res = 'P'
             elif absent_count == len(subject_status): res = 'A'
             elif fail_count > 0 or absent_count > 0: res = 'F'
             else: res = 'P'
-            
+
             return pd.Series([res, absent_count, fail_count, ", ".join(failed_list)], index=['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Subject'])
 
         df[['Overall_Result', 'Absent_Subjects', 'Failed_Subjects', 'Failed_Subject']] = df.apply(calc_overall, axis=1)
@@ -211,8 +215,8 @@ def _section_key(section_ranges):
     except: return "None"
 
 def calculate_student_metrics(df):
-    """Calculates percentage based on attempted subjects for each student."""
-    # Identify all subject total columns (exclude aggregates)
+    """Calculates percentage based on attempted subjects for each student (vectorized).
+    Handles subjects with non-standard max marks (e.g. 200-mark projects)."""
     subject_total_cols = [
         c for c in df.columns
         if c.strip().endswith(' Total')
@@ -220,20 +224,24 @@ def calculate_student_metrics(df):
         and 'grand total' not in c.lower()
     ]
 
-    def _calc_row(row):
-        subjects_attempted = 0
-        for col in subject_total_cols:
-            value = pd.to_numeric(row.get(col), errors='coerce')
-            if pd.notna(value) and value > 0:
-                subjects_attempted += 1
-        
-        if subjects_attempted == 0:
-            return 0.0
-        
-        max_marks = subjects_attempted * 100
-        return round((row.get('Total_Marks', 0) / max_marks) * 100, 2)
+    if not subject_total_cols:
+        df['percentage'] = 0.0
+        return df
 
-    df['percentage'] = df.apply(_calc_row, axis=1)
+    # Vectorized: detect actual max marks per subject from data
+    numeric_totals = df[subject_total_cols].apply(pd.to_numeric, errors='coerce')
+    # Per-subject max marks: ceil(column_max / 100) * 100
+    # e.g. max=197 -> 200, max=95 -> 100
+    per_subject_max = np.ceil(numeric_totals.max().clip(lower=1) / 100) * 100
+
+    # For each student, sum the max marks of only subjects they attempted
+    attempted_mask = numeric_totals.notna() & (numeric_totals > 0)
+    max_marks_per_student = (attempted_mask * per_subject_max).sum(axis=1).clip(lower=1)
+
+    total_marks = pd.to_numeric(df.get('Total_Marks', 0), errors='coerce').fillna(0)
+    pct = ((total_marks / max_marks_per_student) * 100).round(2)
+    pct[max_marks_per_student <= 0] = 0.0
+    df['percentage'] = pct
     return df
 
 
@@ -290,67 +298,12 @@ PAGE_CSS_LIGHT = r"""
 .rnk-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
 """
 
-PAGE_CSS_DARK = r"""
-:root{
-  --bg: #0f172a;
-  --card: #1e293b;
-  --text: #f8fafc;
-  --muted:#94a3b8;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-  --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
-  --k1:#451a03; --k2:#172554; --k3:#431407; --k45:#334155;
-  --pass-bg:#064e3b; --pass-text:#a7f3d0;
-  --fail-bg:#7f1d1d; --fail-text:#fecaca;
-}
-.rnk-wrap{ background: var(--bg); padding: 20px; border-radius: 16px; }
-.rnk-card{
-  background: var(--card); border: 0 !important; border-radius: 12px !important;
-  box-shadow: var(--shadow); transition: all 0.3s ease; color: var(--text);
-}
-.rnk-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }
-.kpi-card{ border-left: 4px solid transparent; height: 100%; display: flex; flex-direction: column; justify-content: center; }
-.kpi-label{ color: var(--muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-.kpi-value{ font-weight: 800; font-size: 2.2rem; line-height: 1.2; }
-.rank-chip{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; font-weight:700; font-size:0.9rem; margin-right:8px; }
-.rank-1{ background:var(--k1); color:#fbbf24; border:1px solid #78350f; }
-.rank-2{ background:var(--k2); color:#60a5fa; border:1px solid #1e3a8a; }
-.rank-3{ background:var(--k3); color:#fb923c; border:1px solid #7c2d12; }
-.rank-4,.rank-5{ background:var(--k45); color:#cbd5e1; border:1px solid #475569; }
-.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
-.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
-.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td{ border-color: #334155 !important; background-color: #1e293b !important; color: #f8fafc !important; }
-.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{ border-color: #475569 !important; background-color: #0f172a !important; color: #f8fafc !important; }
-.accordion-button:not(.collapsed){ background-color: #172554; color: #60a5fa; }
-.accordion-button{ color: #f8fafc; background-color: #1e293b; border-color: #334155; }
-.table { margin-bottom: 0; color: #f8fafc; }
-.table tbody tr { border-bottom-color: #334155; }
-.table tbody tr:hover { background-color: #334155 !important; }
-.table thead { border-top-color: #475569; background-color: #0f172a; }
-.table thead th { color: #f8fafc; }
 
-/* Modal Print Specifics */
-@media print {
-  @page { size: landscape !important; margin: 1cm !important; }
-  body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: #0f172a !important; margin: 0 !important; padding: 0 !important; }
-  body.modal-open .pb-5 > *:not(.modal) { display: none !important; }
-  body.modal-open .modal { display: block !important; position: static !important; opacity: 1 !important; background: transparent !important; }
-  body.modal-open .modal-dialog { max-width: 100% !important; width: 100% !important; margin: 0 !important; }
-  body.modal-open .modal-content { border: none !important; box-shadow: none !important; }
-  body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
-}
-.rnk-kpi-clickable:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.6) !important; cursor: pointer; }
-.rnk-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
-"""
-
-def themed_style_block(theme: str):
-    css = PAGE_CSS_DARK if theme == "dark" else PAGE_CSS_LIGHT
-    return dcc.Markdown(f"<style>{css}</style>", dangerously_allow_html=True)
 
 
 # ==================== Layout ====================
 
 layout = dbc.Container([
-    html.Div(id="theme-style"),
     dcc.Markdown(f"<style>{PAGE_CSS_LIGHT}</style>", dangerously_allow_html=True),
     html.Link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"),
 
@@ -390,15 +343,12 @@ layout = dbc.Container([
                     dbc.Input(id="search-input", placeholder="Search ID / Name...", type="text")
                 ], className="shadow-sm"), md=3, xs=12),
                 dbc.Col(dbc.ButtonGroup([
-                    dbc.Button("ℹ️ Info", id="open-legend", color="info", outline=True),
+                    dbc.Button("📖 Rules & Guidelines", id="open-legend", color="info", outline=True),
                     dbc.Button("Reset", id="reset-btn", color="secondary", outline=True),
                 ], className="w-100 d-flex justify-content-end"), md=3, xs=12),
             ], className="g-2 rnk-controls mb-3"),
 
             dbc.Row([
-                dbc.Col(dbc.Checklist(
-                    id="theme-toggle", options=[{"label": "🌙 Dark Mode", "value": "dark"}], value=[], switch=True,
-                ), width="auto", className="d-flex align-items-center"),
                 dbc.Col(html.Div([
                     # New Metric Selector
                     html.Div([
@@ -434,7 +384,7 @@ layout = dbc.Container([
         html.Div([
             html.H6([html.I(className="bi bi-activity me-2 text-primary"), "Performance Metrics"], className="fw-bold mb-0 text-primary"),
             dbc.Button(
-                [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download KPI Details"], 
+                [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Performance Summary"], 
                 id="export-all-kpis", size="sm", color="primary", outline=True, className="fw-bold shadow-sm"
             )
         ], className="d-flex justify-content-between align-items-center mb-3 mt-2 px-1"),
@@ -521,28 +471,77 @@ layout = dbc.Container([
     ], id="student-modal", is_open=False, size="lg", style={"zIndex": 10500}),
 
     dbc.Modal([
-        dbc.ModalHeader(dbc.ModalTitle("📊 Dashboard Logic & Legends")),
+        dbc.ModalHeader(dbc.ModalTitle("📊 Ranking Page — Rules & Guidelines")),
         dbc.ModalBody(
             html.Div([
-                html.H6("📝 Subject & Student Status", className="text-primary fw-bold"),
+                html.H5("🚀 Getting Started", className="text-primary fw-bold mb-2"),
+                html.P("This page ranks students based on marks or SGPA. Data is loaded from the Overview page — upload your result file there first.", className="text-muted small mb-3"),
+
+                html.H6("🔀 Ranking Modes", className="fw-bold text-dark"),
                 html.Ul([
-                    html.Li([html.Strong("Absent (Subject):"), " External Marks = 0  AND  Result = 'A'"]),
-                    html.Li([html.Strong("Fail (Subject):"), " Result = 'F' (or Marks < 18 if Result unavailable)"]),
-                    html.Li([html.Strong("Pass (Student):"), " Passed in ALL subjects"]),
-                    html.Li([html.Strong("Absent (Student):"), " Absent in ALL subjects"]),
-                    html.Li([html.Strong("Fail (Student):"), " Failed in ANY subject OR Absent in ANY subject (but appeared for others)"]),
-                ]),
+                    html.Li([html.Strong("Marks Based: "), "Ranks students by total marks across selected subjects. You can also switch the metric to compare Internal or External marks only."]),
+                    html.Li([html.Strong("SGPA Based: "), "Ranks students by SGPA (Semester Grade Point Average). Requires scheme & semester to be configured on the Overview page for automatic credit mapping."]),
+                ], className="small"),
                 html.Hr(),
-                html.H6("🏆 Ranking Logic", className="text-primary fw-bold"),
-                html.P("Ranking is calculated ONLY for students with Overall Result = 'Pass'. Failed students are excluded from rank list.", className="text-muted small"),
+
+                html.H6("📝 Pass / Fail / Absent — Per Subject", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Absent (Subject): "), "External Marks = 0 AND Result = 'A' or blank."]),
+                    html.Li([html.Strong("Fail (Subject): "), "Result = 'F', or marks below pass threshold when Result is unavailable."]),
+                    html.Li([html.Strong("Pass (Subject): "), "Result = 'P' or passing grade."]),
+                ], className="small"),
                 html.Hr(),
-                html.H6("🎓 VTU Class Categories (from %)", className="text-primary fw-bold"),
+
+                html.H6("📝 Overall Student Result", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Pass: "), "Student has passed ALL enrolled subjects."]),
+                    html.Li([html.Strong("Absent: "), "Student is absent in ALL subjects."]),
+                    html.Li([html.Strong("Fail: "), "Student has failed or is absent in ANY subject (but appeared for others)."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🏆 Ranking Rules", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Rankings are calculated ONLY for students with Overall Result = 'Pass'."),
+                    html.Li("Failed and absent students are excluded from the rank list."),
+                    html.Li([html.Strong("Class Rank: "), "Position among all passed students across all sections."]),
+                    html.Li([html.Strong("Section Rank: "), "Position among passed students within the same section."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📊 Percentage Calculation", className="fw-bold text-dark"),
+                html.P([html.Strong("Formula: "), "(Total Marks ÷ (Number of Active Subjects × 100)) × 100"], className="small bg-light p-2 rounded border"),
+                html.Ul([
+                    html.Li("Active subjects = subjects where the student has marks > 0."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🎓 VTU Class Categories", className="fw-bold text-dark"),
                 html.Ul([
                     html.Li([html.Span("First Class Distinction (FCD):", className="fw-bold text-success"), " ≥ 70%"]),
-                    html.Li([html.Span("First Class (FC):", className="fw-bold text-info"), " 60%  –  69.99%"]),
-                    html.Li([html.Span("Second Class (SC):", className="fw-bold text-warning"), " 50%  –  59.99%"]),
+                    html.Li([html.Span("First Class (FC):", className="fw-bold text-info"), " 60% – 69.99%"]),
+                    html.Li([html.Span("Second Class (SC):", className="fw-bold text-warning"), " 50% – 59.99%"]),
                     html.Li([html.Span("Pass Class:", className="fw-bold text-danger"), " < 50%"]),
-                ], className="mb-0")
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🧮 SGPA Calculation", className="fw-bold text-dark"),
+                html.P([html.Strong("Formula: "), "SGPA = Σ(Grade Point × Credit) ÷ Σ(Credit)"], className="small bg-light p-2 rounded border"),
+                html.Ul([
+                    html.Li("Grade Points: 90-100 → 10, 80-89 → 9, 70-79 → 8, 60-69 → 7, 55-59 → 6, 50-54 → 5, 40-49 → 4, <40 → 0"),
+                    html.Li("Only subjects with credit > 0 are included."),
+                    html.Li("SGPA is computed only for passing students."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🖱️ Interactive Features", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Click a performance card: "), "Opens a detailed list of students in that category (e.g., all FCD students). You can download the list as Excel."]),
+                    html.Li([html.Strong("Click a table row: "), "Opens a Student Profile modal showing all subject marks, result, percentage, and rank."]),
+                    html.Li([html.Strong("Filters: "), "Use the dropdowns at the top to filter by Result (Pass/Fail/Absent), Section, or search by USN/Name."]),
+                    html.Li([html.Strong("Dark/Light Mode: "), "Toggle the theme switch for your preferred viewing experience."]),
+                    html.Li([html.Strong("Download: "), "Export the full ranking table or category reports as Excel."]),
+                ], className="small mb-0"),
             ])
         ),
         dbc.ModalFooter(dbc.Button("Got it!", id="close-legend", className="ms-auto", color="primary"))
@@ -579,7 +578,6 @@ layout = dbc.Container([
     dcc.Download(id="download-xlsx"),
     dcc.Download(id="download-category-report"),
     dcc.Download(id="download-all-kpis"),
-    dcc.Store(id='sgpa-store', storage_type='session'),
 ], fluid=True, className="pb-5")
 
 
@@ -593,8 +591,6 @@ layout = dbc.Container([
 )
 def toggle_legend(n1, n2, is_open): return not is_open if n1 or n2 else is_open
 
-@callback(Output("theme-style", "children"), Input("theme-toggle", "value"))
-def apply_theme(v): return themed_style_block("dark" if "dark" in (v or []) else "light")
 
 @callback(
     Output('section-dropdown', 'options'), 
@@ -639,12 +635,12 @@ def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ran
     if ranking_type != 'sgpa': return html.Div()
     if not session_id: return ""
     
-    # Extract scheme/sem or default
+    # Extract scheme/sem from store if available
     scheme = "2022"
-    semester = 5
+    semester = None
     if scheme_sem_data:
         scheme = scheme_sem_data.get('scheme', '2022')
-        semester = scheme_sem_data.get('semester', 5)
+        semester = scheme_sem_data.get('semester')
     
     df = cache.get(session_id)
     if df is None: return ""
@@ -657,7 +653,19 @@ def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ran
     if not codes: return dbc.Alert("No recognizable subject columns found.", color='info')
     codes = sorted(codes)
     
-    # Load credit map using the stored scheme and semester
+    # Auto-detect semester from subject codes if not provided
+    if semester is None:
+        for code in codes:
+            subj_code = code.split(" - ")[0].strip() if " - " in code else code.strip()
+            sem_match = re.search(r'(\d)\d{2}', subj_code)
+            if sem_match:
+                semester = int(sem_match.group(1))
+                print(f"[RankingCredits] Auto-detected semester={semester} from {subj_code}")
+                break
+        if semester is None:
+            semester = 5  # ultimate fallback
+    
+    # Load credit map using the stored/detected scheme and semester
     credit_map = load_credit_map(scheme, semester)
     
     grid_items = []
@@ -686,7 +694,7 @@ def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ran
             # Select dropdown for credits
             dbc.Select(
                 id={'type': 'credit-input', 'index': code}, 
-                options=[{'label': f'{i} Credits', 'value': str(i)} for i in [4,3,2,1,0]], 
+                options=[{'label': f'{i} Credits', 'value': str(i)} for i in range(10, -1, -1)], 
                 value=default_credit, 
                 className="form-select text-center flex-grow-1",
                 style={"minHeight": "45px", "fontSize": "14px"}
@@ -731,6 +739,34 @@ def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, cred
     if not credit_dict_positive:
         return no_update, dbc.Alert("Please assign at least one credit > 0", color="warning", dismissable=True)
 
+    # Pre-compute max marks per subject from data (handles 200-mark subjects)
+    _subj_max_marks = {}
+    for code in credit_dict_positive:
+        total_col = f"{code} Total"
+        if total_col in base.columns:
+            col_max = pd.to_numeric(base[total_col], errors='coerce').max()
+            _subj_max_marks[code] = int(np.ceil(max(col_max, 1) / 100) * 100) if pd.notna(col_max) else 100
+        else:
+            _subj_max_marks[code] = 100
+
+    # Pre-compute per-subject participation rate (vectorized)
+    # Compulsory subjects have high participation (>50%), electives have low participation.
+    # This distinguishes "student didn't enroll" (elective, skip) from
+    # "student didn't appear" (compulsory, count with GP=0).
+    total_students = len(base)
+    _subj_participation = {}
+    for code in credit_dict_positive:
+        has_data = pd.Series(False, index=base.index)
+        for suffix in ['Total', 'Internal', 'External']:
+            col = f"{code} {suffix}"
+            if col in base.columns:
+                has_data |= (pd.to_numeric(base[col], errors='coerce').fillna(0) > 0)
+        res_col = f"{code} Result"
+        if res_col in base.columns:
+            cleaned = base[res_col].astype(str).str.strip().str.upper()
+            has_data |= ~cleaned.isin(['', 'NAN', 'NONE', 'NA', '-'])
+        _subj_participation[code] = has_data.sum() / total_students if total_students > 0 else 0
+
     sgpa_rows = []
     for _, row in base.iterrows():
         total_cp, total_cre, total_marks, fail_flag = 0, 0, 0, False
@@ -745,32 +781,44 @@ def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, cred
             else:
                 score = (i + e) if (i and e) else (i or e or 0)
             
-            # 3. --- REVISED FAIL LOGIC (PRECISE) ---
-            # Priority 1: Trust the Result Column (P/F/A)
-            # Priority 2: If Result is missing, use Marks
+            # 3. Check Result column
             res_val = str(row.get(f"{code} Result", "")).strip().upper()
-            
-            if res_val == 'P':
-                pass # Do not reset fail_flag if already True
-            elif res_val == 'F':
+
+            # 4. Determine if student has data for this subject
+            has_marks = (i > 0) or (e > 0) or (score > 0)
+            has_result = bool(res_val) and res_val not in ('', 'NAN', 'NONE', 'NA', '-')
+
+            if not has_marks and not has_result:
+                # No data for this student. Check if it's compulsory or elective.
+                # Compulsory (>50% of students have data): count with GP=0 (didn't appear)
+                # Elective  (<=50% participation):        skip (not enrolled)
+                if _subj_participation.get(code, 0) > 0.5:
+                    fail_flag = True
+                    total_cp += 0  # GP = 0
+                    total_cre += credit
+                continue
+
+            # 5. Fail logic
+            if res_val in ('P', 'PASS'):
+                pass
+            elif res_val in ('F', 'FAIL', 'NP'):
                 fail_flag = True
-            elif res_val == 'A':
-                 # Treated as fail for credit purposes (0 credits earned)
-                 fail_flag = True
+            elif res_val in ('A', 'AB', 'ABSENT'):
+                fail_flag = True
             else:
-                # Fallback when Result column is empty/unknown
-                # Only fail if score is explicitly low (< 35 standard passing)
-                # Do NOT fail based on Grade Point being 0 (as 35-39 might be passing but 0 GP)
                 if score < 35: 
                     fail_flag = True
-            # -----------------------------
 
-            total_cp += get_grade_point(score) * credit
+            max_m = _subj_max_marks.get(code, 100)
+            pct = (score / max_m * 100) if max_m > 0 else 0
+            gp = get_grade_point(pct)
+
+            total_cp += gp * credit
             total_cre += credit
             total_marks += score
             
         sgpa = (total_cp / total_cre) if total_cre > 0 else 0.0
-        
+
         ovr = str(row.get('Overall_Result', '')).strip().upper()
 
         if ovr in ['A', 'ABSENT']:
@@ -835,10 +883,11 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
     if sgpa_json:
         try:
             sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+            # Drop columns from sgpa_df that already exist in base_full (except join key)
+            # to avoid _x/_y suffix conflicts after merge
+            overlap_cols = [c for c in sgpa_df.columns if c in base_full.columns and c != 'Student_ID']
+            sgpa_df = sgpa_df.drop(columns=overlap_cols)
             base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
-            # Fix column conflict if merge creates duplicates
-            if 'Section' not in base_full.columns or base_full['Section'].isna().all():
-                if 'Section' in base_pre.columns: base_full['Section'] = base_pre['Section']
         except: base_full = base_pre.copy()
 
     scope = base_full.copy()
@@ -1021,12 +1070,12 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
                     html.Div([
                         html.Div(
                             html.I(className=f"bi {icon_map.get(x['id'], 'bi-graph-up-arrow')}", style={"color": x["color"], "fontSize": "1.4rem"}),
-                             className="d-flex align-items-center justify-content-center",
+                             className="kpi-icon-box d-flex align-items-center justify-content-center",
                              style={"minWidth": "42px", "width": "42px", "height": "42px", "borderRadius": "10px", "backgroundColor": x["bg"]}
                         ),
                         html.Div([
                             html.H6(x["label"], className="text-muted text-uppercase fw-bold mb-0", style={"fontSize": "0.7rem", "letterSpacing": "0.5px"}),
-                            html.H3(str(x["value"]), className="fw-bold mb-0", style={"color": x["color"], "fontSize": "1.6rem"})
+                            html.H3(str(x["value"]), className="kpi-val fw-bold mb-0", style={"color": x["color"], "fontSize": "1.6rem"})
                         ], className="ms-3")
                     ], className="d-flex align-items-center h-100"),
                     html.Div("👆 Click for details", className="kpi-hover-hint text-muted text-end mt-1", style={"fontSize": "0.6rem", "opacity": "0.8", "position": "absolute", "bottom": "8px", "right": "12px", "display": "none", "transition": "opacity 0.2s ease"}),
@@ -1055,6 +1104,7 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
                 is_pass = (r.get('Overall_Result') == 'P')
                 res_txt = r.get('Overall_Result')
 
+            res_txt = str(res_txt) if pd.notna(res_txt) else "-"
             res_cls = "badge-pass" if is_pass else "badge-fail"
             
             sec_txt = f" (Sec {r.get('Section')})" if r.get('Section') else ""
@@ -1128,9 +1178,10 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
         tdf = tdf.sort_values(['__sort', sort_col], ascending=[True, False])
         cols = ['Class_Rank', 'Section_Rank', 'Student_ID', 'Name', 'Section', sort_col, 'Overall_Result']
     
-    tcols = [{"name": c.replace("_", " "), "id": c} for c in cols if c in tdf.columns]
-    # FIX: Send only relevant columns to table data
-    tdata = tdf[cols].to_dict('records') 
+    # Filter to only columns that exist in data
+    cols = [c for c in cols if c in tdf.columns]
+    tcols = [{"name": c.replace("_", " "), "id": c} for c in cols]
+    tdata = tdf[cols].to_dict('records')
 
     # === GENERATE VTU CATEGORY BREAKDOWN TABLE ===
     breakdown_data = []
@@ -1339,6 +1390,8 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, sgpa_jso
         if sgpa_json:
             try:
                 sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+                overlap_cols = [c for c in sgpa_df.columns if c in df.columns and c != 'Student_ID']
+                sgpa_df = sgpa_df.drop(columns=overlap_cols)
                 if 'Student_ID' in df.columns and 'Student_ID' in sgpa_df.columns:
                     df = df.merge(sgpa_df, how='left', on='Student_ID')
                 elif df.columns[0] == 'USN' or df.columns[0] == 'Student_ID':
@@ -1582,6 +1635,8 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
     if sgpa_json:
         try:
             sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+            overlap_cols = [c for c in sgpa_df.columns if c in base_full.columns and c != 'Student_ID']
+            sgpa_df = sgpa_df.drop(columns=overlap_cols)
             base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
         except: pass
 
@@ -1627,12 +1682,12 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
     # Overview Calculation
     overview_data = []
     for sheet_name, df_kpi in kpi_definitions:
-        overview_data.append({"KPI Metric": sheet_name, "Count": len(df_kpi)})
+        overview_data.append({"Metric": sheet_name, "Count": len(df_kpi)})
         
     total_app = len(scope_calc[~is_absent_mask])
     pass_cnt = len(scope_calc[is_pass_mask])
     pass_perc = round((pass_cnt / total_app * 100) if total_app > 0 else 0, 2)
-    overview_data.insert(5, {"KPI Metric": "Pass % (Appeared)", "Count": f"{pass_perc}%"})
+    overview_data.insert(5, {"Metric": "Pass % (Appeared)", "Count": f"{pass_perc}%"})
     
     overview_df = pd.DataFrame(overview_data)
 
@@ -1640,7 +1695,7 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
     writer = pd.ExcelWriter(out, engine='openpyxl')
     
     # Write Overview as the first sheet
-    overview_df.to_excel(writer, sheet_name="KPI Overview", index=False)
+    overview_df.to_excel(writer, sheet_name="Performance Overview", index=False)
     
     has_sheets = True
     for sheet_name, df in kpi_definitions:
@@ -1670,7 +1725,7 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
     writer.close()
     out.seek(0)
     
-    return dcc.send_bytes(out.read(), "Consolidated_KPI_Report.xlsx")
+    return dcc.send_bytes(out.read(), "Consolidated_Performance_Report.xlsx")
 
 # ==================== Download Reports ====================
 
@@ -1786,6 +1841,8 @@ def handle_rnk_kpi_click(kpi_clicks, c1, c2, filter_val, sec_val, rank_type, jso
     if sgpa_json:
         try:
             sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+            overlap_cols = [c for c in sgpa_df.columns if c in base_full.columns and c != 'Student_ID']
+            sgpa_df = sgpa_df.drop(columns=overlap_cols)
             base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
         except: pass
 

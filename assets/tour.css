@@ -1,0 +1,183 @@
+/* ─── Dashboard Tour (Driver.js) Custom Styles ─── */
+
+/* Tour popover styling */
+.dashboard-tour-popover {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+.dashboard-tour-popover .driver-popover-title {
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    color: #1f2937 !important;
+    line-height: 1.4 !important;
+}
+
+.dashboard-tour-popover .driver-popover-description {
+    font-size: 0.9rem !important;
+    color: #4b5563 !important;
+    line-height: 1.6 !important;
+}
+
+.dashboard-tour-popover .driver-popover-description b {
+    color: #1f2937;
+    font-weight: 600;
+}
+
+/* Next / Previous / Done buttons */
+.dashboard-tour-popover .driver-popover-navigation-btns button {
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    padding: 6px 16px !important;
+    transition: all 0.2s ease !important;
+}
+
+.dashboard-tour-popover .driver-popover-next-btn {
+    background: linear-gradient(135deg, #6366f1, #818cf8) !important;
+    color: #fff !important;
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3) !important;
+}
+
+.dashboard-tour-popover .driver-popover-next-btn:hover {
+    background: linear-gradient(135deg, #4f46e5, #6366f1) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4) !important;
+}
+
+.dashboard-tour-popover .driver-popover-prev-btn {
+    background: #f3f4f6 !important;
+    color: #4b5563 !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+.dashboard-tour-popover .driver-popover-prev-btn:hover {
+    background: #e5e7eb !important;
+    color: #1f2937 !important;
+}
+
+/* Close button */
+.dashboard-tour-popover .driver-popover-close-btn {
+    color: #9ca3af !important;
+}
+
+.dashboard-tour-popover .driver-popover-close-btn:hover {
+    color: #374151 !important;
+}
+
+/* Progress text */
+.dashboard-tour-popover .driver-popover-progress-text {
+    font-size: 0.75rem !important;
+    color: #9ca3af !important;
+    font-weight: 500 !important;
+}
+
+/* Skip Tour button */
+.driver-popover-skip-btn {
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+    padding: 4px 10px !important;
+    background: #fff !important;
+    color: #ef4444 !important;
+    border: 1px solid #fca5a5 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    white-space: nowrap !important;
+    line-height: 1.4 !important;
+    z-index: 1000010 !important;
+    position: relative !important;
+    pointer-events: all !important;
+}
+
+.driver-popover-skip-btn:hover {
+    background: #fef2f2 !important;
+    border-color: #ef4444 !important;
+    color: #dc2626 !important;
+}
+
+/* Fix navigation row layout to prevent overlap */
+.dashboard-tour-popover .driver-popover-footer {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    align-items: center !important;
+}
+
+.dashboard-tour-popover .driver-popover-navigation-btns {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+}
+
+/* Keep skip left, push others right */
+.dashboard-tour-popover .driver-popover-navigation-btns .driver-popover-prev-btn {
+    margin-left: auto !important;
+}
+
+/* ─── Floating Tour FAB Button ─── */
+.tour-fab {
+    position: fixed !important;
+    bottom: 90px !important;  /* Above the Help/Feedback FAB */
+    right: 24px !important;
+    z-index: 2000 !important;
+    width: auto !important;
+    height: 44px !important;
+    border-radius: 22px !important;
+    background: linear-gradient(135deg, #6366f1, #818cf8) !important;
+    color: #fff !important;
+    border: none !important;
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 18px !important;
+    gap: 6px !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    cursor: pointer !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.tour-fab:hover {
+    transform: translateY(-3px) scale(1.02) !important;
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5) !important;
+    background: linear-gradient(135deg, #4f46e5, #6366f1) !important;
+}
+
+.tour-fab:active {
+    transform: translateY(-1px) scale(0.98) !important;
+}
+
+.tour-fab-icon {
+    font-size: 1.2rem;
+}
+
+.tour-fab-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+/* Pulse animation on first load */
+@keyframes tour-pulse {
+    0% { box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4); }
+    50% { box-shadow: 0 4px 24px rgba(99, 102, 241, 0.7), 0 0 0 8px rgba(99, 102, 241, 0.1); }
+    100% { box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4); }
+}
+
+.tour-fab-pulse {
+    animation: tour-pulse 2s ease-in-out 3;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .tour-fab {
+        bottom: 80px !important;
+        right: 16px !important;
+        height: 40px !important;
+        padding: 0 14px !important;
+        font-size: 0.8rem !important;
+    }
+}

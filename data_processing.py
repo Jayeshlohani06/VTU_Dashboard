@@ -147,33 +147,26 @@ def preprocess_excel(file_buffer):
     subject_codes = extract_valid_subjects(df.columns)
 
     # -------------------------------------------------
-    # STEP 4: TOTAL MARKS & RESULT
+    # STEP 4: TOTAL MARKS & RESULT (Vectorized)
     # -------------------------------------------------
-    total_marks_list = []
-    overall_result_list = []
+    total_cols = [f"{sub}_Total" for sub in subject_codes]
+    result_cols_step4 = [f"{sub}_Result" for sub in subject_codes]
+    existing_total_cols = [c for c in total_cols if c in df.columns]
+    existing_result_cols = [c for c in result_cols_step4 if c in df.columns]
 
-    for _, row in df.iterrows():
-        total_marks = 0
-        failed = False
+    if existing_total_cols:
+        df[existing_total_cols] = df[existing_total_cols].apply(pd.to_numeric, errors='coerce')
+        df["Total_Marks"] = df[existing_total_cols].sum(axis=1)
+    else:
+        df["Total_Marks"] = 0
 
-        for sub in subject_codes:
-            total_col = f"{sub}_Total"
-            result_col = f"{sub}_Result"
-
-            marks = pd.to_numeric(row.get(total_col), errors="coerce")
-            result = str(row.get(result_col, "")).strip().upper()
-
-            if pd.notna(marks):
-                total_marks += marks
-
-            if result.startswith("F"):
-                failed = True
-
-        total_marks_list.append(total_marks)
-        overall_result_list.append("F" if failed else "P")
-
-    df["Total_Marks"] = total_marks_list
-    df["Overall_Result"] = overall_result_list
+    if existing_result_cols:
+        fail_mask = df[existing_result_cols].apply(
+            lambda col: col.astype(str).str.strip().str.upper().str.startswith('F')
+        ).any(axis=1)
+        df["Overall_Result"] = np.where(fail_mask, "F", "P")
+    else:
+        df["Overall_Result"] = "P"
 
     # -------------------------------------------------
     # STEP 5: KPIs

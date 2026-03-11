@@ -124,8 +124,8 @@ def normalize_branch_data(df, branch_name):
     # Calculate Total Marks if missing
     if 'Total_Marks' not in df.columns:
         if total_cols:
-            df[total_cols] = df[total_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-            df['Total_Marks'] = df[total_cols].sum(axis=1)
+            df[total_cols] = df[total_cols].apply(pd.to_numeric, errors='coerce')
+            df['Total_Marks'] = df[total_cols].sum(axis=1, min_count=1).fillna(0)
         else:
             df['Total_Marks'] = 0
 
@@ -136,20 +136,39 @@ def normalize_branch_data(df, branch_name):
         def calc_overall(row):
             subject_status = []
             for res_col in result_cols:
-                # Find corresponding External safely
+                # Find corresponding columns safely
                 base_name = res_col.replace(' Result', '').replace('Result', '').strip()
+                int_col = f"{base_name} Internal"
                 ext_col = f"{base_name} External"
+                tot_col = f"{base_name} Total"
+
+                if int_col not in df.columns:
+                    int_candidates = [c for c in df.columns if base_name in c and "Internal" in c]
+                    int_col = int_candidates[0] if int_candidates else None
                 if ext_col not in df.columns:
                      ext_candidates = [c for c in df.columns if base_name in c and "External" in c]
                      ext_col = ext_candidates[0] if ext_candidates else None
+                if tot_col not in df.columns:
+                    tot_candidates = [c for c in df.columns if base_name in c and "Total" in c]
+                    tot_col = tot_candidates[0] if tot_candidates else None
+
+                i_raw = row.get(int_col) if int_col else None
+                e_raw = row.get(ext_col) if ext_col else None
+                t_raw = row.get(tot_col) if tot_col else None
+                r_raw = row.get(res_col, None)
+
+                # Elective detection: skip subject if ALL components are NaN/empty
+                i_na = pd.isna(i_raw) if i_raw is not None else True
+                e_na = pd.isna(e_raw) if e_raw is not None else True
+                t_na = pd.isna(t_raw) if t_raw is not None else True
+                r_empty = pd.isna(r_raw) or str(r_raw).strip() == ''
+                if i_na and e_na and t_na and r_empty:
+                    continue  # Student did not take this elective
+
+                e_val = pd.to_numeric(e_raw, errors='coerce') if not e_na else 0
+                if pd.isna(e_val): e_val = 0
                 
-                e_val = 0
-                if ext_col:
-                     e_val = pd.to_numeric(row.get(ext_col, 0), errors='coerce')
-                     if pd.isna(e_val): e_val = 0
-                
-                # Result value
-                r = str(row.get(res_col, "")).strip().upper()
+                r = str(r_raw).strip().upper() if not pd.isna(r_raw) else ''
 
                 if (e_val == 0) and (r in ['A', 'ABSENT']):
                     subject_status.append('A')
@@ -198,9 +217,18 @@ def normalize_branch_data(df, branch_name):
             std_subjects = int(mode_series.iloc[0])
         else:
             std_subjects = 1
+        # Detect actual max marks per subject: ceil(column_max / 100) * 100
+        # Handles 200-mark subjects (e.g. projects/internships) correctly
+        import numpy as _np
+        _per_subj_max = {}
+        for col in total_cols:
+            col_numeric = pd.to_numeric(df[col], errors='coerce')
+            col_max = col_numeric.max()
+            _per_subj_max[col] = _np.ceil(max(col_max, 1) / 100) * 100 if pd.notna(col_max) else 100
     else:
         df['__Active_Subjects'] = 0
         std_subjects = 1
+        _per_subj_max = {}
     
     def calculate_student_percentage(row):
         active = row.get('__Active_Subjects', 0)
@@ -209,8 +237,20 @@ def normalize_branch_data(df, branch_name):
         
         if max_subjects == 0:
             return 0.0
-            
-        max_marks = max_subjects * 100
+        
+        # Sum actual max marks for attempted subjects
+        max_marks = 0
+        attempted = 0
+        for col in total_cols:
+            val = pd.to_numeric(row.get(col), errors='coerce')
+            if pd.notna(val) and val > 0:
+                max_marks += _per_subj_max.get(col, 100)
+                attempted += 1
+        # For subjects counted via result but not marks, use 100 as default
+        if attempted < max_subjects:
+            max_marks += (max_subjects - attempted) * 100
+        if max_marks == 0:
+            return 0.0
         return round((row.get('Total_Marks', 0) / max_marks) * 100, 2)
 
     df['Percentage'] = df.apply(calculate_student_percentage, axis=1)
@@ -307,8 +347,9 @@ layout = dbc.Container([
     # --- Header ---
     html.Div([
         html.H2("🏛️ University Level Branch Analysis", className="fw-bold text-center mb-2"),
-        html.P("Compare performance across multiple branches with centralized intelligence.", className="text-center text-muted")
-    ], className="mb-5 mt-5 pt-3 d-print-none"),
+        html.P("Compare performance across multiple branches with centralized intelligence.", className="text-center text-muted"),
+        dbc.Button("📖 Rules & Guidelines", id="ba-open-legend", color="light", size="sm", className="mt-2 fw-bold", outline=True)
+    ], className="mb-5 mt-5 pt-3 d-print-none text-center"),
 
     # --- Print Only Header ---
     html.Div([
@@ -322,7 +363,7 @@ layout = dbc.Container([
             dbc.Row([
                 dbc.Col([
                     html.Label("Number of Branches to Compare"),
-                    dbc.Input(id="ba-branch-count", type="number", min=1, max=10, value=2, className="mb-2"),
+                    dbc.Input(id="ba-branch-count", type="number", min=1, value=2, className="mb-2"),
                     dbc.Button("Generate Inputs", id="ba-generate-btn", color="primary", size="sm")
                 ], md=4),
                 dbc.Col([
@@ -343,12 +384,89 @@ layout = dbc.Container([
         type="cube",
         color="#3b82f6",
         children=html.Div(id="ba-dashboard-view")
-    )
+    ),
+
+    # --- Rules & Guidelines Modal ---
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("📊 Branch Analysis — Rules & Guidelines")),
+        dbc.ModalBody(
+            html.Div([
+                html.H5("🚀 Getting Started", className="text-primary fw-bold mb-2"),
+                html.P("This page compares performance across multiple branches. Upload one Excel file per branch and get a unified comparison dashboard.", className="text-muted small mb-3"),
+
+                html.H6("📥 Step 1 — Configure Branches", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Enter the number of branches you want to compare (1-10)."),
+                    html.Li("Click 'Generate Inputs' to create input rows for each branch."),
+                    html.Li("Enter a branch name (e.g., 'CSE', 'ECE', 'ISE') for each row."),
+                    html.Li("Upload the VTU result Excel file for each branch (same format as Overview page)."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📥 Step 2 — Analyze", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Click '🚀 Analyze & Generate Dashboard' after uploading all branch files."),
+                    html.Li("The system will parse each file, detect subjects, compute pass/fail, and build a comparison dashboard."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📊 Dashboard Outputs", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Overall Summary Tab: "), "Aggregated performance metrics across all branches — Total Students, Appeared, Passed, Failed, Pass %, and Best Branch."]),
+                    html.Li([html.Strong("Per-Branch Tabs: "), "Individual performance metrics for each branch — Total, Appeared, Passed, Failed, Pass %, and Branch Topper."]),
+                    html.Li([html.Strong("Pass Rate Bar Chart: "), "Visual comparison of pass % across all branches."]),
+                    html.Li([html.Strong("Category Pie Chart: "), "Student distribution by VTU categories (FCD/FC/SC/Pass/Fail/Absent)."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📋 Tables Generated", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Strong("Branch Performance Summary: "), "Total, Appeared, Absent, Passed, Failed, Pass %, Avg %, FCD count, Topper name and % for each branch."]),
+                    html.Li([html.Strong("Subject Performance Matrix: "), "Shows Total, Appeared, Absent, Passed, Failed, Pass % per subject per branch — great for identifying weak subjects."]),
+                    html.Li([html.Strong("University Top Rankers: "), "Ranked list of top students across all branches by percentage."]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("🎓 VTU Categories (same as Ranking page)", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li([html.Span("FCD:", className="fw-bold text-success"), " ≥ 70%"]),
+                    html.Li([html.Span("FC:", className="fw-bold text-info"), " 60% – 69.99%"]),
+                    html.Li([html.Span("SC:", className="fw-bold text-warning"), " 50% – 59.99%"]),
+                    html.Li([html.Span("Pass:", className="fw-bold text-danger"), " < 50%"]),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("📤 Export Options", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Download Branch Performance Summary, Top Rankers, and Subject Performance as Excel."),
+                    html.Li("Print the entire dashboard as PDF using the Print button."),
+                ], className="small"),
+                html.Hr(),
+
+                html.H6("⚠️ Important Notes", className="fw-bold text-dark"),
+                html.Ul([
+                    html.Li("Each branch file should be a standard VTU result Excel file (same format accepted by the Overview page)."),
+                    html.Li("Branch data uploaded here also feeds into the Branch Intelligence page for cross-branch insights."),
+                    html.Li("Use unique branch names — duplicate names may overwrite data."),
+                ], className="small mb-0"),
+            ])
+        ),
+        dbc.ModalFooter(dbc.Button("Got it!", id="ba-close-legend", className="ms-auto", color="primary"))
+    ], id="ba-legend-modal", is_open=False, size="lg", style={"zIndex": 10500}),
 
 ], fluid=True, className="pb-5 pt-4")
 
 
 # ==================== CALLBACKS ====================
+
+# Toggle Legend Modal
+@callback(
+    Output("ba-legend-modal", "is_open"),
+    [Input("ba-open-legend", "n_clicks"), Input("ba-close-legend", "n_clicks")],
+    [State("ba-legend-modal", "is_open")],
+    prevent_initial_call=True
+)
+def toggle_ba_legend(n1, n2, is_open): return not is_open if n1 or n2 else is_open
 
 # 1. Generate Upload Inputs
 @callback(
@@ -699,7 +817,8 @@ def analyze_branches(n, file_contents, branch_names):
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='white',
             font=dict(family='Inter, sans-serif'),
-            coloraxis_colorbar=dict(title='Pass %')
+            coloraxis_colorbar=dict(title='Pass %'),
+            yaxis=dict(range=[0, 100])
         )
         
         category_dist = university_df['Category'].value_counts().reset_index()
@@ -850,9 +969,9 @@ def analyze_branches(n, file_contents, branch_names):
             dbc.Card([
                 dbc.CardHeader([
                     html.Div([
-                        html.Span([html.I(className="bi bi-grid-3x3-gap me-2"), "Branch-wise KPI Summary"]),
+                        html.Span([html.I(className="bi bi-grid-3x3-gap me-2"), "Branch-wise Performance Summary"]),
                         dbc.Button(
-                            [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Branch KPIs"], 
+                            [html.I(className="bi bi-cloud-arrow-down-fill me-2"), "Download Branch Performance Summary"], 
                             id="export-kpi-btn", size="sm", color="success", outline=True, className="fw-bold"
                         )
                     ], className="d-flex justify-content-between align-items-center w-100")
@@ -938,7 +1057,7 @@ def export_kpi(n, data):
         index_flag = True
     else:
         index_flag = False
-    return dcc.send_data_frame(df.to_excel, "Branch_KPI_Summary.xlsx", index=index_flag)
+    return dcc.send_data_frame(df.to_excel, "Branch_Performance_Summary.xlsx", index=index_flag)
 
 @callback(
     Output("download-rankers-excel", "data"),
