@@ -756,6 +756,7 @@ def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, cred
     # "student didn't appear" (compulsory, count with GP=0).
     total_students = len(base)
     _subj_participation = {}
+    _subj_has_data = {}  # Per-subject boolean Series: which students have data
     for code in credit_dict_positive:
         has_data = pd.Series(False, index=base.index)
         for suffix in ['Total', 'Internal', 'External']:
@@ -767,9 +768,26 @@ def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, cred
             cleaned = base[res_col].astype(str).str.strip().str.upper()
             has_data |= ~cleaned.isin(['', 'NAN', 'NONE', 'NA', '-'])
         _subj_participation[code] = has_data.sum() / total_students if total_students > 0 else 0
+        _subj_has_data[code] = has_data
+
+    # Detect mutual-exclusion groups: subjects sharing the same course number
+    # e.g. BKBK109 and BKSK109 both extract to "109" — students take one or the other
+    from collections import defaultdict
+    _course_num_to_codes = defaultdict(list)
+    for code in credit_dict_positive:
+        display_code = code.split(" - ")[0].strip() if " - " in code else code.strip()
+        num = re.search(r'\d{3}', display_code)
+        if num:
+            _course_num_to_codes[num.group()].append(code)
+    # Build sibling lookup: for each code, list of other codes with the same course number
+    _sibling_codes = {}
+    for num, codes_list in _course_num_to_codes.items():
+        if len(codes_list) > 1:
+            for c in codes_list:
+                _sibling_codes[c] = [s for s in codes_list if s != c]
 
     sgpa_rows = []
-    for _, row in base.iterrows():
+    for idx, row in base.iterrows():
         total_cp, total_cre, total_marks, fail_flag = 0, 0, 0, False
         for code, credit in credit_dict_positive.items():
             # 1. Get raw scores
@@ -790,6 +808,12 @@ def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, cred
             has_result = bool(res_val) and res_val not in ('', 'NAN', 'NONE', 'NA', '-')
 
             if not has_marks and not has_result:
+                # Check mutual-exclusion: if a sibling subject (same course number)
+                # has data for this student, skip — they took the other variant.
+                siblings = _sibling_codes.get(code, [])
+                if siblings and any(_subj_has_data[s].at[idx] for s in siblings if s in _subj_has_data):
+                    continue  # Student enrolled in sibling variant, skip this one
+
                 # No data for this student. Check if it's compulsory or elective.
                 # Compulsory (>50% of students have data): count with GP=0 (didn't appear)
                 # Elective  (<=50% participation):        skip (not enrolled)
