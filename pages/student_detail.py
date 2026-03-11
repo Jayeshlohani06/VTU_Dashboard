@@ -303,9 +303,10 @@ def populate_subject_dropdown(session_id):
     State('stored-data', 'data'),
     State('student-subject-dropdown', 'value'),
     State('analysis-type-radio', 'value'),
+    State('cycle-store', 'data'),
     prevent_initial_call=False
 )
-def generate_credit_inputs(n_clicks, scheme_sem_data, search_value, session_id, selected_subject_codes, analysis_type):
+def generate_credit_inputs(n_clicks, scheme_sem_data, search_value, session_id, selected_subject_codes, analysis_type, cycle_data):
     if not session_id or not search_value:
         return ""
         
@@ -362,7 +363,7 @@ def generate_credit_inputs(n_clicks, scheme_sem_data, search_value, session_id, 
             className="text-center mt-3"
         )
 
-    credit_map = load_credit_map(scheme, semester)
+    credit_map = load_credit_map(scheme, semester, cycle=cycle_data)
 
     credit_inputs = []
     for idx, raw_code in enumerate(subject_codes_for_credits):
@@ -604,7 +605,13 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
 
     # ---------- KPI Cards ----------
     total_marks_selected = student_series['Total_Marks_Selected']
-    percentage = (total_marks_selected / total_max_marks * 100) if total_max_marks > 0 else 0.0
+    # Percentage: use only positive-credit subjects for both numerator and denominator
+    positive_credit_cols = [f"{code} {analysis_type}" for code in credit_dict_positive]
+    total_marks_positive = sum(
+        pd.to_numeric(student_series.get(col, 0), errors='coerce') or 0
+        for col in positive_credit_cols
+    )
+    percentage = (total_marks_positive / total_max_marks * 100) if total_max_marks > 0 else 0.0
     result_selected = student_series['Result_Selected']
 
     # Ranks pulled from the global (ranking-page) logic above:

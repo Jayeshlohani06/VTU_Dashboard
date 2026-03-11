@@ -350,6 +350,21 @@ layout = dbc.Container([
                         ], width=6),
                     ]),
 
+                    html.Div([
+                        html.Label("Cycle (2025 Scheme Sem 1 only)", className="small fw-bold mb-1"),
+                        dcc.Dropdown(
+                            id='cycle-selector',
+                            options=[
+                                {'label': 'Physics Cycle', 'value': 'physics'},
+                                {'label': 'Chemistry Cycle', 'value': 'chemistry'}
+                            ],
+                            value=None,
+                            clearable=True,
+                            className="mb-3",
+                            placeholder="Select Cycle (if applicable)..."
+                        )
+                    ], id='cycle-selector-container', style={'display': 'none'}),
+
                     dbc.Button(
                         [html.I(className="bi bi-check-circle-fill me-2"), "Submit Mapping for SGPA"],
                         id="submit-scheme-btn",
@@ -776,34 +791,50 @@ def manage_subjects(upload_contents, upload_filename, stored_options, pathname, 
 @callback(
     Output('scheme-selector', 'value'),
     Output('semester-selector', 'value'),
+    Output('cycle-selector', 'value'),
     Input('scheme-semester-store', 'data'),
+    Input('cycle-store', 'data'),
     prevent_initial_call=False
 )
-def load_scheme_semester_ui(store_data):
+def load_scheme_semester_ui(store_data, cycle_data):
     if store_data:
-        return store_data.get('scheme', None), store_data.get('semester', None)
-    return None, None
+        return store_data.get('scheme', None), store_data.get('semester', None), cycle_data
+    return None, None, None
+
+@callback(
+    Output('cycle-selector-container', 'style'),
+    Input('scheme-selector', 'value'),
+    Input('semester-selector', 'value'),
+    prevent_initial_call=True
+)
+def toggle_cycle_selector(scheme, semester):
+    if str(scheme) == '2025' and int(semester or 0) == 1:
+        return {'display': 'block'}
+    return {'display': 'none'}
 
 @callback(
     Output('scheme-semester-store', 'data', allow_duplicate=True),
+    Output('cycle-store', 'data', allow_duplicate=True),
     Output('scheme-moving-alert', 'is_open'),
     Input('submit-scheme-btn', 'n_clicks'),
     State('scheme-selector', 'value'),
     State('semester-selector', 'value'),
+    State('cycle-selector', 'value'),
     State('scheme-semester-store', 'data'),
     prevent_initial_call=True
 )
-def update_scheme_semester_store(n_clicks, scheme, semester, store_data):
+def update_scheme_semester_store(n_clicks, scheme, semester, cycle, store_data):
     if not n_clicks:
         # If no button click yet, keep alert open if nothing in store
-        return no_update, True if not store_data else False
+        return no_update, no_update, True if not store_data else False
         
     if not scheme or not semester:
         # If they clicked but didn't select both, keep alert open and don't store
-        return no_update, True
+        return no_update, no_update, True
 
     # Valid submission: update store, hide alert
-    return {"scheme": scheme, "semester": semester}, False
+    cycle_data = cycle if (str(scheme) == '2025' and int(semester) == 1 and cycle) else None
+    return {"scheme": scheme, "semester": semester}, cycle_data, False
 
 # Add a load callback to hide alert initially if already configured
 @callback(
@@ -1625,7 +1656,7 @@ def _get_grade_point(score):
     return 0
 
 
-def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, scheme_sem_data):
+def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, scheme_sem_data, cycle_data=None):
     """Auto-compute SGPA using ranking.py's exact same logic — reuses calculate_sgpa_all pipeline."""
     from services.credit_service import extract_course_number, load_credit_map
     from pages.ranking import _normalize_df, get_grade_point as rnk_grade_point
@@ -1651,16 +1682,12 @@ def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, schem
     if not scheme:
         scheme = '2022'
 
-    print(f"[SGPA] Auto-detected scheme={scheme}, semester={semester}")
+    print(f"[SGPA] Auto-detected scheme={scheme}, semester={semester}, cycle={cycle_data}")
 
-    credit_path = _os.path.join(
-        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-        'utils', 'credit_database', f'{scheme}_scheme', f'sem{semester}.json')
-    if not _os.path.exists(credit_path):
+    credit_map = load_credit_map(scheme, semester, cycle=cycle_data)
+    if not credit_map:
         print(f"[SGPA] Credit file not found!")
         return None, False
-    with open(credit_path, 'r') as _f:
-        credit_map = _json.load(_f)
 
     # Build credit dict for selected subjects
     credit_dict = {}
@@ -1783,7 +1810,7 @@ def _auto_compute_sgpa(df, selected_subjects, section_ranges, usn_mapping, schem
 
 
 def _build_sgpa_sheet(sgpa_json_str, df=None, selected_subjects=None,
-                      section_ranges=None, usn_mapping=None, scheme_sem_data=None):
+                      section_ranges=None, usn_mapping=None, scheme_sem_data=None, cycle_data=None):
     """Build SGPA-based ranking sheet. Uses stored data if available, otherwise auto-computes."""
     # Try stored SGPA data first
     if sgpa_json_str:
@@ -1815,7 +1842,7 @@ def _build_sgpa_sheet(sgpa_json_str, df=None, selected_subjects=None,
 
     # Auto-compute SGPA if we have the data
     if df is not None and selected_subjects:
-        return _auto_compute_sgpa(df.copy(), selected_subjects, section_ranges, usn_mapping, scheme_sem_data)
+        return _auto_compute_sgpa(df.copy(), selected_subjects, section_ranges, usn_mapping, scheme_sem_data, cycle_data)
 
     return None, False
 
@@ -1829,9 +1856,10 @@ def _build_sgpa_sheet(sgpa_json_str, df=None, selected_subjects=None,
     State('usn-mapping-store', 'data'),
     State('sgpa-store', 'data'),
     State('scheme-semester-store', 'data'),
+    State('cycle-store', 'data'),
     prevent_initial_call=True
 )
-def universal_download(n_clicks, session_id, selected_subjects, section_ranges, usn_mapping, sgpa_json, scheme_sem_data):
+def universal_download(n_clicks, session_id, selected_subjects, section_ranges, usn_mapping, sgpa_json, scheme_sem_data, cycle_data):
     print(f"[DOWNLOAD] ENTERED. n_clicks={n_clicks}, session_id={session_id}, subjects_len={len(selected_subjects) if selected_subjects else 0}")
     if not n_clicks or not session_id or not selected_subjects:
         print(f"[DOWNLOAD] PreventUpdate: n_clicks={bool(n_clicks)}, session_id={bool(session_id)}, subjects={bool(selected_subjects)}")
@@ -1860,7 +1888,7 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
         print(f"[DOWNLOAD] Category: {len(category_df)} rows")
         sgpa_df, sgpa_computed = _build_sgpa_sheet(
             sgpa_json, df, selected_subjects,
-            section_ranges, usn_mapping, scheme_sem_data)
+            section_ranges, usn_mapping, scheme_sem_data, cycle_data)
         print(f"[DOWNLOAD] SGPA computed: {sgpa_computed}")
     except Exception as e:
         print(f"[DOWNLOAD ERROR] Building sheets failed: {e}")
@@ -1869,20 +1897,69 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
 
     out = BytesIO()
     with pd.ExcelWriter(out, engine='openpyxl') as writer:
-        # ── Compute KPI metrics from overview_df ──
-        _kpi_total = len(overview_df)
-        _kpi_absent = int((overview_df['Overall_Result'] == 'A').sum()) if 'Overall_Result' in overview_df.columns else 0
-        _kpi_appeared = _kpi_total - _kpi_absent
-        _kpi_passed = int((overview_df['Overall_Result'] == 'P').sum()) if 'Overall_Result' in overview_df.columns else 0
-        _kpi_failed = int((overview_df['Overall_Result'] == 'F').sum()) if 'Overall_Result' in overview_df.columns else 0
-        _kpi_pass_pct = round((_kpi_passed / _kpi_appeared) * 100, 2) if _kpi_appeared > 0 else 0
+        # ── Compute detailed KPI metrics using ranking logic ──
+        from pages.ranking import _normalize_df, calculate_student_metrics as _calc_metrics
+        import numpy as np
 
-        # ── Write Summary (KPI) sheet as first sheet ──
-        kpi_data = {
-            'Metric': ['Total', 'Appeared', 'Passed', 'Failed', 'Absent', 'Pass %'],
-            'Value': [_kpi_total, _kpi_appeared, _kpi_passed, _kpi_failed, _kpi_absent, f"{_kpi_pass_pct}%"]
-        }
-        kpi_df = pd.DataFrame(kpi_data)
+        _base = _normalize_df(df.copy(), section_ranges, usn_mapping)
+        _base = _calc_metrics(_base)
+
+        _is_pass = _base['Overall_Result'].isin(['P', 'PASS'])
+        _is_fail = _base['Overall_Result'].isin(['F', 'FAIL'])
+        _is_absent = _base['Overall_Result'].isin(['A', 'ABSENT'])
+
+        _backlogs = pd.Series(0, index=_base.index)
+        if 'Failed_Subjects' in _base.columns and 'Absent_Subjects' in _base.columns:
+            _backlogs = _base['Failed_Subjects'] + _base['Absent_Subjects']
+
+        _kpi_total = len(_base)
+        _kpi_absent = int(_is_absent.sum())
+        _kpi_appeared = _kpi_total - _kpi_absent
+        _kpi_passed = int(_is_pass.sum())
+        _kpi_failed = int(_is_fail.sum())
+        _kpi_pass_pct = round((_kpi_passed / _kpi_appeared) * 100, 2) if _kpi_appeared > 0 else 0
+        _kpi_1fail = int((_is_fail & (_backlogs == 1)).sum())
+        _kpi_2fail = int((_is_fail & (_backlogs == 2)).sum())
+        _kpi_3fail = int((_is_fail & (_backlogs >= 3)).sum())
+        _kpi_fcd = int((_is_pass & (_base['percentage'] >= 70)).sum())
+        _kpi_fc = int((_is_pass & (_base['percentage'] >= 60) & (_base['percentage'] < 70)).sum())
+        _kpi_sc = int((_is_pass & (_base['percentage'] >= 50) & (_base['percentage'] < 60)).sum())
+
+        # KPI breakdown definitions (name, count, dataframe)
+        _kpi_breakdown = [
+            ('Total Students', _kpi_total, _base),
+            ('Appeared', _kpi_appeared, _base[~_is_absent]),
+            ('Absent', _kpi_absent, _base[_is_absent]),
+            ('Passed', _kpi_passed, _base[_is_pass]),
+            ('Failed', _kpi_failed, _base[_is_fail]),
+            ('1 Subject Fail', _kpi_1fail, _base[_is_fail & (_backlogs == 1)]),
+            ('2 Subject Fails', _kpi_2fail, _base[_is_fail & (_backlogs == 2)]),
+            ('3+ Subject Fails', _kpi_3fail, _base[_is_fail & (_backlogs >= 3)]),
+            ('First Class Distinction', _kpi_fcd, _base[_is_pass & (_base['percentage'] >= 70)]),
+            ('First Class', _kpi_fc, _base[_is_pass & (_base['percentage'] >= 60) & (_base['percentage'] < 70)]),
+            ('Second Class', _kpi_sc, _base[_is_pass & (_base['percentage'] >= 50) & (_base['percentage'] < 60)]),
+        ]
+
+        # ── Write Summary sheet as first sheet (with full breakdown) ──
+        summary_rows = [
+            {'Metric': 'Total', 'Value': _kpi_total},
+            {'Metric': 'Appeared', 'Value': _kpi_appeared},
+            {'Metric': 'Passed', 'Value': _kpi_passed},
+            {'Metric': 'Failed', 'Value': _kpi_failed},
+            {'Metric': 'Absent', 'Value': _kpi_absent},
+            {'Metric': 'Pass %', 'Value': f"{_kpi_pass_pct}%"},
+            {'Metric': '', 'Value': ''},
+            {'Metric': '── Failure Breakdown ──', 'Value': ''},
+            {'Metric': '1 Subject Fail', 'Value': _kpi_1fail},
+            {'Metric': '2 Subject Fails', 'Value': _kpi_2fail},
+            {'Metric': '3+ Subject Fails', 'Value': _kpi_3fail},
+            {'Metric': '', 'Value': ''},
+            {'Metric': '── Category Breakdown ──', 'Value': ''},
+            {'Metric': 'First Class Distinction (≥70%)', 'Value': _kpi_fcd},
+            {'Metric': 'First Class (60-69.99%)', 'Value': _kpi_fc},
+            {'Metric': 'Second Class (50-59.99%)', 'Value': _kpi_sc},
+        ]
+        kpi_df = pd.DataFrame(summary_rows)
         kpi_df.to_excel(writer, sheet_name='Summary', index=False)
 
         ws_kpi = writer.sheets['Summary']
@@ -1894,7 +1971,7 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
             cell.fill = kpi_header_fill
             cell.font = kpi_header_font
             cell.alignment = Alignment(horizontal='center', vertical='center')
-        ws_kpi.column_dimensions['A'].width = 20
+        ws_kpi.column_dimensions['A'].width = 35
         ws_kpi.column_dimensions['B'].width = 20
 
         # Style data rows with distinct colors per metric
@@ -1905,14 +1982,28 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
             'Failed':   (PatternFill(start_color='FFFEE2E2', end_color='FFFEE2E2', fill_type='solid'), Font(color='FF991B1B', bold=True, size=11)),
             'Absent':   (PatternFill(start_color='FFFEF3C7', end_color='FFFEF3C7', fill_type='solid'), Font(color='FF92400E', bold=True, size=11)),
             'Pass %':   (PatternFill(start_color='FFF5F3FF', end_color='FFF5F3FF', fill_type='solid'), Font(color='FF7C3AED', bold=True, size=11)),
+            '1 Subject Fail':   (PatternFill(start_color='FFFEE2E2', end_color='FFFEE2E2', fill_type='solid'), Font(color='FF991B1B', bold=True, size=11)),
+            '2 Subject Fails':  (PatternFill(start_color='FFFEE2E2', end_color='FFFEE2E2', fill_type='solid'), Font(color='FF991B1B', bold=True, size=11)),
+            '3+ Subject Fails': (PatternFill(start_color='FFFEE2E2', end_color='FFFEE2E2', fill_type='solid'), Font(color='FF991B1B', bold=True, size=11)),
+            'First Class Distinction (≥70%)': (PatternFill(start_color='FFF5F3FF', end_color='FFF5F3FF', fill_type='solid'), Font(color='FF7C3AED', bold=True, size=11)),
+            'First Class (60-69.99%)':        (PatternFill(start_color='FFF0F9FF', end_color='FFF0F9FF', fill_type='solid'), Font(color='FF075985', bold=True, size=11)),
+            'Second Class (50-59.99%)':       (PatternFill(start_color='FFFFFBF0', end_color='FFFFFBF0', fill_type='solid'), Font(color='FFB45309', bold=True, size=11)),
         }
-        for row_idx in range(2, 8):
+        # Section header style
+        section_fill = PatternFill(start_color='FFF1F5F9', end_color='FFF1F5F9', fill_type='solid')
+        section_font = Font(color='FF475569', bold=True, size=11, italic=True)
+        for row_idx in range(2, ws_kpi.max_row + 1):
             metric = str(ws_kpi.cell(row=row_idx, column=1).value or '')
             if metric in kpi_styles:
                 fill, font = kpi_styles[metric]
                 for col_idx in range(1, 3):
                     ws_kpi.cell(row=row_idx, column=col_idx).fill = fill
                     ws_kpi.cell(row=row_idx, column=col_idx).font = font
+                    ws_kpi.cell(row=row_idx, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
+            elif metric.startswith('──'):
+                for col_idx in range(1, 3):
+                    ws_kpi.cell(row=row_idx, column=col_idx).fill = section_fill
+                    ws_kpi.cell(row=row_idx, column=col_idx).font = section_font
                     ws_kpi.cell(row=row_idx, column=col_idx).alignment = Alignment(horizontal='center', vertical='center')
 
         # ── Write Overview sheet with grouped 2-row headers (matching dashboard) ──
@@ -1966,6 +2057,25 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
             subject_df.to_excel(writer, sheet_name='Subject Analysis', index=False)
         if not category_df.empty:
             category_df.to_excel(writer, sheet_name='Category Breakdown', index=False)
+
+        # ── Write KPI breakdown sheets (student lists per category) ──
+        _display_cols = ['Student_ID', 'Name', 'Section', 'Total_Marks', 'percentage']
+        if 'Failed_Subject' in _base.columns:
+            _display_cols_fail = _display_cols + ['Failed_Subject']
+        else:
+            _display_cols_fail = _display_cols
+
+        for _sheet_name, _count, _df_kpi in _kpi_breakdown:
+            if _df_kpi.empty:
+                continue
+            _use_cols = _display_cols_fail if 'Fail' in _sheet_name else _display_cols
+            _final_cols = [c for c in _use_cols if c in _df_kpi.columns]
+            _export_df = _df_kpi[_final_cols].copy()
+            if 'percentage' in _export_df.columns:
+                _export_df['percentage'] = _export_df['percentage'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+            _export_df.rename(columns={'Total_Marks': 'Marks', 'percentage': 'Percentage (%)', 'Failed_Subject': 'Failed Subject(s)'}, inplace=True)
+            _valid_sheet = _sheet_name[:31]
+            _export_df.to_excel(writer, sheet_name=_valid_sheet, index=False)
 
         # --- Color definitions ---
         header_fill = PatternFill(start_color='FF1F2937', end_color='FF1F2937', fill_type='solid')
@@ -2195,5 +2305,31 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
                     _apply_row_fill(ws_cb, row_idx, pc_fill, pc_font)
                 elif row_idx % 2 == 1:
                     _apply_row_fill(ws_cb, row_idx, odd_fill)
+
+        # ── Style KPI breakdown sheets ──
+        _breakdown_colors = {
+            'Total Students':           (PatternFill(start_color='FFE0E7FF', end_color='FFE0E7FF', fill_type='solid'), Font(color='FF3730A3')),
+            'Appeared':                 (PatternFill(start_color='FFDBEAFE', end_color='FFDBEAFE', fill_type='solid'), Font(color='FF1E40AF')),
+            'Absent':                   (absent_fill, absent_font),
+            'Passed':                   (pass_fill, pass_font),
+            'Failed':                   (fail_fill, fail_font),
+            '1 Subject Fail':           (fail_fill, fail_font),
+            '2 Subject Fails':          (fail_fill, fail_font),
+            '3+ Subject Fails':         (fail_fill, fail_font),
+            'First Class Distinction':  (fcd_fill, fcd_font),
+            'First Class':              (fc_fill, fc_font),
+            'Second Class':             (sc_fill, sc_font),
+        }
+        for _sheet_name, _count, _df_kpi in _kpi_breakdown:
+            _valid_sheet = _sheet_name[:31]
+            if _valid_sheet in writer.sheets:
+                _ws = writer.sheets[_valid_sheet]
+                _style_headers(_ws)
+                _bfill, _bfont = _breakdown_colors.get(_sheet_name, (odd_fill, None))
+                for _r in range(2, _ws.max_row + 1):
+                    if _r % 2 == 0:
+                        _apply_row_fill(_ws, _r, _bfill, _bfont)
+                    else:
+                        _apply_row_fill(_ws, _r, odd_fill)
 
     return dcc.send_bytes(out.getvalue(), 'Complete_Report.xlsx')
