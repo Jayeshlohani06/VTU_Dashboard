@@ -712,3 +712,87 @@ html[data-theme="dark"] .tooltip-custom:hover::after {
     background: rgba(255,255,255,0.9) !important;
     color: #0f172a !important;
 }
+
+/* ═══════════════════════════════════════
+   24. STUDENT DETAIL PAGE
+   ═══════════════════════════════════════ */
+
+/* Container background */
+html[data-theme="dark"] .sd-container {
+    background: #0f172a !important;
+}
+
+/* Labels that had hardcoded #2c3e50 */
+html[data-theme="dark"] .sd-label {
+    color: #f1f5f9 !important;
+}
+
+/* Search card */
+html[data-theme="dark"] .sd-search-card {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .sd-card-header {
+    background: #1e293b !important;
+    color: #f1f5f9 !important;
+}
+
+/* Student header card (Name, ID, Section) */
+html[data-theme="dark"] .sd-student-header-card {
+    background: #1e293b !important;
+}
+
+html[data-theme="dark"] .sd-student-header-card .card-body {
+    background: #1e293b !important;
+}
+
+/* SGPA card */
+html[data-theme="dark"] .sd-sgpa-card {
+    background: #1e293b !important;
+}
+
+html[data-theme="dark"] .sd-sgpa-card .card-body {
+    background: #1e293b !important;
+}
+
+/* Full performance report card */
+html[data-theme="dark"] .sd-report-card {
+    background: #1e293b !important;
+}
+
+/* Credit input card borders */
+html[data-theme="dark"] .sd-container .shadow-sm.mb-2 {
+    border-color: #334155 !important;
+    background: #1e293b !important;
+}
+
+/* Top/Bottom Subject Cards */
+html[data-theme="dark"] .sd-report-card .card-header {
+    color: #fff !important;
+}
+
+html[data-theme="dark"] .sd-report-card .card-body li span {
+    color: #e2e8f0 !important;
+}
+
+/* Chart paper_bgcolor handled by JS, but container: */
+html[data-theme="dark"] .sd-report-card .js-plotly-plot {
+    background: #1e293b !important;
+}
+
+/* Fix btn-outline-primary radio items in student detail */
+html[data-theme="dark"] .sd-search-card .btn-check:checked + .btn-outline-primary {
+    background-color: #3b82f6 !important;
+    color: #fff !important;
+    border-color: #3b82f6 !important;
+}
+
+/* Strong/Weak subject card bodies */
+html[data-theme="dark"] .sd-strong-card-body {
+    background: #064e3b !important;
+}
+
+html[data-theme="dark"] .sd-weak-card-body {
+    background: #7f1d1d !important;
+}
