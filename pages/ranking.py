@@ -629,9 +629,10 @@ def toggle_metric_selector(rank_type):
     Input('stored-data', 'data'),
     Input('ranking-type', 'value'),
     Input('scheme-semester-store', 'data'),
-    State('section-data', 'data')
+    State('section-data', 'data'),
+    State('cycle-store', 'data')
 )
-def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ranges):
+def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ranges, cycle_data):
     if ranking_type != 'sgpa': return html.Div()
     if not session_id: return ""
     
@@ -665,8 +666,8 @@ def generate_credit_panel(session_id, ranking_type, scheme_sem_data, section_ran
         if semester is None:
             semester = 5  # ultimate fallback
     
-    # Load credit map using the stored/detected scheme and semester
-    credit_map = load_credit_map(scheme, semester)
+    # Load credit map using the stored/detected scheme, semester, and cycle
+    credit_map = load_credit_map(scheme, semester, cycle=cycle_data)
     
     grid_items = []
     for code in codes:

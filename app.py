@@ -349,6 +349,7 @@ app.layout = html.Div([
             dcc.Store(id="usn-mapping-store", storage_type="session"),
             dcc.Store(id="subject-options-store", storage_type="session"),
             dcc.Store(id="scheme-semester-store", storage_type="session"),
+            dcc.Store(id="cycle-store", storage_type="session"),
             dcc.Store(id="sgpa-store", storage_type="session"),
 
             # PAGE CONTENT
@@ -371,7 +372,7 @@ app.layout = html.Div([
                         html.Br(),
                         html.Span("Jayesh Lohani | Amit Kumar Thakur | Aman Raj | Avni Chauhan", className="fw-medium"),
                         html.Br(),
-                        html.Span("Under the Guidance of Professor Arun K H, Assistant Professor Acharya Institute of Technology", className="fw-bold mt-2 d-inline-block")
+                        html.Span("Under the Guidance of Prof.Arun K H, Assistant Professor Acharya Institute of Technology", className="fw-bold mt-2 d-inline-block")
                     ],
                     id="footer-content",
                     className="text-center",
