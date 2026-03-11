@@ -21,8 +21,8 @@ def extract_valid_subjects(columns):
         if suffix not in {"Internal", "External", "Total", "Result"}:
             continue
 
-        # STRICT VTU FORMAT
-        if not re.fullmatch(r"[A-Z]{2,}\d{3}[A-Z]?", prefix):
+        # STRICT VTU FORMAT (supports both BCEDS103 and 1BAIA103 styles)
+        if not re.fullmatch(r"\d?[A-Z]{2,}\d{3}[A-Z]?", prefix):
             continue
 
         subjects.add(prefix)

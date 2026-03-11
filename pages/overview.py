@@ -164,7 +164,7 @@ def get_subject_codes(df):
             parts = col.split(" - ", 1)
             code = parts[0].strip()
             # Verify code format
-            if re.fullmatch(r"[A-Z]{2,}\d{3}[A-Z]?", code):
+            if re.fullmatch(r"\d?[A-Z]{2,}\d{3}[A-Z]?", code):
                 # Verify component at the end
                 if any(col.endswith(f" {s}") for s in ["Internal", "External", "Total", "Result"]):
                     subject_codes.add(code)
@@ -175,7 +175,7 @@ def get_subject_codes(df):
             
         prefix, suffix = col.rsplit(" ", 1)
         if suffix in ["Internal", "External", "Total", "Result"]:
-            if re.fullmatch(r"[A-Z]{2,}\d{3}[A-Z]?", prefix):
+            if re.fullmatch(r"\d?[A-Z]{2,}\d{3}[A-Z]?", prefix):
                 subject_codes.add(prefix)
     return sorted(list(subject_codes))
 
