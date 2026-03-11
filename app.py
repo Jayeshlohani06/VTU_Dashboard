@@ -390,6 +390,18 @@ app.layout = html.Div([
     # FEEDBACK COMPONENTS — placed outside Container to avoid navbar stacking context
     feedback_fab,
     feedback_modal,
+
+    # TOUR BUTTON — floating button to trigger guided tour
+    html.Button(
+        html.Div([
+            html.Span("🎓", className="tour-fab-icon"),
+            html.Span("Tour", className="tour-fab-label")
+        ], className="d-flex align-items-center gap-2"),
+        id="tour-fab",
+        className="tour-fab tour-fab-pulse",
+        title="Take a guided tour of this page",
+        n_clicks=0,
+    ),
 ])
 
 # ----------------- Dynamic Page Title -----------------
@@ -486,6 +498,22 @@ def submit_feedback(n, name, email, ftype, message, rating):
 
 # ----------------- Server -----------------
 server = app.server
+
+# ----------------- Tour Trigger (Clientside) -----------------
+app.clientside_callback(
+    """
+    function(n_clicks) {
+        if (!n_clicks) return window.dash_clientside.no_update;
+        if (window.__startDashboardTour) {
+            window.__startDashboardTour();
+        }
+        return "";
+    }
+    """,
+    Output("tour-fab", "title"),
+    Input("tour-fab", "n_clicks"),
+    prevent_initial_call=True
+)
 
 
 # ----------------- Run App -----------------

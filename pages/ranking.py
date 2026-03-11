@@ -809,6 +809,24 @@ def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, cred
         else:
             _subj_max_marks[code] = 100
 
+    # Pre-compute per-subject participation rate (vectorized)
+    # Compulsory subjects have high participation (>50%), electives have low participation.
+    # This distinguishes "student didn't enroll" (elective, skip) from
+    # "student didn't appear" (compulsory, count with GP=0).
+    total_students = len(base)
+    _subj_participation = {}
+    for code in credit_dict_positive:
+        has_data = pd.Series(False, index=base.index)
+        for suffix in ['Total', 'Internal', 'External']:
+            col = f"{code} {suffix}"
+            if col in base.columns:
+                has_data |= (pd.to_numeric(base[col], errors='coerce').fillna(0) > 0)
+        res_col = f"{code} Result"
+        if res_col in base.columns:
+            cleaned = base[res_col].astype(str).str.strip().str.upper()
+            has_data |= ~cleaned.isin(['', 'NAN', 'NONE', 'NA', '-'])
+        _subj_participation[code] = has_data.sum() / total_students if total_students > 0 else 0
+
     sgpa_rows = []
     for _, row in base.iterrows():
         total_cp, total_cre, total_marks, fail_flag = 0, 0, 0, False
@@ -826,20 +844,27 @@ def calculate_sgpa_all(credit_vals, json_data, section_ranges, usn_mapping, cred
             # 3. Check Result column
             res_val = str(row.get(f"{code} Result", "")).strip().upper()
 
-            # 4. Skip subjects this student did NOT take
-            #    (no marks at all AND no meaningful result like P/F)
+            # 4. Determine if student has data for this subject
             has_marks = (i > 0) or (e > 0) or (score > 0)
-            has_result = res_val in ('P', 'F')
+            has_result = bool(res_val) and res_val not in ('', 'NAN', 'NONE', 'NA', '-')
+
             if not has_marks and not has_result:
+                # No data for this student. Check if it's compulsory or elective.
+                # Compulsory (>50% of students have data): count with GP=0 (didn't appear)
+                # Elective  (<=50% participation):        skip (not enrolled)
+                if _subj_participation.get(code, 0) > 0.5:
+                    fail_flag = True
+                    total_cp += 0  # GP = 0
+                    total_cre += credit
                 continue
 
             # 5. Fail logic
-            if res_val == 'P':
+            if res_val in ('P', 'PASS'):
                 pass
-            elif res_val == 'F':
+            elif res_val in ('F', 'FAIL', 'NP'):
                 fail_flag = True
-            elif res_val == 'A':
-                 fail_flag = True
+            elif res_val in ('A', 'AB', 'ABSENT'):
+                fail_flag = True
             else:
                 if score < 35: 
                     fail_flag = True
@@ -918,10 +943,11 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
     if sgpa_json:
         try:
             sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+            # Drop columns from sgpa_df that already exist in base_full (except join key)
+            # to avoid _x/_y suffix conflicts after merge
+            overlap_cols = [c for c in sgpa_df.columns if c in base_full.columns and c != 'Student_ID']
+            sgpa_df = sgpa_df.drop(columns=overlap_cols)
             base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
-            # Fix column conflict if merge creates duplicates
-            if 'Section' not in base_full.columns or base_full['Section'].isna().all():
-                if 'Section' in base_pre.columns: base_full['Section'] = base_pre['Section']
         except: base_full = base_pre.copy()
 
     scope = base_full.copy()
@@ -1138,6 +1164,7 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
                 is_pass = (r.get('Overall_Result') == 'P')
                 res_txt = r.get('Overall_Result')
 
+            res_txt = str(res_txt) if pd.notna(res_txt) else "-"
             res_cls = "badge-pass" if is_pass else "badge-fail"
             
             sec_txt = f" (Sec {r.get('Section')})" if r.get('Section') else ""
@@ -1211,9 +1238,10 @@ def build_views(filter_val, sec_val, search_val, rank_type, metric_val, sgpa_jso
         tdf = tdf.sort_values(['__sort', sort_col], ascending=[True, False])
         cols = ['Class_Rank', 'Section_Rank', 'Student_ID', 'Name', 'Section', sort_col, 'Overall_Result']
     
-    tcols = [{"name": c.replace("_", " "), "id": c} for c in cols if c in tdf.columns]
-    # FIX: Send only relevant columns to table data
-    tdata = tdf[cols].to_dict('records') 
+    # Filter to only columns that exist in data
+    cols = [c for c in cols if c in tdf.columns]
+    tcols = [{"name": c.replace("_", " "), "id": c} for c in cols]
+    tdata = tdf[cols].to_dict('records')
 
     # === GENERATE VTU CATEGORY BREAKDOWN TABLE ===
     breakdown_data = []
@@ -1422,6 +1450,8 @@ def show_modal(main_cell, bd_cells, main_data, json_data, section_data, sgpa_jso
         if sgpa_json:
             try:
                 sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+                overlap_cols = [c for c in sgpa_df.columns if c in df.columns and c != 'Student_ID']
+                sgpa_df = sgpa_df.drop(columns=overlap_cols)
                 if 'Student_ID' in df.columns and 'Student_ID' in sgpa_df.columns:
                     df = df.merge(sgpa_df, how='left', on='Student_ID')
                 elif df.columns[0] == 'USN' or df.columns[0] == 'Student_ID':
@@ -1665,6 +1695,8 @@ def export_all_kpis_report(n_clicks, filter_val, sec_val, rank_type, json_data, 
     if sgpa_json:
         try:
             sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+            overlap_cols = [c for c in sgpa_df.columns if c in base_full.columns and c != 'Student_ID']
+            sgpa_df = sgpa_df.drop(columns=overlap_cols)
             base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
         except: pass
 
@@ -1869,6 +1901,8 @@ def handle_rnk_kpi_click(kpi_clicks, c1, c2, filter_val, sec_val, rank_type, jso
     if sgpa_json:
         try:
             sgpa_df = pd.read_json(StringIO(sgpa_json), orient='split')
+            overlap_cols = [c for c in sgpa_df.columns if c in base_full.columns and c != 'Student_ID']
+            sgpa_df = sgpa_df.drop(columns=overlap_cols)
             base_full = base_full.merge(sgpa_df, how='left', on='Student_ID')
         except: pass
 
