@@ -48,6 +48,7 @@
                 { element: "#data-preview",             popover: { title: "Data Preview Table 📊", description: "Your uploaded result data appears here with all computed metrics — Total Marks, Pass/Fail, Percentage, etc.", side: "top" }},
                 { element: "#universal-download-btn",   popover: { title: "Download Data ⬇️", description: "Export the current table view as an Excel file for offline use or sharing.", side: "left" }},
                 { element: "#open-legend-overview",     popover: { title: "Rules & Guidelines 📖", description: "Click to see detailed rules — how pass/fail is determined, how percentage is calculated, and more.", side: "left" }},
+                { element: "#theme-toggle-btn",        popover: { title: "Dark / Light Mode 🌙", description: "Toggle between <b>dark</b> and <b>light</b> themes for comfortable viewing. Your preference is saved automatically.", side: "bottom" }},
                 { popover: { title: "You're all set! 🎉", description: "Upload a result file and explore the data. Navigate to other pages using the top navbar. Click the <b>🎓 Tour</b> button anytime to replay this guide." }}
             ];
         },
@@ -61,7 +62,7 @@
                 { element: "#open-legend",                    popover: { title: "Rules & Guidelines", description: "Comprehensive guide explaining ranking logic, pass/fail criteria, SGPA formula, and VTU categories.", side: "left" }},
                 { element: "#ranking-type",                   popover: { title: "Marks vs SGPA Mode", description: "Switch between <b>Marks Based</b> (raw total) and <b>SGPA Based</b> (credit-weighted grade points). SGPA mode opens a credit configuration panel.", side: "top" }},
                 { element: "#marks-metric-selector",          popover: { title: "Metric Selector", description: "In Marks mode, choose to rank by <b>Total</b>, <b>Internal</b>, or <b>External</b> marks.", side: "top" }},
-                { element: "#theme-toggle",                   popover: { title: "Dark Mode 🌙", description: "Toggle between light and dark themes for comfortable viewing.", side: "right" }},
+                { element: "#theme-toggle-btn",               popover: { title: "Dark / Light Mode 🌙", description: "Toggle between <b>dark</b> and <b>light</b> themes for comfortable viewing. Your preference is saved automatically.", side: "bottom" }},
                 { element: "#kpi-cards",                      popover: { title: "Performance KPIs 📈", description: "Quick overview — Total students, Passed, Failed, Absent, Pass %, and VTU categories (FCD, FC, SC). <b>Click any card</b> to see the detailed student list.", side: "bottom" }},
                 { element: "#export-all-kpis",                popover: { title: "Download KPI Report", description: "Export a consolidated Excel with separate sheets for each KPI category (FCD, FC, Failed, etc.).", side: "left" }},
                 { element: "#category-breakdown-container",   popover: { title: "VTU Category Breakdown", description: "Section-wise breakdown showing how many students fall into each VTU category. Expandable accordions with student lists.", side: "top" }},
@@ -86,6 +87,7 @@
                 { element: "#sa-summary-table",          popover: { title: "Summary Table", description: "Consolidated summary across all selected subjects.", side: "top" }},
                 { element: "#sa-export-xlsx",            popover: { title: "Export Data", description: "Download subject analysis data as Excel for offline use.", side: "left" }},
                 { element: "#sa-open-legend",            popover: { title: "Rules & Guidelines", description: "Detailed explanation of how subject analysis metrics are computed.", side: "left" }},
+                { element: "#theme-toggle-btn",        popover: { title: "Dark / Light Mode 🌙", description: "Toggle between <b>dark</b> and <b>light</b> themes for comfortable viewing. Your preference is saved automatically.", side: "bottom" }},
                 { popover: { title: "Subject Analysis Complete! 🎉", description: "Select subjects, explore charts, and export reports." }}
             ];
         },
@@ -99,6 +101,7 @@
                 { element: "#analysis-type-radio",        popover: { title: "Marks vs SGPA", description: "Toggle between viewing raw marks or SGPA-based analysis for the student.", side: "bottom" }},
                 { element: "#student-detail-content",     popover: { title: "Results Display", description: "The student's complete subject-wise breakdown appears here — Internal, External, Total, Result, and overall statistics.", side: "top" }},
                 { element: "#sd-open-legend",             popover: { title: "Rules & Guidelines", description: "How student metrics are calculated — percentage, SGPA, pass/fail criteria.", side: "left" }},
+                { element: "#theme-toggle-btn",         popover: { title: "Dark / Light Mode 🌙", description: "Toggle between <b>dark</b> and <b>light</b> themes for comfortable viewing. Your preference is saved automatically.", side: "bottom" }},
                 { popover: { title: "Student Detail Complete! 🎉", description: "Search for any student by USN to view their complete performance profile." }}
             ];
         },
@@ -113,6 +116,7 @@
                 { element: "#ba-analyze-container",       popover: { title: "Analyze Button", description: "After uploading all files, click <b>Analyze & Generate</b> to build the comparison dashboard.", side: "top" }},
                 { element: "#ba-dashboard-view",          popover: { title: "Dashboard Output", description: "The comparative analysis appears here — KPIs, charts, subject-wise comparison, and branch rankings.", side: "top" }},
                 { element: "#ba-download-excel-btn",      popover: { title: "Export Reports", description: "Download the branch comparison as Excel, CSV, or PDF for sharing.", side: "left" }},
+                { element: "#theme-toggle-btn",         popover: { title: "Dark / Light Mode 🌙", description: "Toggle between <b>dark</b> and <b>light</b> themes for comfortable viewing. Your preference is saved automatically.", side: "bottom" }},
                 { popover: { title: "Branch Analysis Complete! 🎉", description: "Upload multiple branch files to compare performance across departments." }}
             ];
         }

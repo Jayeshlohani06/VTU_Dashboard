@@ -31,6 +31,13 @@ html[data-theme="dark"] *::before,
 html[data-theme="dark"] *::after {
     transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
+/* Exclude modal backdrop and modal from transitions to prevent stuck states */
+html[data-theme="dark"] .modal-backdrop,
+html[data-theme="dark"] .modal-backdrop *,
+html[data-theme="dark"] .modal,
+html[data-theme="dark"] .modal-dialog {
+    transition: none !important;
+}
 
 /* ══════════════════════════════════════════════
    DARK MODE OVERRIDES
@@ -421,8 +428,41 @@ html[data-theme="dark"] .table tbody tr:hover {
     background-color: #334155 !important;
 }
 
-html[data-theme="dark"] .table td {
+html[data-theme="dark"] .table td,
+html[data-theme="dark"] .table tbody td {
     color: #e2e8f0 !important;
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+/* Bootstrap striped table rows */
+html[data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > *,
+html[data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > td {
+    background-color: #162032 !important;
+    color: #e2e8f0 !important;
+    --bs-table-striped-bg: #162032 !important;
+    --bs-table-bg-type: #162032 !important;
+}
+
+/* Bootstrap hover table */
+html[data-theme="dark"] .table-hover > tbody > tr:hover > *,
+html[data-theme="dark"] .table-hover > tbody > tr:hover > td {
+    background-color: #334155 !important;
+    color: #f1f5f9 !important;
+    --bs-table-hover-bg: #334155 !important;
+    --bs-table-bg-type: #334155 !important;
+}
+
+/* Override Bootstrap table CSS variables */
+html[data-theme="dark"] .table {
+    --bs-table-bg: #1e293b !important;
+    --bs-table-striped-bg: #162032 !important;
+    --bs-table-hover-bg: #334155 !important;
+    --bs-table-border-color: #334155 !important;
+    --bs-table-striped-color: #e2e8f0 !important;
+    --bs-table-hover-color: #f1f5f9 !important;
+    --bs-table-color: #e2e8f0 !important;
+    border-color: #334155 !important;
 }
 
 /* ═══════════════════════════════════════
@@ -500,6 +540,45 @@ html[data-theme="dark"] .modal-body li,
 html[data-theme="dark"] .modal-body p,
 html[data-theme="dark"] .modal-body span,
 html[data-theme="dark"] .modal-body h6 {
+    color: #e2e8f0 !important;
+}
+
+/* Modal DataTable specifics — ensure tables inside modals are dark */
+html[data-theme="dark"] .modal-body .dash-table-container .dash-spreadsheet-inner td {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .modal-body .dash-table-container .dash-spreadsheet-inner th {
+    background-color: #0f172a !important;
+    color: #f1f5f9 !important;
+    border-color: #475569 !important;
+}
+
+html[data-theme="dark"] .modal-body .dash-table-container .dash-spreadsheet-inner tr:nth-child(odd) td {
+    background-color: #1a2535 !important;
+}
+
+html[data-theme="dark"] .modal-body .dash-table-container {
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .modal-body .dash-table-container .dash-spreadsheet-inner .dash-filter input {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+    border-color: #475569 !important;
+}
+
+/* Modal backdrop */
+html[data-theme="dark"] .modal-backdrop {
+    background-color: #000 !important;
+}
+
+/* P element with bg-light inside modals (e.g. formula boxes) */
+html[data-theme="dark"] .modal-body .bg-light {
+    background-color: #0f172a !important;
+    border-color: #334155 !important;
     color: #e2e8f0 !important;
 }
 
@@ -644,23 +723,178 @@ html[data-theme="dark"] ::-webkit-scrollbar-track {
 /* ═══════════════════════════════════════
    19. FEEDBACK MODAL
    ═══════════════════════════════════════ */
+html[data-theme="dark"] .feedback-modal .modal-content {
+    background-color: #1e293b !important;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255,255,255,0.05) !important;
+}
+
+html[data-theme="dark"] .feedback-modal-body {
+    background: linear-gradient(180deg, #1e293b 0%, #162032 100%) !important;
+}
+
+html[data-theme="dark"] .feedback-modal-footer {
+    background: linear-gradient(180deg, #162032, #1e293b) !important;
+    border-top-color: #334155 !important;
+}
+
 html[data-theme="dark"] .feedback-input {
     background-color: #0f172a !important;
     border-color: #475569 !important;
     color: #f1f5f9 !important;
 }
 
+html[data-theme="dark"] .feedback-input::placeholder {
+    color: #64748b !important;
+}
+
+html[data-theme="dark"] .feedback-input:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2) !important;
+}
+
 html[data-theme="dark"] .feedback-tab-pane {
     background-color: #1e293b !important;
 }
 
+/* Feedback tabs */
+html[data-theme="dark"] .feedback-tabs .nav-tabs {
+    border-bottom-color: #334155 !important;
+}
+
+html[data-theme="dark"] .feedback-tabs .nav-link {
+    color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .feedback-tabs .nav-link:hover {
+    color: #a5b4fc !important;
+    background: rgba(99, 102, 241, 0.1) !important;
+}
+
+html[data-theme="dark"] .feedback-tabs .nav-link.active {
+    color: #a5b4fc !important;
+    background: transparent !important;
+    border-bottom-color: #6366f1 !important;
+}
+
+/* Emoji rating in dark mode */
+html[data-theme="dark"] .emoji-rating-group .form-check-label {
+    background: #0f172a !important;
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .emoji-rating-group .form-check-label:hover {
+    border-color: #6366f1 !important;
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.2) !important;
+}
+
+html[data-theme="dark"] .emoji-rating-group .form-check-input:checked + .form-check-label {
+    border-color: #6366f1 !important;
+    background: linear-gradient(135deg, #1e1b4b, #312e81) !important;
+}
+
+/* Feedback type cards in dark mode */
+html[data-theme="dark"] .fb-type-option {
+    background: #0f172a !important;
+    border-color: #334155 !important;
+}
+
+html[data-theme="dark"] .fb-type-text {
+    color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .fb-type-option:hover {
+    box-shadow: 0 6px 18px rgba(0,0,0,0.3) !important;
+}
+
+/* Type-specific dark mode selected states */
+html[data-theme="dark"] .fb-type-bug:hover,
+html[data-theme="dark"] .form-check-input:checked + .form-check-label .fb-type-bug {
+    border-color: #991b1b !important;
+    background: linear-gradient(135deg, #450a0a, #7f1d1d) !important;
+}
+html[data-theme="dark"] .form-check-input:checked + .form-check-label .fb-type-bug .fb-type-text { color: #fca5a5 !important; }
+
+html[data-theme="dark"] .fb-type-feature:hover,
+html[data-theme="dark"] .form-check-input:checked + .form-check-label .fb-type-feature {
+    border-color: #5b21b6 !important;
+    background: linear-gradient(135deg, #2e1065, #4c1d95) !important;
+}
+html[data-theme="dark"] .form-check-input:checked + .form-check-label .fb-type-feature .fb-type-text { color: #c4b5fd !important; }
+
+html[data-theme="dark"] .fb-type-ui:hover,
+html[data-theme="dark"] .form-check-input:checked + .form-check-label .fb-type-ui {
+    border-color: #1e40af !important;
+    background: linear-gradient(135deg, #172554, #1e3a8a) !important;
+}
+html[data-theme="dark"] .form-check-input:checked + .form-check-label .fb-type-ui .fb-type-text { color: #93c5fd !important; }
+
+html[data-theme="dark"] .fb-type-other:hover,
+html[data-theme="dark"] .form-check-input:checked + .form-check-label .fb-type-other {
+    border-color: #92400e !important;
+    background: linear-gradient(135deg, #451a03, #78350f) !important;
+}
+html[data-theme="dark"] .form-check-input:checked + .form-check-label .fb-type-other .fb-type-text { color: #fcd34d !important; }
+
+/* Screenshot tip & contact info note */
+html[data-theme="dark"] .screenshot-tip {
+    background: #0c4a6e !important;
+    border-color: #075985 !important;
+    color: #7dd3fc !important;
+}
+
+html[data-theme="dark"] .contact-info-note {
+    background: #0c4a6e !important;
+    border-color: #075985 !important;
+    color: #7dd3fc !important;
+}
+
+/* Contact cards */
 html[data-theme="dark"] .contact-card {
     background-color: #0f172a !important;
     border-color: #334155 !important;
 }
 
+html[data-theme="dark"] .contact-card:hover {
+    border-color: #6366f1 !important;
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2) !important;
+}
+
 html[data-theme="dark"] .contact-card .card-body {
     color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .contact-whatsapp {
+    background: #064e3b !important;
+    color: #4ade80 !important;
+}
+
+html[data-theme="dark"] .contact-email {
+    background: #172554 !important;
+    color: #60a5fa !important;
+}
+
+/* Feedback form labels */
+html[data-theme="dark"] .feedback-modal-body .form-label,
+html[data-theme="dark"] .feedback-modal-body label {
+    color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .feedback-modal-body .text-muted {
+    color: #64748b !important;
+}
+
+html[data-theme="dark"] .feedback-modal-body hr {
+    border-color: #334155 !important;
+}
+
+/* Feedback scrollbar */
+html[data-theme="dark"] .feedback-modal .tab-content::-webkit-scrollbar-thumb {
+    background: #475569 !important;
+}
+
+html[data-theme="dark"] .feedback-modal .tab-content::-webkit-scrollbar-track {
+    background: #0f172a !important;
 }
 
 /* ═══════════════════════════════════════

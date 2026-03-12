@@ -133,13 +133,25 @@
                 "rgb(255, 241, 242)": { bg: "#7f1d1d", c: "#fecaca" },
                 "rgb(254, 242, 242)": { bg: "#7f1d1d", c: "#fecaca" },
                 "rgb(254, 226, 226)": { bg: "#7f1d1d", c: "#fecaca" },
+                "rgb(254, 226, 226)": { bg: "#7f1d1d", c: "#fecaca" },
+                // fee2e2 = rgb(254, 226, 226) already covered above
                 // Pass rows (light green)
                 "rgb(236, 253, 245)": { bg: "#064e3b", c: "#a7f3d0" },
                 "rgb(240, 253, 244)": { bg: "#064e3b", c: "#a7f3d0" },
+                "rgb(209, 250, 229)": { bg: "#064e3b", c: "#a7f3d0" }, // #d1fae5
                 // Absent rows (light amber)
                 "rgb(255, 251, 235)": { bg: "#78350f", c: "#fde68a" },
+                "rgb(255, 247, 237)": { bg: "#78350f", c: "#fde68a" }, // #fff7ed
                 // Selected (light blue)
                 "rgba(59, 130, 246, 0.1)": { bg: "rgba(59, 130, 246, 0.2)", c: "#e2e8f0" },
+                // Subject summary: Total Students column (#eff6ff)
+                "rgb(239, 246, 255)": { bg: "#172554", c: "#93c5fd" },
+                // Subject summary: Appeared column (#e0f2fe)
+                "rgb(224, 242, 254)": { bg: "#0c4a6e", c: "#7dd3fc" },
+                // Subject summary: Absent column (#fffbeb)
+                "rgb(255, 251, 235)": { bg: "#78350f", c: "#fde68a" },
+                // Subject summary: Passed column (#ecfdf5) — already mapped above
+                // Subject summary: Failed column (#fef2f2) — already mapped above
                 // Pass badge cell (solid green)
                 "rgb(34, 197, 94)":  { bg: "#16a34a", c: "#fff" },
                 // Fail badge cell (solid red)
@@ -155,8 +167,41 @@
             };
             var m = map[bg];
             if (m) {
-                td.style.backgroundColor = m.bg;
-                td.style.color = m.c;
+                // Use setProperty with 'important' to override CSS !important rules
+                td.style.setProperty('background-color', m.bg, 'important');
+                td.style.setProperty('color', m.c, 'important');
+            }
+        });
+
+        // Also patch text colors that remain light-mode even when bg is overridden
+        cells.forEach(function (td) {
+            var c = td.style.color;
+            if (!c) return;
+            var textMap = {
+                // Pass text colors
+                "rgb(5, 150, 105)":   "#6ee7b7",   // #059669
+                "rgb(4, 120, 87)":    "#6ee7b7",   // #047857
+                "rgb(16, 185, 129)":  "#6ee7b7",   // #10b981
+                "rgb(6, 95, 70)":     "#a7f3d0",   // #065f46
+                // Fail text colors
+                "rgb(220, 38, 38)":   "#fca5a5",   // #dc2626
+                "rgb(185, 28, 28)":   "#fca5a5",   // #b91c1c
+                "rgb(153, 27, 27)":   "#fecaca",   // #991b1b
+                // Absent text colors
+                "rgb(217, 119, 6)":   "#fde68a",   // #d97706
+                "rgb(180, 83, 9)":    "#fde68a",   // #b45309
+                // Blue text (SC category / info columns)
+                "rgb(59, 130, 246)":  "#93c5fd",   // #3b82f6
+                "rgb(30, 58, 138)":   "#93c5fd",   // #1e3a8a
+                "rgb(3, 105, 161)":   "#7dd3fc",   // #0369a1
+                // Dark text on cells
+                "rgb(31, 41, 55)":    "#e2e8f0",   // #1f2937
+                "rgb(30, 41, 59)":    "#e2e8f0",   // #1e293b
+                "rgb(148, 163, 184)": "#cbd5e1",   // #94a3b8 (muted)
+            };
+            var mc = textMap[c];
+            if (mc) {
+                td.style.setProperty('color', mc, 'important');
             }
         });
     }
@@ -168,6 +213,37 @@
         setTimeout(relayoutPlotly, 200);
         setTimeout(patchDataTableRows, 300);
     }
+
+    /* ─── 4. MODAL BACKDROP CLEANUP (prevents stuck overlays) ─── */
+    function cleanupStaleBackdrops() {
+        // Check if any modal is actually visible
+        var openModals = document.querySelectorAll(".modal.show");
+        if (openModals.length === 0) {
+            // No modal is open — remove any stale backdrops
+            var backdrops = document.querySelectorAll(".modal-backdrop");
+            backdrops.forEach(function (el) { el.remove(); });
+            // Remove body.modal-open class and overflow:hidden
+            document.body.classList.remove("modal-open");
+            document.body.style.removeProperty("overflow");
+            document.body.style.removeProperty("padding-right");
+        }
+    }
+
+    // Periodically check for stale backdrops (every 1 second)
+    setInterval(cleanupStaleBackdrops, 1000);
+
+    // Also watch for modal attribute changes to trigger cleanup
+    var modalObserver = new MutationObserver(function (mutations) {
+        mutations.forEach(function (m) {
+            if (m.type === "attributes" && m.attributeName === "class") {
+                var el = m.target;
+                if (el.classList && el.classList.contains("modal") && !el.classList.contains("show")) {
+                    // Modal just closed — schedule cleanup
+                    setTimeout(cleanupStaleBackdrops, 300);
+                }
+            }
+        });
+    });
 
     /* ─── OBSERVERS & EVENT HOOKS ─── */
 
@@ -192,6 +268,10 @@
 
     function startBodyObserver() {
         bodyObserver.observe(document.body, { childList: true, subtree: true });
+        // Observe all existing modals for class changes (show/hide)
+        document.querySelectorAll(".modal").forEach(function (m) {
+            modalObserver.observe(m, { attributes: true, attributeFilter: ["class"] });
+        });
     }
 
     // Initial apply
