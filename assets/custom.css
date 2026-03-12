@@ -182,3 +182,37 @@ div[class*="__menu-portal"] {
     border-radius: 8px;
     z-index: 1000;
 }
+
+/* ==================== STUDENT DETAIL PAGE ==================== */
+.sd-container {
+    background: #f8f9fa;
+    min-height: 100vh;
+}
+
+.sd-label {
+    color: #2c3e50;
+}
+
+.sd-card-header {
+    background: white;
+}
+
+.sd-student-header-card {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.sd-sgpa-card {
+    background: linear-gradient(135deg, #fff9e6 0%, #fffbf0 100%);
+}
+
+.sd-report-card {
+    background: white;
+}
+
+.sd-strong-card-body {
+    background: #86efac;
+}
+
+.sd-weak-card-body {
+    background: #fca5a5;
+}
