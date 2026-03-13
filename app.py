@@ -1,27 +1,8 @@
-import os
 import dash
 from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
-from flask import send_from_directory
 from cache_config import cache
 from services.google_sheets_service import save_feedback
-from logging_config import setup_logging, get_logger
-from config import Config
-from security import sanitize_text, validate_email, feedback_limiter
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STYLES_DIR = os.path.join(BASE_DIR, "styles")
-STYLE_FILES = [
-    "overview_page.css",
-    "ranking_page.css",
-    "subject_analysis_page.css",
-    "branch_analysis_page.css",
-]
-STYLE_SHEETS = [f"/styles/{name}" for name in STYLE_FILES if os.path.exists(os.path.join(STYLES_DIR, name))]
-
-# Initialize logging first
-setup_logging(Config.LOG_LEVEL)
-logger = get_logger("app")
 
 # ----------------- Initialize Dash App -----------------
 app = dash.Dash(
@@ -29,29 +10,14 @@ app = dash.Dash(
     use_pages=True,
     external_stylesheets=[
         dbc.themes.FLATLY,
-        "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css",
-        *STYLE_SHEETS,
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
     ],
     suppress_callback_exceptions=True,
-    prevent_initial_callbacks='initial_duplicate',
+    prevent_initial_callbacks='initial_duplicate'
 )
 
 server = app.server
-
-
-@server.route("/styles/<path:filename>")
-def serve_styles(filename):
-    return send_from_directory(STYLES_DIR, filename)
-
-
-server.secret_key = Config.SECRET_KEY
 cache.init_app(server)
-
-# Register API blueprint
-from api import api_bp
-server.register_blueprint(api_bp)
-
-logger.info("Dashboard application initialized")
 
 app.title = "Student Performance Dashboard"
 
@@ -524,29 +490,10 @@ def submit_feedback(n, name, email, ftype, message, rating):
             dbc.Alert("Name and Message are required.", color="warning"),
             dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
         )
-
-    # Security: sanitize inputs
-    name = sanitize_text(name, max_length=100)
-    message = sanitize_text(message, max_length=500)
-
-    if email and not validate_email(email):
-        return (
-            dbc.Alert("Please enter a valid email address.", color="warning"),
-            dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
-        )
-
-    # Rate limiting
-    if not feedback_limiter.is_allowed(name):
-        return (
-            dbc.Alert("Too many submissions. Please wait a minute before trying again.", color="warning"),
-            dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
-        )
-
     try:
         rating_map = {"1": "😡", "2": "😕", "3": "😐", "4": "🙂", "5": "😍"}
         rating_label = rating_map.get(rating, "N/A")
         save_feedback(name, email, ftype, message, rating_label)
-        logger.info("Feedback submitted by '%s' (type=%s, rating=%s)", name, ftype, rating_label)
         return (
             dbc.Alert([
                 html.I(className="bi bi-check-circle-fill me-2"),
@@ -612,8 +559,4 @@ app.clientside_callback(
 
 # ----------------- Run App -----------------
 if __name__ == "__main__":
-    logger.info("Starting dashboard on %s:%s (debug=%s)", Config.HOST, Config.PORT, Config.DEBUG)
-    app.run(host=Config.HOST, port=Config.PORT, debug=Config.DEBUG,
-            dev_tools_silence_routes_logging=True,
-            dev_tools_props_check=False,
-            dev_tools_ui=False)
+    app.run(host="0.0.0.0", port=10000, debug=False)
