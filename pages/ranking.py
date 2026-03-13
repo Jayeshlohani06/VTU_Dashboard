@@ -246,10 +246,57 @@ def calculate_student_metrics(df):
 
 
 # ==================== Styles ====================
-import os as _os
-_css_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "styles", "ranking_page.css")
-with open(_css_path, "r", encoding="utf-8") as _f:
-    PAGE_CSS_LIGHT = _f.read()
+
+PAGE_CSS_LIGHT = r"""
+:root{
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted:#6b7280;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --k1:#fffbeb; --k2:#eff6ff; --k3:#fff7ed; --k45:#f8fafc;
+  --pass-bg:#ecfdf5; --pass-text:#065f46;
+  --fail-bg:#fef2f2; --fail-text:#991b1b;
+}
+.rnk-wrap{ background: var(--bg); padding: 20px; border-radius: 16px; }
+.rnk-card{
+  background: var(--card); border: 0 !important; border-radius: 12px !important;
+  box-shadow: var(--shadow); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.rnk-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.kpi-card{ border-left: 4px solid transparent; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+.kpi-label{ color: var(--muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value{ font-weight: 800; font-size: 2.2rem; line-height: 1.2; }
+.rank-chip{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; font-weight:700; font-size:0.9rem; margin-right:8px; }
+.rank-1{ background:var(--k1); color:#b45309; border:1px solid #fcd34d; }
+.rank-2{ background:var(--k2); color:#1e40af; border:1px solid #93c5fd; }
+.rank-3{ background:var(--k3); color:#9a3412; border:1px solid #fdba74; }
+.rank-4,.rank-5{ background:var(--k45); color:#475569; border:1px solid #e2e8f0; }
+.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
+.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px; }
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td{ border-bottom: 1px solid #f1f5f9 !important; }
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th{ border-bottom: 2px solid #e2e8f0 !important; font-weight: 700 !important; }
+.accordion-button:not(.collapsed){ background-color: #eff6ff; color: #1e40af; }
+.accordion-button{ color: #1f2937; }
+.table { margin-bottom: 0; }
+.table tbody tr { border-bottom: 1px solid #e9ecef; }
+.table tbody tr:hover { background-color: #f8f9fa; }
+.table thead { border-top: 2px solid #dee2e6; }
+
+/* Modal Print Specifics */
+@media print {
+  @page { size: landscape !important; margin: 1cm !important; }
+  body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background-color: #ffffff !important; margin: 0 !important; padding: 0 !important; }
+  body.modal-open .pb-5 > *:not(.modal) { display: none !important; }
+  body.modal-open .modal { display: block !important; position: static !important; opacity: 1 !important; background: transparent !important; }
+  body.modal-open .modal-dialog { max-width: 100% !important; width: 100% !important; margin: 0 !important; }
+  body.modal-open .modal-content { border: none !important; box-shadow: none !important; }
+  body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
+}
+.rnk-kpi-clickable:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0,0,0,0.12) !important; cursor: pointer; }
+.rnk-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
+"""
 
 
 

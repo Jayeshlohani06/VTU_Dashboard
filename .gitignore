@@ -1,29 +1,9 @@
 __pycache__/
 cache-directory/
 *.pyc
-*.pyo
-*.pyd
 .DS_Store
 .venv/
 venv/
-.env
-.env.*
 *.log
-logs/
 .vscode/
 service_account.json
-
-# Test and coverage artifacts
-.pytest_cache/
-.coverage
-coverage.xml
-htmlcov/
-
-# Static analysis / tooling caches
-.mypy_cache/
-.ruff_cache/
-
-# Build artifacts
-build/
-dist/
-*.egg-info/

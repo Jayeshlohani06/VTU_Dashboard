@@ -7,7 +7,6 @@ from dash import html, dcc, Input, Output, State, callback, dash_table, no_updat
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from dash.exceptions import PreventUpdate
 from io import StringIO  # <--- Added for stability
 from cache_config import cache
@@ -36,10 +35,134 @@ def sa_assign_section(roll_no, section_ranges=None, usn_mapping=None):
     return "Not Assigned"
 
 # ==================== Global Styles ====================
-import os as _os
-_css_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "styles", "subject_analysis_page.css")
-with open(_css_path, "r", encoding="utf-8") as _f:
-    PAGE_CSS = _f.read()
+PAGE_CSS = """
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --primary: #1f2937;
+  --brand: #3b82f6;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --shadow: 0 8px 24px rgba(16,24,40,.08);
+}
+
+.sa-wrap {
+  background: var(--bg);
+  padding: 18px;
+  border-radius: 14px;
+}
+
+.sa-card {
+  background: var(--card);
+  border-radius: 14px !important;
+  box-shadow: var(--shadow);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.sa-card:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(16,24,40,.12); }
+
+.kpi-card {
+  /* Inherit from overview.css or basic styles */
+  background: #ffffff;
+  border-radius: 12px;
+  /* border-left is handled inline */
+}
+
+/* Remove hover scale transformation that conflicts with overview style */
+/* .kpi-card:hover { transform: scale(1.03); } */  <-- Removed to match overview behavior (translateY)
+.kpi-label { color: #6b7280; font-size: .9rem; }
+.kpi-value { font-weight: 800; font-size: 1.8rem; }
+
+.badge {
+  font-weight: 600;
+  font-size: .9rem;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
+  border-color: #e5e7eb !important;
+}
+
+/* Make dbc.Spinner flow inline with text */
+.spinner-border-sm {
+  width: 0.8rem;
+  height: 0.8rem;
+  vertical-align: -0.1em;
+}
+
+/* Print-friendly export */
+/* 1. CRITICAL FIX: Place @page OUTSIDE @media print for Chrome/Edge to respect it */
+@page {
+    size: landscape;
+    margin: 10mm;
+}
+
+@media print {
+  /* Reset standard body styling for print */
+  body, html {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background-color: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Hide interactive elements like buttons and modals */
+  button, .btn-group, .modal {
+    display: none !important;
+  }
+
+  /* Remove screen-only padding and margins to push content up */
+  .sa-wrap, .pb-4, .container-fluid, .p-3, .mb-4 {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+    background: transparent !important;
+  }
+
+  /* Optimize cards for PDF flat layout */
+  .sa-card {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 20px !important;
+  }
+  
+  /* Prevent Plotly charts from splitting */
+  .js-plotly-plot, .plotly, .dash-graph {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    width: 100% !important;
+  }
+  
+  /* Prevent tables from splitting rows */
+  tr, td, th {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Force KPI grid to align properly on PDF */
+  .row-cols-md-6 > * {
+    flex: 0 0 16.666667% !important;
+    max-width: 16.666667% !important;
+  }
+}
+
+/* Modal Print Specifics (Only print the table list when popup is open) */
+body.modal-open .pb-4 > *:not(.modal) { display: none !important; }
+body.modal-open .modal {
+    display: block !important; position: static !important;
+    opacity: 1 !important; background: transparent !important;
+}
+body.modal-open .modal-dialog { max-width: 100% !important; width: 100% !important; margin: 0 !important; }
+body.modal-open .modal-content { border: none !important; box-shadow: none !important; }
+body.modal-open .modal-footer, body.modal-open .modal-header button { display: none !important; }
+
+/* Make KPI Cards Clickable */
+.subject-kpi-card { cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.subject-kpi-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(59,130,246,0.2) !important; }
+.subject-kpi-card:hover .kpi-hover-hint { display: block !important; }
+"""
 
 # ==================== Layout ====================
 layout = dbc.Container([

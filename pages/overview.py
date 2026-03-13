@@ -11,12 +11,39 @@ from dash.exceptions import PreventUpdate
 
 dash.register_page(__name__, path='/', name="Overview")
 
-import os as _os
-
 # ==================== Styles ====================
-_css_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "styles", "overview_page.css")
-with open(_css_path, "r", encoding="utf-8") as _f:
-    PAGE_CSS_LIGHT = _f.read()
+
+PAGE_CSS_LIGHT = r"""
+:root{
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted:#6b7280;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --k1:#fffbeb; --k2:#eff6ff; --k3:#fff7ed; --k45:#f8fafc;
+  --pass-bg:#ecfdf5; --pass-text:#065f46;
+  --fail-bg:#fef2f2; --fail-text:#991b1b;
+}
+.rnk-wrap{ background: var(--bg); padding: 20px; border-radius: 16px; }
+.rnk-card{
+  background: var(--card); border: 0 !important; border-radius: 12px !important;
+  box-shadow: var(--shadow); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.rnk-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.kpi-card{ border-left: 4px solid transparent; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+.kpi-label{ color: var(--muted); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value{ font-weight: 800; font-size: 2.2rem; line-height: 1.2; }
+.rank-chip{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; font-weight:700; font-size:0.9rem; margin-right:8px; }
+.rank-1{ background:var(--k1); color:#b45309; border:1px solid #fcd34d; }
+.rank-2{ background:var(--k2); color:#1e40af; border:1px solid #93c5fd; }
+.rank-3{ background:var(--k3); color:#9a3412; border:1px solid #fdba74; }
+.rank-4,.rank-5{ background:var(--k45); color:#cbd5e1; border:1px solid #475569; }
+.badge-pass{ background:var(--pass-bg); color:var(--pass-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+.badge-fail{ background:var(--fail-bg); color:var(--fail-text); padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+.overview-kpi-clickable:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.12) !important; cursor: pointer; }
+.overview-kpi-clickable:hover .kpi-hover-hint { display: block !important; }
+"""
 
 
 
@@ -412,70 +439,22 @@ layout = dbc.Container([
                     html.Div(id='usn-upload-status', className="small text-muted mt-2 fw-bold"),
 
                     html.Hr(className="my-3"),
-                    dcc.Loading(
-                        id="download-loading",
-                        type="circle",
-                        color="#3b82f6",
-                        children=[
-                            html.Div([
-                                html.H6("Download Center", className="fw-bold mb-1 text-dark"),
-                                html.Div("Choose the exact report format you need", className="text-muted", style={"fontSize": "0.78rem"}),
-                            ], className="mb-2"),
-                            dbc.Row([
-                                dbc.Col([
-                                    dbc.Button(
-                                        [
-                                            html.I(className="bi bi-file-earmark-excel me-2", style={"fontSize": "1.1rem"}),
-                                            html.Span("Excel Workbook", style={"verticalAlign": "middle"}),
-                                        ],
-                                        id="universal-download-btn",
-                                        className="w-100 fw-bold download-report-btn",
-                                        style={"height": "72px", "display": "flex", "alignItems": "center", "justifyContent": "center", "textAlign": "center"},
-                                        size="sm",
-                                    ),
-                                    html.Div("All sheets: Overview, Ranking, Subject Analysis", className="text-muted mt-1 text-center", style={"fontSize": "0.65rem", "lineHeight": "1.2"}),
-                                ], width=4, className="pe-1"),
-                                dbc.Col([
-                                    dbc.Button(
-                                        [
-                                            html.I(className="bi bi-file-earmark-pdf me-2", style={"fontSize": "1.1rem"}),
-                                            html.Span("Summary PDF", style={"verticalAlign": "middle"}),
-                                        ],
-                                        id="overview-pdf-download-btn",
-                                        className="w-100 fw-bold",
-                                        color="danger",
-                                        style={"height": "72px", "display": "flex", "alignItems": "center", "justifyContent": "center", "textAlign": "center"},
-                                        size="sm",
-                                    ),
-                                    html.Div("Single PDF with all dashboards consolidated", className="text-muted mt-1 text-center", style={"fontSize": "0.65rem", "lineHeight": "1.2"}),
-                                ], width=4, className="px-1"),
-                                dbc.Col([
-                                    dbc.Button(
-                                        [
-                                            html.I(className="bi bi-file-zip me-2", style={"fontSize": "1.1rem"}),
-                                            html.Span("All Report Cards (ZIP)", style={"verticalAlign": "middle"}),
-                                        ],
-                                        id="overview-zip-download-btn",
-                                        className="w-100 fw-bold",
-                                        color="primary",
-                                        style={"height": "72px", "display": "flex", "alignItems": "center", "justifyContent": "center", "textAlign": "center"},
-                                        size="sm",
-                                    ),
-                                    html.Div("One ZIP containing all student report card PDFs", className="text-muted mt-1 text-center", style={"fontSize": "0.65rem", "lineHeight": "1.2"}),
-                                ], width=4, className="ps-1"),
-                            ], className="g-0"),
-                            html.Div([
-                                html.I(className="bi bi-download me-1"),
-                                html.Span("Tip: Use Excel for data work, PDF for sharing, ZIP for report cards"),
-                            ], className="text-center mt-2", style={"fontSize": "0.68rem", "color": "#6b7280", "letterSpacing": "0.02em"}),
-                            html.Div(id="excel-download-trigger", style={"display": "none"}),
-                            html.Div(id="pdf-download-trigger", style={"display": "none"}),
-                            html.Div(id="zip-download-trigger", style={"display": "none"}),
-                        ],
-                    ),
+                    html.Div([
+                        dbc.Button(
+                            [
+                                html.I(className="bi bi-download me-2", style={"fontSize": "1.1rem"}),
+                                html.Span("Download Complete Report", style={"verticalAlign": "middle"}),
+                            ],
+                            id="universal-download-btn",
+                            className="w-100 fw-bold download-report-btn",
+                            size="lg",
+                        ),
+                        html.Div([
+                            html.I(className="bi bi-file-earmark-excel me-1"),
+                            html.Span("Overview · Ranking · Subject Analysis · Category Breakdown"),
+                        ], className="text-center mt-2", style={"fontSize": "0.7rem", "color": "#6b7280", "letterSpacing": "0.02em"}),
+                    ]),
                     dcc.Download(id="universal-download-excel"),
-                    dcc.Download(id="overview-pdf-download"),
-                    dcc.Download(id="overview-all-pdfs-zip-download"),
                 ], style={"overflow": "visible", "position": "relative"}),
             ], className="border-0 shadow-sm", style={"overflow": "visible"})
         ], lg=4, md=5, style={"overflow": "visible"}),
@@ -492,15 +471,6 @@ layout = dbc.Container([
                 dbc.Col(kpi_card("Pass %", "0%", "result-percent", "bi-percent", "#8b5cf6", "#f5f3ff"), className="d-flex"),
             ], className="row-cols-2 row-cols-md-3 row-cols-lg-6 g-2 mb-4"),
 
-            # Smart Insights Banner
-            html.Div(id="smart-insights-banner", className="mb-3"),
-
-            # At-Risk Students Alert
-            html.Div(id="at-risk-alert", className="mb-3"),
-
-            # USN Mapping Warning
-            html.Div(id="usn-warning-alert", className="mb-3"),
-
             # Table Card
             dbc.Card([
                 dbc.CardHeader([
@@ -515,7 +485,7 @@ layout = dbc.Container([
                         color="#3498db"
                     )
                 ], className="p-0")
-            ], className="border-0 shadow-sm")
+            ], className="border-0 shadow-sm overflow-hidden")
         ], lg=8, md=7)
     ], style={"overflow": "visible"}),
 
@@ -998,7 +968,6 @@ def save_sections(n, names, starts, ends, current_data):
     prevent_initial_call=True
 )
 def process_multi_usn_upload(all_contents, all_filenames, all_names, current_mapping):
-    print(f"[USN_UPLOAD] Called. contents_count={len(all_contents) if isinstance(all_contents, list) else 'not-list'}, has_content={any(all_contents) if isinstance(all_contents, list) else False}")
     # Ensure all_contents is a list, otherwise return
     if not isinstance(all_contents, list) or not any(all_contents):
         return no_update, ""
@@ -1036,10 +1005,8 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
         status_msg = f"⚠️ {count} Duplicates found: {examples}..."
     
     if total_entries > 0:
-        print(f"[USN_UPLOAD] Returning {total_entries} USN mappings to store")
         return mapping, status_msg
     
-    print("[USN_UPLOAD] No valid USNs found, returning no_update")
     return no_update, "ℹ️ No valid USNs found in uploaded files"
 
 @callback(
@@ -1049,25 +1016,21 @@ def process_multi_usn_upload(all_contents, all_filenames, all_names, current_map
      Output('failed-students-text', 'children'),
      Output('absent-students-text', 'children'),
      Output('result-percent-text', 'children'),
-     Output('data-preview', 'children'),
-     Output('smart-insights-banner', 'children'),
-     Output('at-risk-alert', 'children'),
-     Output('usn-warning-alert', 'children')],
+     Output('data-preview', 'children')],
     [Input('stored-data', 'data'),
      Input('subject-selector', 'value'),
      Input('section-data', 'data'),
      Input('usn-mapping-store', 'data')]
 )
 def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping):
-    print(f"[DASHBOARD] update_dashboard called. session={session_id}, subjects={len(selected_subjects) if selected_subjects else 0}, usn_mapping={len(usn_mapping) if usn_mapping else 0}")
     if not session_id or not selected_subjects:
-        return "0", "0", "0", "0", "0", "0%", html.Div("Upload data and select subjects to view analytics.", className="p-4 text-center text-muted"), "", "", ""
+        return "0", "0", "0", "0", "0", "0%", html.Div("Upload data and select subjects to view analytics.", className="p-4 text-center text-muted")
     
     # Retrieve from cache
     df = cache.get(session_id)
     if df is None:
         # Session expired or invalid
-        return "0", "0", "0", "0", "0", "0%", html.Div("Session expired. Please re-upload data.", className="text-danger p-4 text-center"), "", "", ""
+        return "0", "0", "0", "0", "0", "0%", html.Div("Session expired. Please re-upload data.", className="text-danger p-4 text-center")
     
     # df d pd.read_json(data, orient='split') <-- OLD
     # meta_col = df.columns[0]
@@ -1106,9 +1069,6 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
     
     df_filtered = pd.concat([df_filtered, df[subject_data_cols]], axis=1)
 
-    # Deduplicate columns to prevent Series ambiguity errors
-    df_filtered = df_filtered.loc[:, ~df_filtered.columns.duplicated()]
-
     # 2. Convert Mark columns to Numeric (keep NaN for subjects student didn't take)
     for c in subject_data_cols:
         if any(k in c for k in ['Internal', 'External', 'Total']):
@@ -1118,15 +1078,6 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
     res_cols = [c for c in subject_data_cols if "Result" in c]
     
     if res_cols:
-        def _safe_isna(val):
-            """Handle pd.isna safely, even if val is a Series (from duplicate columns)."""
-            if isinstance(val, pd.Series):
-                val = val.iloc[0]
-            try:
-                return pd.isna(val)
-            except (ValueError, TypeError):
-                return val is None
-
         def calc_overall(row):
             subject_status = []
             for res_col in res_cols:
@@ -1141,17 +1092,11 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
                 t_raw = row.get(t_col) if t_col in df_filtered.columns else None
                 r_raw = row.get(res_col, None)
 
-                # Unwrap Series from duplicate columns
-                if isinstance(i_raw, pd.Series): i_raw = i_raw.iloc[0]
-                if isinstance(e_raw, pd.Series): e_raw = e_raw.iloc[0]
-                if isinstance(t_raw, pd.Series): t_raw = t_raw.iloc[0]
-                if isinstance(r_raw, pd.Series): r_raw = r_raw.iloc[0]
-
                 # Skip subject entirely if student has no data for it (elective not taken)
-                i_na = _safe_isna(i_raw)
-                e_na = _safe_isna(e_raw)
-                t_na = _safe_isna(t_raw)
-                r_empty = _safe_isna(r_raw) or str(r_raw).strip() == ''
+                i_na = pd.isna(i_raw)
+                e_na = pd.isna(e_raw)
+                t_na = pd.isna(t_raw)
+                r_empty = pd.isna(r_raw) or str(r_raw).strip() == ''
                 if i_na and e_na and t_na and r_empty:
                     continue
 
@@ -1160,7 +1105,7 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
                 try: e = float(e_raw) if not e_na else 0
                 except: e = 0
                 
-                r = str(r_raw).strip().upper() if not _safe_isna(r_raw) else ''
+                r = str(r_raw).strip().upper() if not pd.isna(r_raw) else ''
 
                 if (e == 0) and (r in ['A', 'ABSENT', '']):
                     subject_status.append('A')
@@ -1203,12 +1148,10 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
 
     # 6. USN Validation (Check for Mismatched USNs)
     alert_msg = None
-    print(f"[DASHBOARD] USN Validation: usn_mapping type={type(usn_mapping).__name__}, len={len(usn_mapping) if usn_mapping else 0}")
     if usn_mapping:
         result_usns = set(df_filtered[meta_col].astype(str).str.strip().str.upper())
         mapping_usns = set(k.strip().upper() for k in usn_mapping.keys())
         missing_usns = mapping_usns - result_usns
-        print(f"[DASHBOARD] USN Check: result_usns={len(result_usns)}, mapping_usns={len(mapping_usns)}, missing={len(missing_usns)}")
         
         if missing_usns:
             count = len(missing_usns)
@@ -1339,88 +1282,11 @@ def update_dashboard(session_id, selected_subjects, section_ranges, usn_mapping)
                 'color': '#2563eb'
             })
     
-    final_output = table
-    print(f"[DASHBOARD] alert_msg={'YES' if alert_msg else 'NO'}, returning final_output")
+    final_output = html.Div([alert_msg, table]) if alert_msg else table
     
-    # Generate Smart Insights (wrapped in try/except to prevent callback failure)
-    insights_banner = ""
-    at_risk_ui = ""
-    try:
-        from utils.analytics_engine import generate_insights, identify_at_risk_students
-        insights = generate_insights(df_filtered, selected_subjects)
-        if insights:
-            insight_cards = []
-            color_map = {"danger": "danger", "warning": "warning", "info": "info", "success": "success"}
-            for ins in insights:
-                insight_cards.append(
-                    dbc.Alert([
-                        html.I(className=f"bi {ins['icon']} me-2"),
-                        ins["message"]
-                    ], color=color_map.get(ins["type"], "info"), className="py-2 mb-1 small d-flex align-items-center")
-                )
-            insights_banner = dbc.Card(
-                dbc.CardBody([
-                    html.H6([html.I(className="bi bi-lightbulb-fill me-2 text-warning"), "Smart Insights"], className="fw-bold mb-2"),
-                    *insight_cards
-                ]),
-                className="border-0 shadow-sm"
-            )
-    except Exception as e:
-        print(f"[DASHBOARD] Smart Insights error (non-fatal): {e}")
+    final_output = html.Div([alert_msg, table]) if alert_msg else table
 
-    # At-Risk Students Alert (wrapped in try/except to prevent callback failure)
-    try:
-        risk_data = identify_at_risk_students(df_filtered, selected_subjects)
-        risk_df = risk_data.get("at_risk_students", pd.DataFrame())
-        borderline_df = risk_data.get("borderline_students", pd.DataFrame())
-        risk_summary = risk_data.get("risk_summary", {})
-
-        if not risk_df.empty or not borderline_df.empty:
-            risk_items = []
-            critical = risk_summary.get("Critical", 0)
-            high = risk_summary.get("High", 0)
-            moderate = risk_summary.get("Moderate", 0)
-            borderline = len(borderline_df)
-
-            if critical > 0:
-                risk_items.append(dbc.Badge(f"🔴 {critical} Critical", color="danger", className="me-2 mb-1"))
-            if high > 0:
-                risk_items.append(dbc.Badge(f"🟠 {high} High Risk", color="warning", className="me-2 mb-1 text-dark"))
-            if moderate > 0:
-                risk_items.append(dbc.Badge(f"🟡 {moderate} Moderate", color="info", className="me-2 mb-1"))
-            if borderline > 0:
-                risk_items.append(dbc.Badge(f"⚡ {borderline} Borderline", color="secondary", className="me-2 mb-1"))
-
-            at_risk_ui = dbc.Card(
-                dbc.CardBody([
-                    html.Div([
-                        html.H6([html.I(className="bi bi-shield-exclamation me-2 text-danger"), "At-Risk Students"], className="fw-bold mb-0"),
-                        html.Div(risk_items, className="d-flex flex-wrap")
-                    ], className="d-flex justify-content-between align-items-center mb-2"),
-                    html.Details([
-                        html.Summary("View at-risk student details", className="small fw-bold", style={"cursor": "pointer"}),
-                        dash_table.DataTable(
-                            data=risk_df.head(20).to_dict("records") if not risk_df.empty else [],
-                            columns=[{"name": c, "id": c} for c in ["Student_ID", "Name", "Risk_Level", "Failed_Subjects", "Reason"]] if not risk_df.empty else [],
-                            style_table={"overflowX": "auto", "maxHeight": "250px"},
-                            style_cell={"fontSize": "12px", "padding": "6px", "textAlign": "left"},
-                            style_header={"backgroundColor": "#1f2937", "color": "#fff", "fontWeight": "700", "fontSize": "11px"},
-                            style_data_conditional=[
-                                {"if": {"filter_query": "{Risk_Level} = 'Critical'"}, "backgroundColor": "#fef2f2", "color": "#991b1b", "fontWeight": "700"},
-                                {"if": {"filter_query": "{Risk_Level} = 'High'"}, "backgroundColor": "#fffbeb", "color": "#92400e", "fontWeight": "700"},
-                                {"if": {"filter_query": "{Risk_Level} = 'Moderate'"}, "backgroundColor": "#eff6ff", "color": "#1e40af"},
-                            ],
-                            page_size=10,
-                        ) if not risk_df.empty else html.P("No at-risk records.", className="text-muted small")
-                    ], className="mt-2")
-                ]),
-                className="border-0 shadow-sm border-start border-danger border-3"
-            )
-    except Exception as e:
-        print(f"[DASHBOARD] At-Risk error (non-fatal): {e}")
-
-    print(f"[DASHBOARD] Callback completing. Returning 10 outputs.")
-    return str(total), str(present_count), str(passed_count), str(failed_count), str(absent_count), rate, final_output, insights_banner, at_risk_ui, alert_msg or ""
+    return str(total), str(present_count), str(passed_count), str(failed_count), str(absent_count), rate, final_output
 
 # ==================== KPI Modal & Export Logic ====================
 
@@ -1583,180 +1449,6 @@ def download_overview_modal_excel(n_clicks_bottom, n_clicks_top, table_data, tit
         safe_title = re.sub(r'[^A-Za-z0-9_]', '_', clean_str)
         
     return dcc.send_data_frame(df.to_excel, f"{safe_title}_Report.xlsx", index=False)
-
-
-# ==================== PDF DOWNLOAD ====================
-
-@callback(
-    Output("overview-pdf-download", "data"),
-    Output("pdf-download-trigger", "children"),
-    Input("overview-pdf-download-btn", "n_clicks"),
-    State("stored-data", "data"),
-    State("subject-selector", "value"),
-    State("section-data", "data"),
-    State("usn-mapping-store", "data"),
-    State("sgpa-store", "data"),
-    State("scheme-semester-store", "data"),
-    State("cycle-store", "data"),
-    prevent_initial_call=True
-)
-def download_overview_pdf(n_clicks, session_id, selected_subjects, section_ranges,
-                          usn_mapping, sgpa_json, scheme_sem_data, cycle_data):
-    import logging
-    _log = logging.getLogger("pdf_download")
-    _log.info("[PDF] Callback triggered n_clicks=%s session=%s", n_clicks, session_id)
-
-    if not n_clicks or not session_id:
-        return no_update, no_update
-
-    from services.pdf_service import generate_complete_report_pdf, pdf_to_download_data
-
-    cached = cache.get(session_id)
-    if cached is None:
-        _log.warning("[PDF] Cache miss — session expired")
-        return no_update, no_update
-
-    df = pd.DataFrame(cached)
-    if df.empty or not selected_subjects:
-        _log.warning("[PDF] Empty df or no subjects")
-        return no_update, no_update
-
-    try:
-        # ── Build sheets (same as Excel) ──
-        overview_df = _build_overview_sheet(df, selected_subjects, section_ranges, usn_mapping)
-        _log.info("[PDF] Overview: %d rows", len(overview_df))
-
-        ranking_df = _build_ranking_sheet(df, selected_subjects, section_ranges, usn_mapping)
-        _log.info("[PDF] Ranking: %d rows", len(ranking_df))
-
-        subject_df = _build_subject_analysis_sheet(df, selected_subjects, section_ranges, usn_mapping)
-        _log.info("[PDF] Subject Analysis: %d rows", len(subject_df))
-
-        category_df = _build_category_sheet(df, selected_subjects)
-        _log.info("[PDF] Category: %d rows", len(category_df))
-
-        sgpa_df, sgpa_ok = _build_sgpa_sheet(
-            sgpa_json, df, selected_subjects,
-            section_ranges, usn_mapping, scheme_sem_data, cycle_data)
-        _log.info("[PDF] SGPA computed: %s", sgpa_ok)
-
-        # ── KPI metrics (same logic as Excel) ──
-        from pages.ranking import _normalize_df, calculate_student_metrics as _calc_metrics
-
-        _base = _normalize_df(df.copy(), section_ranges, usn_mapping)
-        _base = _calc_metrics(_base)
-
-        _is_pass = _base['Overall_Result'].isin(['P', 'PASS'])
-        _is_fail = _base['Overall_Result'].isin(['F', 'FAIL'])
-        _is_absent = _base['Overall_Result'].isin(['A', 'ABSENT'])
-
-        _backlogs = pd.Series(0, index=_base.index)
-        if 'Failed_Subjects' in _base.columns and 'Absent_Subjects' in _base.columns:
-            _backlogs = _base['Failed_Subjects'] + _base['Absent_Subjects']
-
-        _kpi_total = len(_base)
-        _kpi_absent = int(_is_absent.sum())
-        _kpi_appeared = _kpi_total - _kpi_absent
-        _kpi_passed = int(_is_pass.sum())
-        _kpi_failed = int(_is_fail.sum())
-        _kpi_pass_pct = round((_kpi_passed / _kpi_appeared) * 100, 2) if _kpi_appeared > 0 else 0
-        _kpi_1fail = int((_is_fail & (_backlogs == 1)).sum())
-        _kpi_2fail = int((_is_fail & (_backlogs == 2)).sum())
-        _kpi_3fail = int((_is_fail & (_backlogs >= 3)).sum())
-        _kpi_fcd = int((_is_pass & (_base['percentage'] >= 70)).sum())
-        _kpi_fc = int((_is_pass & (_base['percentage'] >= 60) & (_base['percentage'] < 70)).sum())
-        _kpi_sc = int((_is_pass & (_base['percentage'] >= 50) & (_base['percentage'] < 60)).sum())
-
-        summary_kpi = {
-            "Total Students": _kpi_total,
-            "Appeared": _kpi_appeared,
-            "Passed": _kpi_passed,
-            "Failed": _kpi_failed,
-            "Absent": _kpi_absent,
-            "Pass %": f"{_kpi_pass_pct}%",
-            "": "",
-            "── Failure Breakdown ──": "",
-            "1 Subject Fail": _kpi_1fail,
-            "2 Subject Fails": _kpi_2fail,
-            "3+ Subject Fails": _kpi_3fail,
-            " ": "",
-            "── Category Breakdown ──": "",
-            "First Class Distinction (≥70%)": _kpi_fcd,
-            "First Class (60-69.99%)": _kpi_fc,
-            "Second Class (50-59.99%)": _kpi_sc,
-        }
-
-        # ── Build KPI breakdown student lists ──
-        _display_cols = ['Student_ID', 'Name', 'Section', 'Total_Marks', 'percentage']
-        _display_cols_fail = _display_cols + (['Failed_Subject'] if 'Failed_Subject' in _base.columns else [])
-
-        _kpi_breakdown = [
-            ('Total Students', _base),
-            ('Appeared', _base[~_is_absent]),
-            ('Absent', _base[_is_absent]),
-            ('Passed', _base[_is_pass]),
-            ('Failed', _base[_is_fail]),
-            ('1 Subject Fail', _base[_is_fail & (_backlogs == 1)]),
-            ('2 Subject Fails', _base[_is_fail & (_backlogs == 2)]),
-            ('3+ Subject Fails', _base[_is_fail & (_backlogs >= 3)]),
-            ('First Class Distinction', _base[_is_pass & (_base['percentage'] >= 70)]),
-            ('First Class', _base[_is_pass & (_base['percentage'] >= 60) & (_base['percentage'] < 70)]),
-            ('Second Class', _base[_is_pass & (_base['percentage'] >= 50) & (_base['percentage'] < 60)]),
-        ]
-
-        # ── Assemble sheets_dict ──
-        sheets_dict = {}
-        sheets_dict['Summary'] = summary_kpi
-
-        # Compact Overview for PDF: USN, Name, Section, per-subject Total only, Overall_Result
-        _id_col = overview_df.columns[0]
-        _compact_cols = [_id_col]
-        if 'Name' in overview_df.columns:
-            _compact_cols.append('Name')
-        if 'Section' in overview_df.columns:
-            _compact_cols.append('Section')
-        for _subj in selected_subjects:
-            _tcols = [c for c in overview_df.columns
-                      if (c.startswith(f"{_subj} ") or c.startswith(f"{_subj} - "))
-                      and c.strip().endswith(' Total')]
-            _compact_cols.extend(_tcols)
-        if 'Overall_Result' in overview_df.columns:
-            _compact_cols.append('Overall_Result')
-        _compact_cols = [c for c in _compact_cols if c in overview_df.columns]
-        sheets_dict['Overview'] = overview_df[_compact_cols].copy()
-
-        sheets_dict['Ranking (Marks)'] = ranking_df
-        if sgpa_ok and sgpa_df is not None and not sgpa_df.empty:
-            sheets_dict['Ranking (SGPA)'] = sgpa_df
-        sheets_dict['Subject Analysis'] = subject_df
-        sheets_dict['Category Breakdown'] = category_df
-
-        for _name, _bdf in _kpi_breakdown:
-            if _bdf is not None and not _bdf.empty:
-                _use = _display_cols_fail if 'Fail' in _name else _display_cols
-                _cols = [c for c in _use if c in _bdf.columns]
-                _out = _bdf[_cols].copy()
-                if 'percentage' in _out.columns:
-                    _out['percentage'] = _out['percentage'].apply(
-                        lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
-                _out.rename(columns={
-                    'Total_Marks': 'Marks', 'percentage': 'Percentage (%)',
-                    'Failed_Subject': 'Failed Subject(s)',
-                }, inplace=True)
-                sheets_dict[_name] = _out
-
-        _log.info("[PDF] Building PDF with %d sheets", len(sheets_dict))
-
-        pdf_bytes = generate_complete_report_pdf(sheets_dict)
-        _log.info("[PDF] Generated %d bytes", len(pdf_bytes))
-        return pdf_to_download_data(pdf_bytes, "Complete_Report.pdf"), "done"
-
-    except Exception as e:
-        import traceback
-        _log.error("[PDF ERROR] %s: %s\n%s", type(e).__name__, e, traceback.format_exc())
-        print(f"[PDF ERROR] {type(e).__name__}: {e}")
-        traceback.print_exc()
-        return no_update, no_update
 
 
 # ==================== UNIVERSAL DOWNLOAD ====================
@@ -2157,7 +1849,6 @@ def _build_sgpa_sheet(sgpa_json_str, df=None, selected_subjects=None,
 
 @callback(
     Output('universal-download-excel', 'data'),
-    Output('excel-download-trigger', 'children'),
     Input('universal-download-btn', 'n_clicks'),
     State('stored-data', 'data'),
     State('subject-selector', 'value'),
@@ -2172,14 +1863,14 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
     print(f"[DOWNLOAD] ENTERED. n_clicks={n_clicks}, session_id={session_id}, subjects_len={len(selected_subjects) if selected_subjects else 0}")
     if not n_clicks or not session_id or not selected_subjects:
         print(f"[DOWNLOAD] PreventUpdate: n_clicks={bool(n_clicks)}, session_id={bool(session_id)}, subjects={bool(selected_subjects)}")
-        return no_update, no_update
+        raise PreventUpdate
 
     print(f"[DOWNLOAD] Triggered. session_id={session_id}, subjects={selected_subjects}")
 
     df = cache.get(session_id)
     if df is None:
         print("[DOWNLOAD] Cache miss - session expired")
-        return no_update, no_update
+        raise PreventUpdate
 
     from io import BytesIO
     from openpyxl.styles import PatternFill, Font, Alignment
@@ -2202,7 +1893,7 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
     except Exception as e:
         print(f"[DOWNLOAD ERROR] Building sheets failed: {e}")
         import traceback; traceback.print_exc()
-        return no_update, no_update
+        raise PreventUpdate
 
     out = BytesIO()
     with pd.ExcelWriter(out, engine='openpyxl') as writer:
@@ -2641,205 +2332,4 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
                     else:
                         _apply_row_fill(_ws, _r, odd_fill)
 
-    return dcc.send_bytes(out.getvalue(), 'Complete_Report.xlsx'), "done"
-
-
-@callback(
-    Output("overview-all-pdfs-zip-download", "data"),
-    Output("zip-download-trigger", "children"),
-    Input("overview-zip-download-btn", "n_clicks"),
-    State("stored-data", "data"),
-    State("subject-selector", "value"),
-    State("section-data", "data"),
-    State("usn-mapping-store", "data"),
-    State("scheme-semester-store", "data"),
-    State("cycle-store", "data"),
-    prevent_initial_call=True,
-)
-def download_all_student_pdfs_zip_overview(n_clicks, session_id, selected_subject_codes, section_ranges, usn_mapping, scheme_sem_data, cycle_data):
-    import logging
-    _log = logging.getLogger("zip_download")
-    _log.info("[ZIP] Callback triggered n_clicks=%s session=%s", n_clicks, session_id)
-
-    if not n_clicks or not session_id:
-        _log.warning("[ZIP] PreventUpdate due to missing click/session")
-        raise PreventUpdate
-
-    df = cache.get(session_id)
-    if df is None or df.empty:
-        _log.warning("[ZIP] PreventUpdate due to cache miss or empty data")
-        raise PreventUpdate
-
-    if "Name" not in df.columns:
-        df["Name"] = ""
-
-    subject_identifiers = set()
-    for col in df.columns:
-        for suffix in [" Internal", " External", " Total"]:
-            if str(col).endswith(suffix):
-                subject_identifiers.add(str(col)[:-len(suffix)])
-                break
-
-    available_subjects = sorted(subject_identifiers)
-    if not available_subjects:
-        _log.warning("[ZIP] PreventUpdate due to no available subjects")
-        raise PreventUpdate
-
-    # Keep marks-card table consistent with Student Detail output by using the
-    # complete detected subject list in Overview ZIP report cards.
-    # (Subject selector still controls analytics on the page UI.)
-    subject_codes_for_pdf = available_subjects
-
-    if not subject_codes_for_pdf:
-        _log.warning("[ZIP] PreventUpdate due to no selected subjects after filtering")
-        raise PreventUpdate
-
-    _log.info("[ZIP] Preparing %d subjects for ZIP", len(subject_codes_for_pdf))
-
-    from services.pdf_service import generate_student_report_pdf
-    from services.credit_service import get_credit, load_credit_map
-    import zipfile
-
-    credit_map = cache.get(f"credit_map_{session_id}") or {}
-    if not credit_map and scheme_sem_data:
-        scheme = scheme_sem_data.get("scheme")
-        semester = scheme_sem_data.get("semester")
-        if scheme and semester:
-            credit_map = load_credit_map(scheme, semester, cycle=cycle_data) or {}
-            if credit_map:
-                cache.set(f"credit_map_{session_id}", credit_map)
-
-    local_credit_dict = {code: get_credit(code, credit_map) for code in subject_codes_for_pdf}
-    credit_dict_positive = {k: v for k, v in local_credit_dict.items() if v > 0}
-
-    # Normalize uploaded USN mapping keys to ensure case/spacing mismatches do not break section assignment.
-    normalized_usn_mapping = {
-        str(k).strip().upper(): v for k, v in (usn_mapping or {}).items()
-    }
-
-    if "Student ID" not in df.columns:
-        df.rename(columns={df.columns[0]: "Student ID"}, inplace=True)
-
-    # If uploaded USN mapping is present, use it as the source of truth for folder assignment.
-    if normalized_usn_mapping:
-        df["Section"] = df["Student ID"].astype(str).str.strip().str.upper().map(normalized_usn_mapping).fillna("Unassigned")
-    else:
-        df["Section"] = df["Student ID"].apply(lambda x: assign_section(x, section_ranges, None))
-
-    # Keep ZIP stable and section-friendly: section-first ordering, then student id ordering.
-    df = df.sort_values(by=["Section", "Student ID"], kind="stable", na_position="last")
-
-    total_cols = [c for c in df.columns if ("Total" in c or "Marks" in c or "Score" in c) and "Selected" not in c]
-    if total_cols:
-        df[total_cols] = df[total_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-        df["Total_Marks"] = df[total_cols].sum(axis=1)
-    else:
-        df["Total_Marks"] = 0
-
-    result_cols = [c for c in df.columns if "Result" in c]
-    if result_cols:
-        df["Overall_Result"] = df[result_cols].apply(
-            lambda row: "P" if all(str(v).strip().upper() == "P" for v in row if pd.notna(v)) else "F", axis=1
-        )
-    else:
-        pass_mark = 18
-        if total_cols:
-            df["Overall_Result"] = df.apply(lambda row: "F" if any(row[c] < pass_mark for c in total_cols) else "P", axis=1)
-        else:
-            df["Overall_Result"] = "P"
-
-    df["Class_Rank"] = df[df["Overall_Result"] == "P"]["Total_Marks"].rank(method="min", ascending=False).astype("Int64")
-    if "Section" in df.columns:
-        df["Section_Rank"] = df.groupby("Section")["Total_Marks"].rank(method="min", ascending=False).astype("Int64")
-    else:
-        df["Section_Rank"] = pd.Series([pd.NA] * len(df), dtype="Int64")
-
-    analysis_type = "Total"
-    kpi_cols_all = [f"{code} {analysis_type}" for code in subject_codes_for_pdf]
-    for col in kpi_cols_all:
-        if col not in df.columns:
-            df[col] = 0
-
-    numeric_df = df[kpi_cols_all].apply(pd.to_numeric, errors="coerce").fillna(0)
-    class_averages = numeric_df.replace(0, pd.NA).mean().to_dict()
-    class_max = numeric_df.replace(0, pd.NA).max().to_dict()
-
-    id_col = df.columns[0]
-    zip_buffer = io.BytesIO()
-    used_names = set()
-
-    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        generated_count = 0
-        skipped_count = 0
-        for _, row in df.iterrows():
-            try:
-                total_credit_points, total_credits, total_max_marks = 0, 0, 0
-                for code, cred in credit_dict_positive.items():
-                    score = pd.to_numeric(row.get(f"{code} {analysis_type}", 0), errors="coerce")
-                    score = 0 if pd.isna(score) else float(score)
-                    max_marks = 100
-                    pct_score = (score / max_marks * 100) if max_marks > 0 else 0
-                    grade_point = _get_grade_point(pct_score)
-                    total_credit_points += grade_point * cred
-                    total_credits += cred
-                    total_max_marks += max_marks
-
-                sgpa = (total_credit_points / total_credits) if total_credits > 0 else 0.0
-
-                percentage_total = 0.0
-                percentage_subject_count = 0
-                for code in subject_codes_for_pdf:
-                    score = pd.to_numeric(row.get(f"{code} {analysis_type}", pd.NA), errors="coerce")
-                    # Match student-detail behavior: percentage denominator counts
-                    # only subjects with actual scored marks (> 0).
-                    if pd.notna(score) and float(score) > 0:
-                        percentage_total += float(score)
-                        percentage_subject_count += 1
-
-                if percentage_subject_count == 0:
-                    percentage_subject_count = len(subject_codes_for_pdf)
-                percentage_den = percentage_subject_count * 100
-                percentage = (percentage_total / percentage_den * 100) if percentage_den > 0 else 0.0
-
-                student_data = row.to_dict()
-                student_data["Calculated_SGPA"] = f"{sgpa:.2f}"
-                student_data["Calculated_Percentage"] = f"{percentage:.2f}%"
-                student_data["Class_Avg_Map"] = class_averages
-                student_data["Class_Max_Map"] = class_max
-                student_data["Analysis_Type"] = analysis_type
-                student_data["Credit_Map"] = credit_map or {}
-
-                report_meta = {
-                    "scheme": scheme_sem_data.get("scheme") if scheme_sem_data else None,
-                    "semester": scheme_sem_data.get("semester") if scheme_sem_data else None,
-                }
-                pdf_bytes = generate_student_report_pdf(student_data, subject_codes_for_pdf, report_meta=report_meta)
-
-                raw_name = str(student_data.get("Name", "Student")).strip() or "Student"
-                raw_usn = str(student_data.get(id_col, student_data.get("Student ID", student_data.get("Student_ID", "Unknown")))).strip() or "Unknown"
-
-                safe_name = re.sub(r"[^A-Za-z0-9]+", "_", raw_name).strip("_") or "Student"
-                safe_usn = re.sub(r"[^A-Za-z0-9]+", "_", raw_usn).strip("_") or "Unknown"
-                section_folder = str(student_data.get("Section", "Unassigned")).strip()
-                safe_sec = re.sub(r"[^A-Za-z0-9]+", "_", section_folder).strip("_") or "Unassigned"
-
-                base_filename = f"{safe_sec}/{safe_name}_{safe_usn}.pdf"
-                filename = base_filename
-                counter = 2
-                while filename in used_names:
-                    filename = f"{safe_sec}/{safe_name}_{safe_usn}_{counter}.pdf"
-                    counter += 1
-
-                used_names.add(filename)
-                zf.writestr(filename, pdf_bytes)
-                generated_count += 1
-            except Exception as e:
-                skipped_count += 1
-                _log.exception("[ZIP] Failed to generate one student PDF: %s", e)
-
-    if generated_count == 0:
-        _log.error("[ZIP] No student PDFs generated; skipped=%d", skipped_count)
-        raise PreventUpdate
-
-    _log.info("[ZIP] ZIP generated successfully: generated=%d skipped=%d", generated_count, skipped_count)
-    return dcc.send_bytes(zip_buffer.getvalue(), "All_Student_Report_Cards.zip"), "done"
+    return dcc.send_bytes(out.getvalue(), 'Complete_Report.xlsx')

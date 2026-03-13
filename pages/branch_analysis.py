@@ -272,10 +272,74 @@ def normalize_branch_data(df, branch_name):
 
 # ==================== LAYOUT ====================
 
-import os as _os
-_css_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "styles", "branch_analysis_page.css")
-with open(_css_path, "r", encoding="utf-8") as _f:
-    PAGE_CSS = _f.read()
+PAGE_CSS = """
+.ba-stat-card {
+    background: white; border-radius: 12px; padding: 20px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+    height: 100%;
+}
+.ba-stat-card:hover { transform: translateY(-3px); }
+.ba-label { color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.ba-value { color: #1e293b; font-size: 2rem; font-weight: 800; }
+
+/* Keep tables scrollable on screen */
+.print-scroll-area { max-height: 500px; overflow-y: auto; overflow-x: hidden; }
+
+/* 1. CRITICAL FIX: Place @page OUTSIDE @media print for Chrome/Edge to respect it */
+@page { 
+    size: landscape; 
+    margin: 10mm; 
+}
+
+@media print {
+    body, html { 
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important; 
+        background-color: #ffffff !important; 
+        padding: 0 !important; 
+        margin: 0 !important; 
+    }
+    
+    /* 2. AGGRESSIVELY NUKE ALL MENUS AND FIXED NAVBARS */
+    nav, header, footer, aside, .navbar, .sidebar, 
+    .fixed-top, .fixed-bottom, .sticky-top,
+    div[style*="position: fixed"], 
+    div[style*="position: sticky"] { 
+        display: none !important; 
+        opacity: 0 !important;
+        visibility: hidden !important;
+    }
+    
+    /* Hide config setup and buttons */
+    #ba-config-card, #ba-print-btn-container, .d-print-none { 
+        display: none !important; 
+    }
+    
+    /* Remove shadows for cleaner print */
+    .shadow-sm, .card { box-shadow: none !important; border: 1px solid #e2e8f0 !important; }
+    ::-webkit-scrollbar { display: none; }
+    
+    /* 3. Ensure layouts don't stack awkwardly */
+    .container-fluid { padding: 0 !important; margin: 0 !important; }
+    .row { display: flex !important; flex-wrap: wrap !important; width: 100%; }
+    .col-md-6 { width: 50% !important; float: left; }
+    .card { page-break-inside: avoid !important; margin-bottom: 25px !important; display: block !important; }
+    
+    /* 4. FLATTEN TABLES: Strip absolutely positioned cells in Dash */
+    .print-scroll-area { max-height: none !important; height: auto !important; overflow: visible !important; }
+    
+    .dash-table-container, 
+    .dash-spreadsheet-container, 
+    .dash-spreadsheet-inner, 
+    .dash-spreadsheet-container .dash-spreadsheet-inner * {
+        max-height: none !important; 
+        height: auto !important; 
+        overflow: visible !important;
+        position: static !important; /* Forces Dash table to stop floating cells */
+    }
+}
+"""
 
 layout = dbc.Container([
     dcc.Markdown(f"<style>{PAGE_CSS}</style>", dangerously_allow_html=True),
@@ -504,9 +568,9 @@ def analyze_branches(n, file_contents, branch_names):
             long_data.append(temp_df)
         
         if long_data:
-            ms.set("MASTER_BRANCH_DATA", pd.concat(long_data, ignore_index=True))
+            ms.MASTER_BRANCH_DATA = pd.concat(long_data, ignore_index=True)
         else:
-            ms.set("MASTER_BRANCH_DATA", pd.DataFrame(columns=["Student_ID", "Name", "Branch", "Subject", "Result"]))
+            ms.MASTER_BRANCH_DATA = pd.DataFrame(columns=["Student_ID", "Name", "Branch", "Subject", "Result"])
 
         # --- AGGREGATE STATS ---
         uni_total = len(university_df)
