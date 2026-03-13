@@ -417,41 +417,65 @@ layout = dbc.Container([
                         type="circle",
                         color="#3b82f6",
                         children=[
+                            html.Div([
+                                html.H6("Download Center", className="fw-bold mb-1 text-dark"),
+                                html.Div("Choose the exact report format you need", className="text-muted", style={"fontSize": "0.78rem"}),
+                            ], className="mb-2"),
                             dbc.Row([
                                 dbc.Col([
                                     dbc.Button(
                                         [
                                             html.I(className="bi bi-file-earmark-excel me-2", style={"fontSize": "1.1rem"}),
-                                            html.Span("Excel Report", style={"verticalAlign": "middle"}),
+                                            html.Span("Excel Workbook", style={"verticalAlign": "middle"}),
                                         ],
                                         id="universal-download-btn",
                                         className="w-100 fw-bold download-report-btn",
-                                        size="md",
+                                        style={"height": "72px", "display": "flex", "alignItems": "center", "justifyContent": "center", "textAlign": "center"},
+                                        size="sm",
                                     ),
-                                ], width=6, className="pe-1"),
+                                    html.Div("All sheets: Overview, Ranking, Subject Analysis", className="text-muted mt-1 text-center", style={"fontSize": "0.65rem", "lineHeight": "1.2"}),
+                                ], width=4, className="pe-1"),
                                 dbc.Col([
                                     dbc.Button(
                                         [
                                             html.I(className="bi bi-file-earmark-pdf me-2", style={"fontSize": "1.1rem"}),
-                                            html.Span("PDF Report", style={"verticalAlign": "middle"}),
+                                            html.Span("Summary PDF", style={"verticalAlign": "middle"}),
                                         ],
                                         id="overview-pdf-download-btn",
                                         className="w-100 fw-bold",
                                         color="danger",
-                                        size="md",
+                                        style={"height": "72px", "display": "flex", "alignItems": "center", "justifyContent": "center", "textAlign": "center"},
+                                        size="sm",
                                     ),
-                                ], width=6, className="ps-1"),
+                                    html.Div("Single PDF with all dashboards consolidated", className="text-muted mt-1 text-center", style={"fontSize": "0.65rem", "lineHeight": "1.2"}),
+                                ], width=4, className="px-1"),
+                                dbc.Col([
+                                    dbc.Button(
+                                        [
+                                            html.I(className="bi bi-file-zip me-2", style={"fontSize": "1.1rem"}),
+                                            html.Span("All Report Cards (ZIP)", style={"verticalAlign": "middle"}),
+                                        ],
+                                        id="overview-zip-download-btn",
+                                        className="w-100 fw-bold",
+                                        color="primary",
+                                        style={"height": "72px", "display": "flex", "alignItems": "center", "justifyContent": "center", "textAlign": "center"},
+                                        size="sm",
+                                    ),
+                                    html.Div("One ZIP containing all student report card PDFs", className="text-muted mt-1 text-center", style={"fontSize": "0.65rem", "lineHeight": "1.2"}),
+                                ], width=4, className="ps-1"),
                             ], className="g-0"),
                             html.Div([
                                 html.I(className="bi bi-download me-1"),
-                                html.Span("Overview · Ranking · Subject Analysis · Category Breakdown"),
+                                html.Span("Tip: Use Excel for data work, PDF for sharing, ZIP for report cards"),
                             ], className="text-center mt-2", style={"fontSize": "0.68rem", "color": "#6b7280", "letterSpacing": "0.02em"}),
                             html.Div(id="excel-download-trigger", style={"display": "none"}),
                             html.Div(id="pdf-download-trigger", style={"display": "none"}),
+                            html.Div(id="zip-download-trigger", style={"display": "none"}),
                         ],
                     ),
                     dcc.Download(id="universal-download-excel"),
                     dcc.Download(id="overview-pdf-download"),
+                    dcc.Download(id="overview-all-pdfs-zip-download"),
                 ], style={"overflow": "visible", "position": "relative"}),
             ], className="border-0 shadow-sm", style={"overflow": "visible"})
         ], lg=4, md=5, style={"overflow": "visible"}),
@@ -2618,3 +2642,204 @@ def universal_download(n_clicks, session_id, selected_subjects, section_ranges, 
                         _apply_row_fill(_ws, _r, odd_fill)
 
     return dcc.send_bytes(out.getvalue(), 'Complete_Report.xlsx'), "done"
+
+
+@callback(
+    Output("overview-all-pdfs-zip-download", "data"),
+    Output("zip-download-trigger", "children"),
+    Input("overview-zip-download-btn", "n_clicks"),
+    State("stored-data", "data"),
+    State("subject-selector", "value"),
+    State("section-data", "data"),
+    State("usn-mapping-store", "data"),
+    State("scheme-semester-store", "data"),
+    State("cycle-store", "data"),
+    prevent_initial_call=True,
+)
+def download_all_student_pdfs_zip_overview(n_clicks, session_id, selected_subject_codes, section_ranges, usn_mapping, scheme_sem_data, cycle_data):
+    import logging
+    _log = logging.getLogger("zip_download")
+    _log.info("[ZIP] Callback triggered n_clicks=%s session=%s", n_clicks, session_id)
+
+    if not n_clicks or not session_id:
+        _log.warning("[ZIP] PreventUpdate due to missing click/session")
+        raise PreventUpdate
+
+    df = cache.get(session_id)
+    if df is None or df.empty:
+        _log.warning("[ZIP] PreventUpdate due to cache miss or empty data")
+        raise PreventUpdate
+
+    if "Name" not in df.columns:
+        df["Name"] = ""
+
+    subject_identifiers = set()
+    for col in df.columns:
+        for suffix in [" Internal", " External", " Total"]:
+            if str(col).endswith(suffix):
+                subject_identifiers.add(str(col)[:-len(suffix)])
+                break
+
+    available_subjects = sorted(subject_identifiers)
+    if not available_subjects:
+        _log.warning("[ZIP] PreventUpdate due to no available subjects")
+        raise PreventUpdate
+
+    # Keep marks-card table consistent with Student Detail output by using the
+    # complete detected subject list in Overview ZIP report cards.
+    # (Subject selector still controls analytics on the page UI.)
+    subject_codes_for_pdf = available_subjects
+
+    if not subject_codes_for_pdf:
+        _log.warning("[ZIP] PreventUpdate due to no selected subjects after filtering")
+        raise PreventUpdate
+
+    _log.info("[ZIP] Preparing %d subjects for ZIP", len(subject_codes_for_pdf))
+
+    from services.pdf_service import generate_student_report_pdf
+    from services.credit_service import get_credit, load_credit_map
+    import zipfile
+
+    credit_map = cache.get(f"credit_map_{session_id}") or {}
+    if not credit_map and scheme_sem_data:
+        scheme = scheme_sem_data.get("scheme")
+        semester = scheme_sem_data.get("semester")
+        if scheme and semester:
+            credit_map = load_credit_map(scheme, semester, cycle=cycle_data) or {}
+            if credit_map:
+                cache.set(f"credit_map_{session_id}", credit_map)
+
+    local_credit_dict = {code: get_credit(code, credit_map) for code in subject_codes_for_pdf}
+    credit_dict_positive = {k: v for k, v in local_credit_dict.items() if v > 0}
+
+    # Normalize uploaded USN mapping keys to ensure case/spacing mismatches do not break section assignment.
+    normalized_usn_mapping = {
+        str(k).strip().upper(): v for k, v in (usn_mapping or {}).items()
+    }
+
+    if "Student ID" not in df.columns:
+        df.rename(columns={df.columns[0]: "Student ID"}, inplace=True)
+
+    # If uploaded USN mapping is present, use it as the source of truth for folder assignment.
+    if normalized_usn_mapping:
+        df["Section"] = df["Student ID"].astype(str).str.strip().str.upper().map(normalized_usn_mapping).fillna("Unassigned")
+    else:
+        df["Section"] = df["Student ID"].apply(lambda x: assign_section(x, section_ranges, None))
+
+    # Keep ZIP stable and section-friendly: section-first ordering, then student id ordering.
+    df = df.sort_values(by=["Section", "Student ID"], kind="stable", na_position="last")
+
+    total_cols = [c for c in df.columns if ("Total" in c or "Marks" in c or "Score" in c) and "Selected" not in c]
+    if total_cols:
+        df[total_cols] = df[total_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+        df["Total_Marks"] = df[total_cols].sum(axis=1)
+    else:
+        df["Total_Marks"] = 0
+
+    result_cols = [c for c in df.columns if "Result" in c]
+    if result_cols:
+        df["Overall_Result"] = df[result_cols].apply(
+            lambda row: "P" if all(str(v).strip().upper() == "P" for v in row if pd.notna(v)) else "F", axis=1
+        )
+    else:
+        pass_mark = 18
+        if total_cols:
+            df["Overall_Result"] = df.apply(lambda row: "F" if any(row[c] < pass_mark for c in total_cols) else "P", axis=1)
+        else:
+            df["Overall_Result"] = "P"
+
+    df["Class_Rank"] = df[df["Overall_Result"] == "P"]["Total_Marks"].rank(method="min", ascending=False).astype("Int64")
+    if "Section" in df.columns:
+        df["Section_Rank"] = df.groupby("Section")["Total_Marks"].rank(method="min", ascending=False).astype("Int64")
+    else:
+        df["Section_Rank"] = pd.Series([pd.NA] * len(df), dtype="Int64")
+
+    analysis_type = "Total"
+    kpi_cols_all = [f"{code} {analysis_type}" for code in subject_codes_for_pdf]
+    for col in kpi_cols_all:
+        if col not in df.columns:
+            df[col] = 0
+
+    numeric_df = df[kpi_cols_all].apply(pd.to_numeric, errors="coerce").fillna(0)
+    class_averages = numeric_df.replace(0, pd.NA).mean().to_dict()
+    class_max = numeric_df.replace(0, pd.NA).max().to_dict()
+
+    id_col = df.columns[0]
+    zip_buffer = io.BytesIO()
+    used_names = set()
+
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        generated_count = 0
+        skipped_count = 0
+        for _, row in df.iterrows():
+            try:
+                total_credit_points, total_credits, total_max_marks = 0, 0, 0
+                for code, cred in credit_dict_positive.items():
+                    score = pd.to_numeric(row.get(f"{code} {analysis_type}", 0), errors="coerce")
+                    score = 0 if pd.isna(score) else float(score)
+                    max_marks = 100
+                    pct_score = (score / max_marks * 100) if max_marks > 0 else 0
+                    grade_point = _get_grade_point(pct_score)
+                    total_credit_points += grade_point * cred
+                    total_credits += cred
+                    total_max_marks += max_marks
+
+                sgpa = (total_credit_points / total_credits) if total_credits > 0 else 0.0
+
+                percentage_total = 0.0
+                percentage_subject_count = 0
+                for code in subject_codes_for_pdf:
+                    score = pd.to_numeric(row.get(f"{code} {analysis_type}", pd.NA), errors="coerce")
+                    # Match student-detail behavior: percentage denominator counts
+                    # only subjects with actual scored marks (> 0).
+                    if pd.notna(score) and float(score) > 0:
+                        percentage_total += float(score)
+                        percentage_subject_count += 1
+
+                if percentage_subject_count == 0:
+                    percentage_subject_count = len(subject_codes_for_pdf)
+                percentage_den = percentage_subject_count * 100
+                percentage = (percentage_total / percentage_den * 100) if percentage_den > 0 else 0.0
+
+                student_data = row.to_dict()
+                student_data["Calculated_SGPA"] = f"{sgpa:.2f}"
+                student_data["Calculated_Percentage"] = f"{percentage:.2f}%"
+                student_data["Class_Avg_Map"] = class_averages
+                student_data["Class_Max_Map"] = class_max
+                student_data["Analysis_Type"] = analysis_type
+                student_data["Credit_Map"] = credit_map or {}
+
+                report_meta = {
+                    "scheme": scheme_sem_data.get("scheme") if scheme_sem_data else None,
+                    "semester": scheme_sem_data.get("semester") if scheme_sem_data else None,
+                }
+                pdf_bytes = generate_student_report_pdf(student_data, subject_codes_for_pdf, report_meta=report_meta)
+
+                raw_name = str(student_data.get("Name", "Student")).strip() or "Student"
+                raw_usn = str(student_data.get(id_col, student_data.get("Student ID", student_data.get("Student_ID", "Unknown")))).strip() or "Unknown"
+
+                safe_name = re.sub(r"[^A-Za-z0-9]+", "_", raw_name).strip("_") or "Student"
+                safe_usn = re.sub(r"[^A-Za-z0-9]+", "_", raw_usn).strip("_") or "Unknown"
+                section_folder = str(student_data.get("Section", "Unassigned")).strip()
+                safe_sec = re.sub(r"[^A-Za-z0-9]+", "_", section_folder).strip("_") or "Unassigned"
+
+                base_filename = f"{safe_sec}/{safe_name}_{safe_usn}.pdf"
+                filename = base_filename
+                counter = 2
+                while filename in used_names:
+                    filename = f"{safe_sec}/{safe_name}_{safe_usn}_{counter}.pdf"
+                    counter += 1
+
+                used_names.add(filename)
+                zf.writestr(filename, pdf_bytes)
+                generated_count += 1
+            except Exception as e:
+                skipped_count += 1
+                _log.exception("[ZIP] Failed to generate one student PDF: %s", e)
+
+    if generated_count == 0:
+        _log.error("[ZIP] No student PDFs generated; skipped=%d", skipped_count)
+        raise PreventUpdate
+
+    _log.info("[ZIP] ZIP generated successfully: generated=%d skipped=%d", generated_count, skipped_count)
+    return dcc.send_bytes(zip_buffer.getvalue(), "All_Student_Report_Cards.zip"), "done"

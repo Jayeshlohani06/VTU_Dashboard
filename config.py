@@ -19,7 +19,7 @@ class Config:
     # Server
     PORT = int(os.environ.get("PORT", 10000))
     HOST = os.environ.get("HOST", "127.0.0.1")
-    DEBUG = True  # Force debug mode ON for testing
+    DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 
     # Logging
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()

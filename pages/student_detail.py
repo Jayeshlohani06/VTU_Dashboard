@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objs as go
 import re
+import io
+import zipfile
 from cache_config import cache
 from dash.exceptions import PreventUpdate
 from services.credit_service import load_credit_map, get_credit
@@ -91,7 +93,7 @@ layout = dbc.Container([
                             id='student-search',
                             type='text',
                             placeholder='🔍 Enter USN or Name (e.g., 1XX20CS001)',
-                            debounce=True,
+                            debounce=False,
                             className="form-control",
                             style={"border": "2px solid #e0e0e0"}
                         )
@@ -178,6 +180,7 @@ layout = dbc.Container([
 
     # PDF download component
     dcc.Download(id="sd-pdf-download"),
+    dcc.Download(id="sd-all-pdf-zip-download"),
 
     # --- Rules & Guidelines Modal ---
     dbc.Modal([
@@ -342,7 +345,11 @@ def generate_credit_inputs(n_clicks, scheme_sem_data, search_value, session_id, 
         semester = scheme_sem_data.get('semester', 5)
         
     df = cache.get(session_id)
-    if df is None: return ""
+    if df is None:
+        return dbc.Alert([
+            html.I(className="bi bi-exclamation-triangle-fill me-2"),
+            "Session expired or cache was cleared. Please go to Overview and re-upload the Excel file."
+        ], color="danger", className="text-center mt-3")
     
     if 'Name' not in df.columns:
         df['Name'] = ""
@@ -355,6 +362,16 @@ def generate_credit_inputs(n_clicks, scheme_sem_data, search_value, session_id, 
         df['Name'].astype(str).str.strip().str.lower() == norm_search
     )
     student_df = df[mask]
+
+    # Fallback to partial match when exact match is not found.
+    if student_df.empty and norm_search:
+        contains_mask = (
+            df[meta_col].astype(str).str.strip().str.lower().str.contains(norm_search, na=False)
+        ) | (
+            df['Name'].astype(str).str.strip().str.lower().str.contains(norm_search, na=False)
+        )
+        student_df = df[contains_mask]
+
     if student_df.empty:
         return dbc.Alert("No student found with this ID or Name.", color="warning", className="text-center mt-3")
     student_series = student_df.iloc[0]
@@ -474,7 +491,11 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
 
     # Load & normalize base columns
     df = cache.get(session_id)
-    if df is None: return ""
+    if df is None: 
+        return dbc.Alert([
+            html.I(className="bi bi-exclamation-triangle-fill me-2"),
+            "Session expired or memory was cleared. Please return to the Overview page and re-upload your data."
+        ], color="danger", className="mt-4 shadow-sm fw-bold text-center")
     
     if 'Name' not in df.columns:
         df['Name'] = ""
@@ -629,13 +650,20 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
 
     # ---------- KPI Cards ----------
     total_marks_selected = student_series['Total_Marks_Selected']
-    # Percentage: use only positive-credit subjects for both numerator and denominator
-    positive_credit_cols = [f"{code} {analysis_type}" for code in credit_dict_positive]
-    total_marks_positive = sum(
-        pd.to_numeric(student_series.get(col, 0), errors='coerce') or 0
-        for col in positive_credit_cols
-    )
-    percentage = (total_marks_positive / total_max_marks * 100) if total_max_marks > 0 else 0.0
+
+    # Percentage should include all selected/visible subjects, including non-credit ones.
+    percentage_total = 0.0
+    percentage_subject_count = 0
+    for code in all_subject_codes_selected:
+        val = pd.to_numeric(student_series.get(f"{code} {analysis_type}", pd.NA), errors='coerce')
+        if pd.notna(val):
+            percentage_total += float(val)
+            percentage_subject_count += 1
+
+    if percentage_subject_count == 0:
+        percentage_subject_count = len(all_subject_codes_selected)
+    percentage_den = percentage_subject_count * 100
+    percentage = (percentage_total / percentage_den * 100) if percentage_den > 0 else 0.0
     result_selected = student_series['Result_Selected']
 
     # Ranks pulled from the global (ranking-page) logic above:
@@ -979,6 +1007,12 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
     # ---------- Final Layout ----------
     # Store student data for PDF download
     student_data_for_pdf = student_series.to_dict()
+    student_data_for_pdf['Calculated_SGPA'] = f"{sgpa:.2f}"
+    student_data_for_pdf['Calculated_Percentage'] = f"{percentage:.2f}%"
+    student_data_for_pdf['Class_Avg_Map'] = class_averages.to_dict()
+    student_data_for_pdf['Class_Max_Map'] = class_max.to_dict()
+    student_data_for_pdf['Analysis_Type'] = analysis_type
+    student_data_for_pdf['Credit_Map'] = credit_dict_all
     subject_codes_for_pdf = all_subject_codes_selected
 
     return dbc.Card(dbc.CardBody([
@@ -991,6 +1025,12 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
                 id="sd-pdf-btn",
                 color="danger", outline=True, size="sm",
                 className="ms-3",
+            ),
+            dbc.Button(
+                [html.I(className="bi bi-file-zip me-2"), "Download All PDFs (ZIP)"],
+                id="sd-pdf-all-btn",
+                color="primary", outline=True, size="sm",
+                className="ms-2",
             ),
         ], className="text-center mb-4 pb-3", style={"borderBottom": "3px solid #667eea"}),
 
@@ -1070,15 +1110,179 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
     Input("sd-pdf-btn", "n_clicks"),
     State("sd-pdf-student-data", "data"),
     State("sd-pdf-subject-codes", "data"),
+    State("scheme-semester-store", "data"),
+    State("stored-data", "data"),
     prevent_initial_call=True,
 )
-def download_student_pdf(n_clicks, student_data, subject_codes):
+def download_student_pdf(n_clicks, student_data, subject_codes, scheme_sem_data, session_id):
     if not n_clicks or not student_data or not subject_codes:
         raise PreventUpdate
 
     from services.pdf_service import generate_student_report_pdf, pdf_to_download_data
 
-    pdf_bytes = generate_student_report_pdf(student_data, subject_codes)
+    credit_map = cache.get(f"credit_map_{session_id}") if session_id else None
+    student_payload = dict(student_data)
+    if credit_map:
+        student_payload["Credit_Map"] = credit_map
+
+    report_meta = {
+        "scheme": scheme_sem_data.get("scheme") if scheme_sem_data else None,
+        "semester": scheme_sem_data.get("semester") if scheme_sem_data else None,
+    }
+    pdf_bytes = generate_student_report_pdf(student_payload, subject_codes, report_meta=report_meta)
     student_id = student_data.get("Student ID", student_data.get("Student_ID", "Student"))
     safe_id = re.sub(r'[^A-Za-z0-9_]', '_', str(student_id))
     return pdf_to_download_data(pdf_bytes, f"{safe_id}_Report.pdf")
+
+
+@callback(
+    Output("sd-all-pdf-zip-download", "data"),
+    Input("sd-pdf-all-btn", "n_clicks"),
+    State("stored-data", "data"),
+    State("student-subject-dropdown", "value"),
+    State('analysis-type-radio', 'value'),
+    State('section-data', 'data'),
+    State('usn-mapping-store', 'data'),
+    State("scheme-semester-store", "data"),
+    prevent_initial_call=True,
+)
+def download_all_student_pdfs_zip(n_clicks, session_id, selected_subject_codes, analysis_type, section_ranges, usn_mapping, scheme_sem_data):
+    if not n_clicks or not session_id:
+        raise PreventUpdate
+
+    df = cache.get(session_id)
+    if df is None or df.empty:
+        raise PreventUpdate
+
+    if "Name" not in df.columns:
+        df["Name"] = ""
+
+    # Build available subject identifiers from existing columns.
+    subject_identifiers = set()
+    for col in df.columns:
+        for suffix in [" Internal", " External", " Total"]:
+            if str(col).endswith(suffix):
+                subject_identifiers.add(str(col)[:-len(suffix)])
+                break
+    available_subjects = sorted(subject_identifiers)
+
+    if not available_subjects:
+        raise PreventUpdate
+
+    if not selected_subject_codes or "ALL" in selected_subject_codes:
+        subject_codes_for_pdf = available_subjects
+    else:
+        selected_set = set(selected_subject_codes)
+        subject_codes_for_pdf = [s for s in available_subjects if s in selected_set]
+
+    if not subject_codes_for_pdf:
+        raise PreventUpdate
+
+    from services.pdf_service import generate_student_report_pdf
+    from services.credit_service import get_credit
+
+    credit_map = cache.get(f"credit_map_{session_id}") or {}
+    local_credit_dict = {code: get_credit(code, credit_map) for code in subject_codes_for_pdf}
+    credit_dict_positive = {k: v for k, v in local_credit_dict.items() if v > 0}
+
+    # Normalize df columns for ranking
+    if 'Student ID' not in df.columns:
+        df.rename(columns={df.columns[0]: 'Student ID'}, inplace=True)
+    df['Section'] = df['Student ID'].apply(lambda x: assign_section(x, section_ranges, usn_mapping))
+
+    total_cols = [c for c in df.columns if ('Total' in c or 'Marks' in c or 'Score' in c) and 'Selected' not in c]
+    if total_cols:
+        df[total_cols] = df[total_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+        df['Total_Marks'] = df[total_cols].sum(axis=1)
+    else:
+        df['Total_Marks'] = 0
+
+    result_cols = [c for c in df.columns if 'Result' in c]
+    if result_cols:
+        df['Overall_Result'] = df[result_cols].apply(
+            lambda row: 'P' if all(str(v).strip().upper() == 'P' for v in row if pd.notna(v)) else 'F', axis=1)
+    else:
+        pass_mark = 18
+        if total_cols:
+            df['Overall_Result'] = df.apply(lambda row: 'F' if any(row[c] < pass_mark for c in total_cols) else 'P', axis=1)
+        else:
+            df['Overall_Result'] = 'P'
+
+    df['Class_Rank'] = df[df['Overall_Result'] == 'P']['Total_Marks'].rank(method='min', ascending=False).astype('Int64')
+    if 'Section' in df.columns:
+        df['Section_Rank'] = df.groupby('Section')['Total_Marks'].rank(method='min', ascending=False).astype('Int64')
+    else:
+        df['Section_Rank'] = pd.Series([pd.NA] * len(df), dtype='Int64')
+
+    kpi_cols_all = [f"{code} {analysis_type}" for code in subject_codes_for_pdf]
+    for col in kpi_cols_all:
+        if col not in df.columns:
+            df[col] = 0
+    
+    numeric_df = df[kpi_cols_all].apply(pd.to_numeric, errors='coerce').fillna(0)
+    class_averages = numeric_df.replace(0, pd.NA).mean().to_dict()
+    class_max = numeric_df.replace(0, pd.NA).max().to_dict()
+
+    id_col = df.columns[0]
+    zip_buffer = io.BytesIO()
+    used_names = set()
+
+    report_meta = {
+        "scheme": scheme_sem_data.get("scheme") if scheme_sem_data else None,
+        "semester": scheme_sem_data.get("semester") if scheme_sem_data else None,
+    }
+
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for _, row in df.iterrows():
+            total_credit_points, total_credits, total_max_marks = 0, 0, 0
+            for code, cred in credit_dict_positive.items():
+                score = pd.to_numeric(row.get(f"{code} {analysis_type}", 0), errors='coerce') or 0
+                max_marks = 100 # Default
+                pct_score = (score / max_marks * 100) if max_marks > 0 else 0
+                grade_point = get_grade_point(pct_score)
+                total_credit_points += grade_point * cred
+                total_credits += cred
+                total_max_marks += max_marks
+                
+            sgpa = (total_credit_points / total_credits) if total_credits > 0 else 0.0
+
+            percentage_total = 0.0
+            percentage_subject_count = 0
+            for code in subject_codes_for_pdf:
+                score = pd.to_numeric(row.get(f"{code} {analysis_type}", pd.NA), errors='coerce')
+                if pd.notna(score):
+                    percentage_total += float(score)
+                    percentage_subject_count += 1
+
+            if percentage_subject_count == 0:
+                percentage_subject_count = len(subject_codes_for_pdf)
+            percentage_den = percentage_subject_count * 100
+            percentage = (percentage_total / percentage_den * 100) if percentage_den > 0 else 0.0
+
+            student_data = row.to_dict()
+            student_data['Calculated_SGPA'] = f"{sgpa:.2f}"
+            student_data['Calculated_Percentage'] = f"{percentage:.2f}%"
+            student_data['Class_Avg_Map'] = class_averages
+            student_data['Class_Max_Map'] = class_max
+            student_data['Analysis_Type'] = analysis_type
+            student_data['Credit_Map'] = credit_map or {}
+
+            pdf_bytes = generate_student_report_pdf(student_data, subject_codes_for_pdf, report_meta=report_meta)
+
+            raw_name = str(student_data.get("Name", "Student")).strip() or "Student"
+            raw_usn = str(student_data.get(id_col, student_data.get("Student ID", student_data.get("Student_ID", "Unknown")))).strip() or "Unknown"
+
+            safe_name = re.sub(r"[^A-Za-z0-9]+", "_", raw_name).strip("_") or "Student"
+            safe_usn = re.sub(r"[^A-Za-z0-9]+", "_", raw_usn).strip("_") or "Unknown"
+            base_filename = f"{safe_name}_{safe_usn}.pdf"
+
+            filename = base_filename
+            counter = 2
+            while filename in used_names:
+                filename = f"{safe_name}_{safe_usn}_{counter}.pdf"
+                counter += 1
+            used_names.add(filename)
+
+            zf.writestr(filename, pdf_bytes)
+
+    return dcc.send_bytes(zip_buffer.getvalue(), "All_Student_Report_Cards.zip")

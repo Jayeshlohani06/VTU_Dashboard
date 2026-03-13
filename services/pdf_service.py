@@ -6,6 +6,7 @@ and subject analysis using ReportLab.
 
 import io
 import base64
+import uuid
 from datetime import datetime
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -16,6 +17,8 @@ from reportlab.platypus import (
     Image, PageBreak, HRFlowable
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.graphics.shapes import Drawing, String
+from reportlab.graphics.charts.barcharts import VerticalBarChart
 import pandas as pd
 import re
 from logging_config import get_logger
@@ -54,6 +57,14 @@ def _get_styles():
         "SmallRight", parent=styles["Normal"],
         alignment=TA_RIGHT, fontSize=8, textColor=colors.gray
     ))
+    styles.add(ParagraphStyle(
+        "SmallMuted", parent=styles["Normal"],
+        fontSize=8, textColor=colors.HexColor("#6b7280"), leading=10
+    ))
+    styles.add(ParagraphStyle(
+        "AlertText", parent=styles["Normal"],
+        fontSize=9, textColor=FAIL_COLOR, leading=12
+    ))
     return styles
 
 
@@ -69,130 +80,530 @@ def _build_table_style(header_rows=1):
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 0.5, LIGHT_BORDER),
         ("ROWBACKGROUNDS", (0, header_rows), (-1, -1), [colors.white, ROW_ALT]),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("MINHEIGHT", (0, 0), (-1, -1), 20),
     ]
     return TableStyle(style)
-
-
-def generate_student_report_pdf(student_row, subject_codes, institution_name=""):
-    """
-    Generate a PDF report card for an individual student.
-    
-    Parameters
-    ----------
-    student_row : dict or pd.Series
-        Student data with subject marks, result, etc.
-    subject_codes : list
-        List of subject codes to include.
-    institution_name : str
-        Name of institution for header.
-    
-    Returns
-    -------
-    bytes : PDF file content
-    """
+def generate_student_report_pdf(student_row, subject_codes, institution_name="", report_meta=None):
+    """Generate a proper marks-card style PDF for an individual student."""
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=20*mm, bottomMargin=15*mm)
+    page_w, _page_h = A4
+    left_m = right_m = 12 * mm
+    content_w = page_w - left_m - right_m
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        topMargin=8 * mm,
+        bottomMargin=8 * mm,
+        leftMargin=left_m,
+        rightMargin=right_m,
+    )
     styles = _get_styles()
     story = []
 
-    # Header
-    story.append(Paragraph("Student Performance Report", styles["TitleCenter"]))
-    if institution_name:
-        story.append(Paragraph(institution_name, styles["SubtitleCenter"]))
-    story.append(Paragraph(
-        f"Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}",
-        styles["SmallRight"]
-    ))
-    story.append(HRFlowable(width="100%", thickness=1, color=BRAND_COLOR, spaceAfter=10))
+    # Palette
+    indigo = colors.HexColor("#1a237e")
+    indigo_mid = colors.HexColor("#283593")
+    indigo_lite = colors.HexColor("#e8eaf6")
+    border_c = colors.HexColor("#3949ab")
+    grid_c = colors.HexColor("#c5cae9")
+    alt_c = colors.HexColor("#f7f7fb")
+    pass_c = colors.HexColor("#2e7d32")
+    fail_c = colors.HexColor("#c62828")
+    pass_bg_c = colors.HexColor("#e8f5e9")
+    fail_bg_c = colors.HexColor("#ffebee")
+    gray_fg = colors.HexColor("#6b7280")
+    dark_fg = colors.HexColor("#1f2937")
 
-    # Student Info
-    student_id = student_row.get("Student ID", student_row.get("Student_ID", "N/A"))
-    name = student_row.get("Name", "N/A")
-    overall = student_row.get("Overall_Result", "N/A")
-    
-    info_data = [
-        ["Student ID", str(student_id)],
-        ["Name", str(name)],
-        ["Overall Result", str(overall)],
-    ]
-    if "Section" in student_row:
-        info_data.append(["Section", str(student_row["Section"])])
-    if "Total_Marks" in student_row:
-        info_data.append(["Total Marks", str(student_row["Total_Marks"])])
-    if "Class_Rank" in student_row:
-        info_data.append(["Class Rank", str(student_row["Class_Rank"])])
+    generated_at = datetime.now()
+    generation_id = f"RC-{generated_at.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
-    info_table = Table(info_data, colWidths=[120, 300])
-    info_style = TableStyle([
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("ALIGN", (0, 0), (0, -1), "RIGHT"),
-        ("ALIGN", (1, 0), (1, -1), "LEFT"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("LINEBELOW", (0, -1), (-1, -1), 1, LIGHT_BORDER),
-    ])
-    info_table.setStyle(info_style)
-    story.append(info_table)
-    story.append(Spacer(1, 15))
+    def _is_blank(v):
+        return str(v).strip().lower() in ("", "nan", "none", "-", "--")
 
-    # Subject Performance Table
-    story.append(Paragraph("Subject-wise Performance", styles["SectionHeader"]))
+    def _to_num(v):
+        return pd.to_numeric(v, errors="coerce")
 
-    headers = ["Subject", "Internal", "External", "Total", "Result"]
-    table_data = [headers]
+    def _fmt_mark(v):
+        n = _to_num(v)
+        if pd.isna(n):
+            return "-"
+        return str(int(n)) if float(n).is_integer() else f"{float(n):.1f}"
+
+    def _rank_str(v):
+        try:
+            f = float(v)
+            return str(int(f)) if float(f).is_integer() else f"{f:.2f}"
+        except Exception:
+            return str(v) if str(v).strip() else "-"
+
+    def _resolve(row_obj, subject_key, component):
+        for c in [f"{subject_key}_{component}", f"{subject_key} {component}"]:
+            if c in row_obj:
+                return row_obj.get(c)
+        if " - " in str(subject_key):
+            code = str(subject_key).split(" - ", 1)[0].strip()
+            for key in row_obj.keys():
+                key_s = str(key)
+                if key_s.startswith(f"{code} - ") and key_s.endswith(f" {component}"):
+                    return row_obj.get(key)
+        return None
+
+    def _extract_course_number(subject_code):
+        m = re.search(r"(\d{3})", str(subject_code))
+        return m.group(1) if m else None
+
+    def _grade_from_total(total_num):
+        if pd.isna(total_num):
+            return "-", None
+        v = float(total_num)
+        if v >= 90:
+            return "O", 10
+        if v >= 80:
+            return "A+", 9
+        if v >= 70:
+            return "A", 8
+        if v >= 60:
+            return "B+", 7
+        if v >= 55:
+            return "B", 6
+        if v >= 50:
+            return "C", 5
+        if v >= 40:
+            return "P", 4
+        return "F", 0
+
+    credit_map = student_row.get("Credit_Map") or student_row.get("Subject_Credit_Map") or {}
+
+    def _get_credit(sub_code):
+        if not isinstance(credit_map, dict):
+            return None
+        candidates = [str(sub_code).strip()]
+        if " - " in str(sub_code):
+            candidates.append(str(sub_code).split(" - ", 1)[0].strip())
+        cn = _extract_course_number(sub_code)
+        if cn:
+            candidates.append(cn)
+        for k in candidates:
+            if k in credit_map:
+                n = _to_num(credit_map.get(k))
+                if pd.notna(n):
+                    return float(n)
+        return None
+
+    sid = str(student_row.get("Student ID", student_row.get("Student_ID", "N/A")))
+    name = str(student_row.get("Name", "N/A"))
+    section = str(student_row.get("Section", "-"))
+    overall = str(student_row.get("Overall_Result", "-")).strip()
+    total_marks = str(student_row.get("Total_Marks", "-"))
+    class_rank = _rank_str(student_row.get("Class_Rank", ""))
+    section_rank = _rank_str(student_row.get("Section_Rank", ""))
+
+    report_meta = report_meta or {}
+
+    def _derive_college_code_from_usn(usn_val):
+        usn_text = str(usn_val or "").strip().upper()
+        m = re.match(r"^\d([A-Z]{2})\d{2}[A-Z]{2}\d+", usn_text)
+        if m:
+            return m.group(1)
+        m2 = re.match(r"^\d([A-Z]{2})", usn_text)
+        if m2:
+            return m2.group(1)
+        return "-"
+
+    semester_val = report_meta.get("semester", student_row.get("Semester", student_row.get("Current Semester", "-")))
+    scheme_val = report_meta.get("scheme", student_row.get("Scheme", student_row.get("Academic Scheme", "-")))
+    semester = str(semester_val) if semester_val is not None else "-"
+    scheme = str(scheme_val) if scheme_val is not None else "-"
+    exam_month = str(student_row.get("Exam Month", student_row.get("Exam_Month", generated_at.strftime("%b"))))
+    exam_year = str(student_row.get("Exam Year", student_row.get("Exam_Year", generated_at.strftime("%Y"))))
+    college_code = str(student_row.get("College Code", student_row.get("College_Code", ""))).strip()
+    if not college_code:
+        college_code = _derive_college_code_from_usn(sid)
+
+    sgpa_n = _to_num(str(student_row.get("Calculated_SGPA", "")).replace("%", ""))
+    sgpa_str = f"{float(sgpa_n):.2f}" if pd.notna(sgpa_n) else "N/A"
+    perc_n = _to_num(str(student_row.get("Calculated_Percentage", "")).replace("%", ""))
+    perc_str = f"{float(perc_n):.2f}%" if pd.notna(perc_n) else "N/A"
+
+    analysis_type = student_row.get("Analysis_Type", "Total")
+    class_avg_map = student_row.get("Class_Avg_Map", {})
+    class_max_map = student_row.get("Class_Max_Map", {})
+
+    subject_rows = []
+    chart_labels = []
+    chart_values = []
+    avg_values = []
+    max_values = []
+    failed_subjects = []
+    attempted = 0
+    passed = 0
+    total_credits = 0.0
+    total_credit_points = 0.0
 
     for sub in subject_codes:
-        int_val = student_row.get(f"{sub}_Internal", "")
-        ext_val = student_row.get(f"{sub}_External", "")
-        tot_val = student_row.get(f"{sub}_Total", "")
-        res_val = student_row.get(f"{sub}_Result", "")
+        int_val = _resolve(student_row, sub, "Internal")
+        ext_val = _resolve(student_row, sub, "External")
+        tot_val = _resolve(student_row, sub, "Total")
+        res_val = _resolve(student_row, sub, "Result")
 
-        # Skip electives not taken
-        if all(str(v).strip() in ("", "nan", "None") for v in [int_val, ext_val, tot_val, res_val]):
+        code_only = str(sub).split(" - ", 1)[0].strip()
+        subj_name = str(sub).split(" - ", 1)[1].strip() if " - " in str(sub) else str(sub)
+        int_num = _to_num(int_val)
+        ext_num = _to_num(ext_val)
+        total_num = _to_num(tot_val)
+        res_norm = str(res_val).strip().upper() if not _is_blank(res_val) else ""
+
+        # Keep only subjects actually present/attempted by this student.
+        # This removes placeholder rows like '-', '-', 0, '-' from the marks card.
+        has_positive_marks = any(
+            pd.notna(v) and float(v) > 0 for v in [int_num, ext_num, total_num]
+        )
+        has_explicit_result = res_norm in ("P", "PASS", "F", "FAIL", "A", "ABSENT", "NE", "X", "RV")
+        if (not has_positive_marks) and (not has_explicit_result):
             continue
 
+        grade, gp = _grade_from_total(total_num)
+        if res_norm in ("F", "FAIL"):
+            grade, gp = "F", 0
+        elif res_norm in ("A", "ABSENT"):
+            grade, gp = "A", None
+        elif res_norm in ("NE", "X", "RV"):
+            grade, gp = res_norm, None
+
+        credit = _get_credit(sub)
+        cp = None
+        if credit is not None and gp is not None:
+            cp = float(credit) * float(gp)
+
+        if pd.notna(total_num) or res_norm in ("P", "PASS", "F", "FAIL", "A", "ABSENT", "NE", "X", "RV"):
+            attempted += 1
+        if res_norm in ("P", "PASS") or (res_norm == "" and grade not in ("F", "A", "NE", "X", "RV")):
+            passed += 1
+        if res_norm in ("F", "FAIL") or grade == "F":
+            failed_subjects.append(code_only)
+
+        if credit is not None and gp is not None:
+            total_credits += float(credit)
+            total_credit_points += float(cp)
+
+        subject_rows.append({
+            "serial": len(subject_rows) + 1,
+            "code": code_only,
+            "name": subj_name,
+            "int": _fmt_mark(int_val),
+            "ext": _fmt_mark(ext_val),
+            "total": _fmt_mark(tot_val),
+            "result": res_norm or "-",
+            "res_norm": res_norm,
+            "grade": grade,
+            "gp": "-" if gp is None else str(gp),
+            "credit": "-" if credit is None else f"{float(credit):.1f}".rstrip("0").rstrip("."),
+            "cp": "-" if cp is None else f"{float(cp):.2f}",
+        })
+
+        if pd.notna(total_num) and total_num > 0:
+            chart_labels.append(code_only)
+            chart_values.append(float(total_num))
+            kpi_key = f"{sub} {analysis_type}"
+            av = class_avg_map.get(kpi_key, 0)
+            mx = class_max_map.get(kpi_key, 0)
+            avg_values.append(float(av) if not pd.isna(av) else 0.0)
+            max_values.append(float(mx) if not pd.isna(mx) else 0.0)
+
+    overall_norm = str(overall).strip().upper()
+    is_pass_overall = overall_norm in ("P", "PASS")
+
+    # Match Ranking page rule: class categories are for PASS students only.
+    if is_pass_overall and pd.notna(perc_n) and float(perc_n) >= 70:
+        class_text = "First Class with Distinction"
+    elif is_pass_overall and pd.notna(perc_n) and float(perc_n) >= 60:
+        class_text = "First Class"
+    elif is_pass_overall and pd.notna(perc_n) and float(perc_n) >= 50:
+        class_text = "Second Class"
+    elif is_pass_overall:
+        class_text = "Pass Class"
+    else:
+        class_text = "-"
+
+    if str(overall).strip().upper().startswith("F") and failed_subjects:
+        remarks_text = f"Reappear in subject(s): {', '.join(sorted(set(failed_subjects)))}"
+    elif str(overall).strip().upper().startswith("P"):
+        remarks_text = "Eligible for promotion to next semester"
+    else:
+        remarks_text = "Refer to subject result status"
+
+    def _band(title):
+        t = Table([[Paragraph(
+            f'<b><font size="8.5" color="white">{title}</font></b>',
+            ParagraphStyle("band", parent=styles["Normal"], leading=11)
+        )]], colWidths=[content_w])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), indigo_mid),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        return t
+
+    # Official header
+    top_head = Table([
+        [
+            Paragraph(
+                f'<b><font size="11" color="#111827">{institution_name or "VISVESVARAYA TECHNOLOGICAL UNIVERSITY"}</font></b><br/>'
+                f'<font size="8" color="#374151">OFFICIAL STUDENT MARKS CARD</font><br/>'
+                f'<font size="7" color="#6b7280">College Code: {college_code}  |  Semester: {semester}  |  Scheme: {scheme}  |  Exam: {exam_month} {exam_year}</font>',
+                ParagraphStyle("ct", parent=styles["Normal"], alignment=TA_CENTER, leading=11),
+            )
+        ]
+    ], colWidths=[content_w])
+    top_head.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.8, border_c),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(top_head)
+    story.append(Spacer(1, 2))
+
+    # Security/meta strip
+    meta_strip = Table([[
+        Paragraph(
+            f'<font size="7" color="white">Generation ID: {generation_id}  |  Generated: {generated_at.strftime("%d-%m-%Y %I:%M %p")}</font>',
+            ParagraphStyle("ms", parent=styles["Normal"], alignment=TA_LEFT, leading=9),
+        )
+    ]], colWidths=[content_w])
+    meta_strip.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), indigo),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(meta_strip)
+    story.append(Spacer(1, 2))
+
+    # Student details
+    label_style = ParagraphStyle("lbl", parent=styles["Normal"], fontSize=7.5, textColor=gray_fg, fontName="Helvetica-Bold", leading=9)
+    value_style = ParagraphStyle("val", parent=styles["Normal"], fontSize=9, textColor=dark_fg, fontName="Helvetica-Bold", leading=11)
+
+    def _lp(text):
+        return Paragraph(text, label_style)
+
+    def _vp(text):
+        return Paragraph(str(text), value_style)
+
+    info_tbl = Table([
+        [_lp("USN / STUDENT ID"), _vp(sid), _lp("STUDENT NAME"), _vp(name)],
+        [_lp("SECTION"), _vp(section), _lp("OVERALL RESULT"), _vp(overall or "-")],
+        [_lp("CLASS RANK"), _vp(class_rank), _lp("SECTION RANK"), _vp(section_rank)],
+    ], colWidths=[78, 165, 78, content_w - 321])
+    info_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), indigo_lite),
+        ("BACKGROUND", (2, 0), (2, -1), indigo_lite),
+        ("GRID", (0, 0), (-1, -1), 0.5, grid_c),
+        ("BOX", (0, 0), (-1, -1), 1, border_c),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(info_tbl)
+    story.append(Spacer(1, 2))
+
+    # KPI strip
+    kpi_tbl = Table([
+        ["SGPA", "Percentage", "Total Marks", "Class"],
+        [sgpa_str, perc_str, total_marks, class_text],
+    ], colWidths=[content_w / 4] * 4)
+    kpi_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), indigo_lite),
+        ("TEXTCOLOR", (0, 0), (-1, 0), dark_fg),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7.5),
+        ("FONTSIZE", (0, 1), (-1, 1), 9),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.5, grid_c),
+        ("BOX", (0, 0), (-1, -1), 1, border_c),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(kpi_tbl)
+    story.append(Spacer(1, 2))
+
+    if str(overall).upper().startswith("F") and failed_subjects:
+        fail_box = Table([[Paragraph(
+            f'<b>&#9888; Result Alert:</b> FAIL in subject(s): {", ".join(sorted(set(failed_subjects)))}',
+            ParagraphStyle("fb", parent=styles["Normal"], textColor=fail_c, fontSize=8.5, leading=11)
+        )]], colWidths=[content_w])
+        fail_box.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), fail_bg_c),
+            ("BOX", (0, 0), (-1, -1), 0.8, fail_c),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        story.append(fail_box)
+        story.append(Spacer(1, 2))
+
+    story.append(_band("SUBJECT-WISE MARKS (IA/SEE/TOTAL)"))
+
+    # Proper report card columns including grade points and credits
+    # widths sum to content_w: 20,48,132,35,35,40,34,26,34,42,53
+    col_w = [20, 48, 132, 35, 35, 40, 34, 26, 34, 42, 53]
+    table_data = [[
+        "#", "Code", "Subject Name", "IA", "SEE", "Total",
+        "Result", "Grade", "GP", "Credits", "Cr.Pts"
+    ], [
+        "", "", "", "Max 50", "Max 50", "Max 100", "", "", "", "", ""
+    ]]
+
+    for r in subject_rows:
+        name_cell = Paragraph(
+            f'<font size="7.8">{r["name"] or r["code"]}</font>',
+            ParagraphStyle("nm", parent=styles["Normal"], alignment=TA_LEFT, leading=9)
+        )
         table_data.append([
-            str(sub),
-            str(int_val) if pd.notna(int_val) else "-",
-            str(ext_val) if pd.notna(ext_val) else "-",
-            str(tot_val) if pd.notna(tot_val) else "-",
-            str(res_val) if pd.notna(res_val) else "-",
+            str(r["serial"]),
+            r["code"],
+            name_cell,
+            r["int"],
+            r["ext"],
+            r["total"],
+            r["result"],
+            r["grade"],
+            r["gp"],
+            r["credit"],
+            r["cp"],
         ])
 
-    if len(table_data) > 1:
-        t = Table(table_data, colWidths=[120, 70, 70, 70, 70])
-        style = _build_table_style()
-
-        # Color result column
-        for i, row in enumerate(table_data[1:], start=1):
-            result = str(row[4]).strip().upper()
-            if result.startswith("P"):
-                style.add("TEXTCOLOR", (4, i), (4, i), PASS_COLOR)
-            elif result.startswith("F"):
-                style.add("TEXTCOLOR", (4, i), (4, i), FAIL_COLOR)
-
-        t.setStyle(style)
-        story.append(t)
+    if len(table_data) > 2:
+        marks_tbl = Table(table_data, colWidths=col_w)
+        ts = TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), indigo),
+            ("BACKGROUND", (0, 1), (-1, 1), indigo_mid),
+            ("TEXTCOLOR", (0, 0), (-1, 1), colors.white),
+            ("FONTNAME", (0, 0), (-1, 1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 7.3),
+            ("FONTSIZE", (0, 1), (-1, 1), 6.7),
+            ("FONTSIZE", (0, 2), (-1, -1), 7.8),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("ALIGN", (2, 2), (2, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.45, grid_c),
+            ("ROWBACKGROUNDS", (0, 2), (-1, -1), [colors.white, alt_c]),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ])
+        for idx, r in enumerate(subject_rows, start=2):
+            rr = r["res_norm"]
+            if rr.startswith("P") or r["grade"] in ("O", "A+", "A", "B+", "B", "C", "P"):
+                ts.add("TEXTCOLOR", (6, idx), (7, idx), pass_c)
+            if rr.startswith("F") or r["grade"] == "F":
+                ts.add("TEXTCOLOR", (6, idx), (7, idx), fail_c)
+                ts.add("BACKGROUND", (6, idx), (7, idx), fail_bg_c)
+            if rr in ("A", "ABSENT", "NE", "X", "RV"):
+                ts.add("TEXTCOLOR", (6, idx), (6, idx), colors.HexColor("#b45309"))
+        marks_tbl.setStyle(ts)
+        story.append(marks_tbl)
     else:
         story.append(Paragraph("No subject data available.", styles["Normal"]))
 
-    # Footer
-    story.append(Spacer(1, 30))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.gray, spaceAfter=6))
-    story.append(Paragraph(
-        "Generated by VTU Student Performance Dashboard",
-        styles["SmallRight"]
-    ))
+    story.append(Spacer(1, 2))
 
-    doc.build(story)
+    # Chart kept compact for one-page friendly layout
+    if chart_values and len(subject_rows) <= 10:
+        story.append(_band("PERFORMANCE SNAPSHOT"))
+        has_stats = any(v > 0 for v in avg_values) and any(v > 0 for v in max_values)
+        drawing = Drawing(content_w, 115)
+        chart = VerticalBarChart()
+        chart.x = 20
+        chart.y = 18
+        chart.height = 78
+        chart.width = int(content_w) - 34
+        chart.data = [chart_values, avg_values, max_values] if has_stats else [chart_values]
+        chart.categoryAxis.categoryNames = [f"S{i+1}" for i in range(len(chart_labels))]
+        chart.categoryAxis.labels.fontSize = 6.5
+        chart.categoryAxis.labels.dy = -8
+        chart.valueAxis.valueMin = 0
+        top_max = max(chart_values + (max_values if has_stats else []))
+        chart.valueAxis.valueMax = max(100, int(top_max) + 10)
+        chart.valueAxis.valueStep = 10
+        chart.valueAxis.labels.fontSize = 6
+        chart.bars[0].fillColor = colors.HexColor("#3f51b5")
+        if has_stats:
+            chart.bars[1].fillColor = colors.HexColor("#26a69a")
+            chart.bars[2].fillColor = colors.HexColor("#ffa726")
+        chart.barLabelFormat = "%d"
+        chart.barLabels.fontSize = 5.5
+        chart.barLabels.nudge = 4
+        drawing.add(chart)
+        story.append(drawing)
+        legend_text = " | ".join([f"S{i+1}={c}" for i, c in enumerate(chart_labels)])
+        story.append(Paragraph(
+            f'<font size="6.5" color="#6b7280">{legend_text}</font>',
+            ParagraphStyle("cl", parent=styles["Normal"], alignment=TA_CENTER, leading=8),
+        ))
+        story.append(Spacer(1, 2))
+
+    # Result remarks + notation legend
+    remarks_tbl = Table([
+        [
+            Paragraph(f'<font size="7.5"><b>Remarks:</b> {remarks_text}</font>', ParagraphStyle("rm", parent=styles["Normal"], leading=10)),
+            Paragraph('<font size="7"><b>Legend:</b> A=Absent, NE=Not Eligible, X=Withheld, RV=Revaluation</font>', ParagraphStyle("lgd", parent=styles["Normal"], leading=10)),
+        ]
+    ], colWidths=[content_w * 0.6, content_w * 0.4])
+    remarks_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f9fafb")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#d1d5db")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(remarks_tbl)
+    story.append(Spacer(1, 2))
+
+    # Signature area for acknowledgement
+    sign_tbl = Table([[
+        Paragraph('<font size="7" color="#e2e8f0">_________________________<br/>Student Signature</font>', ParagraphStyle("s1", parent=styles["Normal"], alignment=TA_CENTER, leading=10)),
+        Paragraph('<font size="7" color="#e2e8f0">_________________________<br/>Parent / Guardian</font>', ParagraphStyle("s2", parent=styles["Normal"], alignment=TA_CENTER, leading=10)),
+        Paragraph('<font size="7" color="#e2e8f0">_________________________<br/>Class Advisor / HOD</font>', ParagraphStyle("s3", parent=styles["Normal"], alignment=TA_CENTER, leading=10)),
+        Paragraph('<font size="7" color="#e2e8f0">_________________________<br/>Principal</font>', ParagraphStyle("s4", parent=styles["Normal"], alignment=TA_CENTER, leading=10)),
+    ]], colWidths=[content_w / 4] * 4)
+    sign_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), indigo),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEAFTER", (0, 0), (2, -1), 0.5, border_c),
+    ]))
+    story.append(sign_tbl)
+
+    def _page_decor(canvas, doc_obj):
+        canvas.saveState()
+        canvas.setFont("Helvetica-Bold", 42)
+        canvas.setFillColor(colors.Color(0.78, 0.8, 0.9, alpha=0.12))
+        canvas.translate(page_w / 2, 210)
+        canvas.rotate(35)
+        canvas.drawCentredString(0, 0, "PROVISIONAL")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_page_decor, onLaterPages=_page_decor)
     pdf_bytes = buffer.getvalue()
     buffer.close()
-    logger.info("Generated student PDF for %s", student_id)
+    logger.info("Generated proper marks card PDF for %s", sid)
     return pdf_bytes
 
 

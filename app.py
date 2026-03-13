@@ -1,11 +1,23 @@
+import os
 import dash
 from dash import html, dcc, callback, Input, Output, State
 import dash_bootstrap_components as dbc
+from flask import send_from_directory
 from cache_config import cache
 from services.google_sheets_service import save_feedback
 from logging_config import setup_logging, get_logger
 from config import Config
 from security import sanitize_text, validate_email, feedback_limiter
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STYLES_DIR = os.path.join(BASE_DIR, "styles")
+STYLE_FILES = [
+    "overview_page.css",
+    "ranking_page.css",
+    "subject_analysis_page.css",
+    "branch_analysis_page.css",
+]
+STYLE_SHEETS = [f"/styles/{name}" for name in STYLE_FILES if os.path.exists(os.path.join(STYLES_DIR, name))]
 
 # Initialize logging first
 setup_logging(Config.LOG_LEVEL)
@@ -17,13 +29,21 @@ app = dash.Dash(
     use_pages=True,
     external_stylesheets=[
         dbc.themes.FLATLY,
-        "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css",
+        *STYLE_SHEETS,
     ],
     suppress_callback_exceptions=True,
     prevent_initial_callbacks='initial_duplicate',
 )
 
 server = app.server
+
+
+@server.route("/styles/<path:filename>")
+def serve_styles(filename):
+    return send_from_directory(STYLES_DIR, filename)
+
+
 server.secret_key = Config.SECRET_KEY
 cache.init_app(server)
 

@@ -1,17 +1,11 @@
 """
 Centralized logging configuration for VTU Dashboard.
-Provides structured logging with file + console output.
+Provides structured logging with console output.
 """
 
 import logging
-import logging.handlers
 import os
 import time
-
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-
-LOG_FILE = os.path.join(LOG_DIR, "dashboard.log")
 
 # Custom formatter with timestamps
 _FORMAT = "%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s"
@@ -37,19 +31,11 @@ def setup_logging(level=None):
     console.setFormatter(formatter)
     root.addHandler(console)
 
-    # Rotating file handler (5 MB per file, keep 3 backups)
-    file_handler = logging.handlers.RotatingFileHandler(
-        LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
-    )
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-    root.addHandler(file_handler)
-
     # Suppress noisy third-party loggers
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-    root.info("Logging initialized — level=%s, file=%s", log_level, LOG_FILE)
+    root.info("Logging initialized - level=%s, output=console", log_level)
     return root
 
 
