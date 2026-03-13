@@ -176,6 +176,9 @@ layout = dbc.Container([
         ], width=12)
     ]),
 
+    # PDF download component
+    dcc.Download(id="sd-pdf-download"),
+
     # --- Rules & Guidelines Modal ---
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("📊 Student Detail — Rules & Guidelines")),
@@ -974,12 +977,26 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
     )
 
     # ---------- Final Layout ----------
+    # Store student data for PDF download
+    student_data_for_pdf = student_series.to_dict()
+    subject_codes_for_pdf = all_subject_codes_selected
+
     return dbc.Card(dbc.CardBody([
         # Hero Header
         html.Div([
             html.I(className="bi bi-file-earmark-bar-graph me-3", style={"fontSize": "2rem", "color": "#667eea"}),
-            html.H3("Full Performance Report", className="d-inline fw-bold mb-0 sd-label")
+            html.H3("Full Performance Report", className="d-inline fw-bold mb-0 sd-label"),
+            dbc.Button(
+                [html.I(className="bi bi-file-earmark-pdf me-2"), "Download PDF"],
+                id="sd-pdf-btn",
+                color="danger", outline=True, size="sm",
+                className="ms-3",
+            ),
         ], className="text-center mb-4 pb-3", style={"borderBottom": "3px solid #667eea"}),
+
+        # Hidden stores for PDF callback
+        dcc.Store(id="sd-pdf-student-data", data=student_data_for_pdf),
+        dcc.Store(id="sd-pdf-subject-codes", data=subject_codes_for_pdf),
         
         # Student Info & SGPA
         header_row,
@@ -1045,3 +1062,23 @@ def display_full_report(credit_vals, search_value, session_id, section_ranges, u
             ], className="shadow-custom", style={"borderRadius": "15px"})
         ])
     ]), className="mt-4 p-4 shadow-custom fade-in sd-report-card", style={"borderRadius": "20px"})
+
+
+# ---------- PDF Download Callback ----------
+@callback(
+    Output("sd-pdf-download", "data"),
+    Input("sd-pdf-btn", "n_clicks"),
+    State("sd-pdf-student-data", "data"),
+    State("sd-pdf-subject-codes", "data"),
+    prevent_initial_call=True,
+)
+def download_student_pdf(n_clicks, student_data, subject_codes):
+    if not n_clicks or not student_data or not subject_codes:
+        raise PreventUpdate
+
+    from services.pdf_service import generate_student_report_pdf, pdf_to_download_data
+
+    pdf_bytes = generate_student_report_pdf(student_data, subject_codes)
+    student_id = student_data.get("Student ID", student_data.get("Student_ID", "Student"))
+    safe_id = re.sub(r'[^A-Za-z0-9_]', '_', str(student_id))
+    return pdf_to_download_data(pdf_bytes, f"{safe_id}_Report.pdf")

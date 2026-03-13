@@ -1,0 +1,59 @@
+.ba-stat-card {
+    background: white; border-radius: 12px; padding: 20px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+    height: 100%;
+}
+.ba-stat-card:hover { transform: translateY(-3px); }
+.ba-label { color: #64748b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.ba-value { color: #1e293b; font-size: 2rem; font-weight: 800; }
+
+.print-scroll-area { max-height: 500px; overflow-y: auto; overflow-x: hidden; }
+
+@page { 
+    size: landscape; 
+    margin: 10mm; 
+}
+
+@media print {
+    body, html { 
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important; 
+        background-color: #ffffff !important; 
+        padding: 0 !important; 
+        margin: 0 !important; 
+    }
+    
+    nav, header, footer, aside, .navbar, .sidebar, 
+    .fixed-top, .fixed-bottom, .sticky-top,
+    div[style*="position: fixed"], 
+    div[style*="position: sticky"] { 
+        display: none !important; 
+        opacity: 0 !important;
+        visibility: hidden !important;
+    }
+    
+    #ba-config-card, #ba-print-btn-container, .d-print-none { 
+        display: none !important; 
+    }
+    
+    .shadow-sm, .card { box-shadow: none !important; border: 1px solid #e2e8f0 !important; }
+    ::-webkit-scrollbar { display: none; }
+    
+    .container-fluid { padding: 0 !important; margin: 0 !important; }
+    .row { display: flex !important; flex-wrap: wrap !important; width: 100%; }
+    .col-md-6 { width: 50% !important; float: left; }
+    .card { page-break-inside: avoid !important; margin-bottom: 25px !important; display: block !important; }
+    
+    .print-scroll-area { max-height: none !important; height: auto !important; overflow: visible !important; }
+    
+    .dash-table-container, 
+    .dash-spreadsheet-container, 
+    .dash-spreadsheet-inner, 
+    .dash-spreadsheet-container .dash-spreadsheet-inner * {
+        max-height: none !important; 
+        height: auto !important; 
+        overflow: visible !important;
+        position: static !important;
+    }
+}
